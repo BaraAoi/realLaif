@@ -5,6 +5,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+  checks: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -21,8 +25,19 @@ jobs:
       - name: Build
         run: |
           chmod +x gradlew
-          ./gradlew build --no-daemon --stacktrace -Dorg.gradle.java.installations.auto-detect=true
+          set -o pipefail
+          ./gradlew build --no-daemon --stacktrace 2>&1 | tee build.log
+      - name: Publish build log as check run
+        if: always() && github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          { echo "=== ERRORS ==="; grep -E -A3 "error:|FAILED|What went wrong" build.log | head -c 45000; echo; echo "=== TAIL ==="; tail -c 15000 build.log; } > report.txt || true
+          gh api repos/${{ github.repository }}/check-runs \
+            -f name="build-log" -f head_sha="${{ github.sha }}" -f status=completed -f conclusion=neutral \
+            -f "output[title]=Build log" -f "output[summary]=Gradle build output" -F "output[text]=@report.txt" > /dev/null
       - uses: actions/upload-artifact@v4
+        if: success()
         with:
           name: reallife-mod
           path: build/libs/*.jar
