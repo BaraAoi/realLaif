@@ -27,7 +27,7 @@ public class ItemValues {
         put(Items.QUARTZ, 4); put(Items.QUARTZ_BLOCK, 16);
         put(Items.DIAMOND, 150); put(Items.DIAMOND_BLOCK, 1350);
         put(Items.EMERALD, 60); put(Items.EMERALD_BLOCK, 540);
-        put(Items.NETHERITE_SCRAP, 250); put(Items.NETHERITE_INGOT, 1200); put(Items.NETHERITE_BLOCK, 10800);
+        put(Items.NETHERITE_SCRAP, 250); put(Items.NETHERITE_INGOT, 1200); put(Blocks.NETHERITE_BLOCK.asItem(), 10800);
         put(Items.ANCIENT_DEBRIS, 250);
         // фермерство / прочее
         put(Items.WHEAT, 1); put(Items.BREAD, 3); put(Items.CARROT, 1); put(Items.POTATO, 1); put(Items.BAKED_POTATO, 2);
