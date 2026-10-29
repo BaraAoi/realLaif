@@ -35,6 +35,7 @@ public class RealLife {
 
         ModLoadingContext.get().registerConfig(ModConfig.Type.COMMON, Config.SPEC);
         MinecraftForge.EVENT_BUS.register(new ForgeEvents());
+        MinecraftForge.EVENT_BUS.register(new SelfTest());
     }
 
     private void commonSetup(FMLCommonSetupEvent event) {

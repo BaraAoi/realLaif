@@ -53,6 +53,10 @@ public class EconomyData extends WorldSavedData {
         return accounts.get(id);
     }
 
+    public Account getOrCreate(UUID id) {
+        return accounts.computeIfAbsent(id, Account::new);
+    }
+
     public Collection<Account> all() {
         return accounts.values();
     }

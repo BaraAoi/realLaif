@@ -27,12 +27,21 @@ jobs:
           chmod +x gradlew
           set -o pipefail
           ./gradlew build --no-daemon --stacktrace 2>&1 | tee build.log
+      - name: Server self-test
+        id: selftest
+        run: |
+          mkdir -p run
+          echo "eula=true" > run/eula.txt
+          printf "online-mode=false\nspawn-protection=0\nlevel-seed=reallife\n" > run/server.properties
+          REALLIFE_SELFTEST=1 timeout 900 ./gradlew runServer --no-daemon > server.log 2>&1 || true
+          grep -E "SELFTEST|RealLifeSelfTest|Exception|ERROR" server.log | head -200 > selftest.txt || true
+          grep -q "REALLIFE SELFTEST PASSED" server.log
       - name: Publish build log as check run
         if: always() && github.event_name == 'push'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          { echo "=== ERRORS ==="; grep -E -A3 "error:|FAILED|What went wrong" build.log | head -c 45000; echo; echo "=== TAIL ==="; tail -c 15000 build.log; } > report.txt || true
+          { echo "=== SELFTEST ==="; cat selftest.txt 2>/dev/null | head -c 30000; echo; echo "=== ERRORS ==="; grep -E -A3 "error:|FAILED|What went wrong" build.log | head -c 15000; echo; echo "=== TAIL ==="; tail -c 8000 build.log; echo '=== SERVER TAIL ==='; tail -c 8000 server.log 2>/dev/null; } > report.txt || true
           gh api repos/${{ github.repository }}/check-runs \
             -f name="build-log" -f head_sha="${{ github.sha }}" -f status=completed -f conclusion=neutral \
             -f "output[title]=Build log" -f "output[summary]=Gradle build output" -F "output[text]=@report.txt" > /dev/null

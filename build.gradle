@@ -33,6 +33,9 @@ minecraft {
         client {}
         server {
             args '--nogui'
+            if (System.getenv('REALLIFE_SELFTEST')) {
+                property 'reallife.selftest', 'true'
+            }
         }
     }
 }
