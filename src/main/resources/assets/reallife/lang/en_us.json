@@ -1,0 +1,21 @@
+{
+  "itemGroup.reallife": "Real Life: Harsh Reality",
+  "item.reallife.banknote_10": "10₽ Banknote",
+  "item.reallife.banknote_100": "100₽ Banknote",
+  "item.reallife.banknote_1000": "1000₽ Banknote",
+  "item.reallife.banknote_5000": "5000₽ Banknote",
+  "item.reallife.bank_permit": "Bank Building Permit",
+  "item.reallife.mfo_permit": "Microloan Office Permit",
+  "item.reallife.house_order": "House Construction Order",
+  "item.reallife.debtor_pickaxe": "Debtor's Pickaxe",
+  "block.reallife.bank_counter": "Bank Counter",
+  "block.reallife.mfo_counter": "Shaikin & Co Microloan Counter",
+  "block.reallife.jail_wall": "Jail Wall",
+  "entity.reallife.zhora": "Zhora",
+  "entity.reallife.alexander": "Alexander",
+  "entity.reallife.police": "Police Officer",
+  "entity.reallife.vovan": "Collector Vovan",
+  "entity.reallife.bratok": "Thug",
+  "container.reallife.bank": "Real Bank",
+  "container.reallife.mfo": "Shaikin & Co"
+}

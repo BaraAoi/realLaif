@@ -1,0 +1,561 @@
+package com.baraaoi.reallife.event;
+
+import com.baraaoi.reallife.Config;
+import com.baraaoi.reallife.container.FinanceContainer;
+import com.baraaoi.reallife.economy.Account;
+import com.baraaoi.reallife.economy.BankService;
+import com.baraaoi.reallife.economy.EconomyData;
+import com.baraaoi.reallife.economy.Finance;
+import com.baraaoi.reallife.economy.HouseType;
+import com.baraaoi.reallife.entity.*;
+import com.baraaoi.reallife.registry.ModEntities;
+import com.baraaoi.reallife.registry.ModItems;
+import com.baraaoi.reallife.structure.Buildings;
+import net.minecraft.block.BlockState;
+import net.minecraft.block.Blocks;
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.EntityType;
+import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.entity.player.ServerPlayerEntity;
+import net.minecraft.item.ItemStack;
+import net.minecraft.potion.EffectInstance;
+import net.minecraft.potion.Effects;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.text.StringTextComponent;
+import net.minecraft.world.World;
+import net.minecraft.world.gen.Heightmap;
+import net.minecraft.world.server.ServerWorld;
+import net.minecraft.world.storage.IWorldInfo;
+
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Random;
+
+/**
+ * «Терпение банка» и «методы» МФО: стадии взыскания, NPC, арест, тюрьма, подвал.
+ */
+public class DebtManager {
+    private static final Random RANDOM = new Random();
+    private static final List<Regen> REGEN = new ArrayList<>();
+
+    private static class Regen {
+        final BlockPos pos;
+        final BlockState state;
+        final long due;
+
+        Regen(BlockPos pos, BlockState state, long due) {
+            this.pos = pos;
+            this.state = state;
+            this.due = due;
+        }
+    }
+
+    // ================================================================== стадии
+
+    /** 0 — всё хорошо, 1 — Жора, 2 — Александр, 3 — полиция. */
+    public static int bankStage(Account a) {
+        if (a.captivity != Account.FREE) return 0;
+        if (a.wanted) return 3;
+        if (a.arrears <= 0.01) return 0;
+        if (a.overdueDays >= Config.POLICE_DAYS.get()) return 3;
+        if (a.overdueDays >= Config.ALEXANDER_DAYS.get() || a.laborBlocksLeft > 0) return 2;
+        if (a.overdueDays >= Config.ZHORA_DAYS.get()) return 1;
+        return 0;
+    }
+
+    /** 0 — всё хорошо, 1 — Вован, 2 — братки (бьют и грабят), 3 — братки с паяльником. */
+    public static int mfoStage(Account a) {
+        if (a.captivity != Account.FREE || !a.hasMfo()) return 0;
+        if (a.mfoLethal || a.mfoOverdueDays >= Config.LETHAL_DAYS.get()) return 3;
+        if (a.mfoOverdueDays >= Config.BRATKI_DAYS.get()) return 2;
+        if (a.mfoOverdueDays >= Config.VOVAN_DAYS.get()) return 1;
+        return 0;
+    }
+
+    // ================================================================== тик сервера
+
+    public static void serverTick(MinecraftServer server) {
+        ServerWorld ow = EconomyData.overworld(server);
+        if (ow == null) return;
+        long now = ow.getGameTime();
+        EconomyData data = EconomyData.get(server);
+
+        if (!REGEN.isEmpty()) {
+            Iterator<Regen> it = REGEN.iterator();
+            while (it.hasNext()) {
+                Regen r = it.next();
+                if (now >= r.due) {
+                    if (ow.isAirBlock(r.pos)) ow.setBlockState(r.pos, r.state, 3);
+                    it.remove();
+                }
+            }
+        }
+
+        if (now % 20 != 0) return;
+
+        // смена игрового дня
+        long day = ow.getDayTime() / 24000L;
+        if (data.lastDay < 0 || day < data.lastDay) {
+            data.lastDay = day;
+            data.markDirty();
+        }
+        int guard = 0;
+        while (data.lastDay < day && guard++ < 30) {
+            data.lastDay++;
+            BankService.processDay(server, data);
+        }
+
+        for (ServerPlayerEntity p : new ArrayList<>(server.getPlayerList().getPlayers())) {
+            if (p.openContainer instanceof FinanceContainer) BankService.sync(p);
+            if ((now / 20 + p.getEntityId()) % 2 == 0) tickPlayer(server, data, p, now);
+        }
+    }
+
+    private static void tickPlayer(MinecraftServer server, EconomyData data, ServerPlayerEntity p, long now) {
+        Account a = data.get(p);
+        if (a.captivity != Account.FREE) {
+            tickCaptivity(server, data, p, a, now);
+            return;
+        }
+        if (p.isSpectator() || !p.isAlive()) return;
+        ServerWorld w = p.getServerWorld();
+        List<DebtNpcEntity> mine = findNpcs(w, p);
+
+        // ---------------- банк
+        int bs = bankStage(a);
+        if (bs == 3 && !a.wanted) {
+            a.wanted = true;
+            data.markDirty();
+            BankService.msg(p, BankService.BANK + "§4Терпение банка лопнуло. Ваше дело передано в полицию. За вами выехали!");
+        }
+        if (bs == 1) {
+            if (count(mine, ZhoraEntity.class) == 0) {
+                spawn(ModEntities.ZHORA.get(), w, p, 8, 14);
+                BankService.msg(p, BankService.BANK + "§eК вам направлен сотрудник банка Жора. Он просто хочет поговорить.");
+            }
+        } else if (bs == 2) {
+            if (a.laborBlocksLeft <= 0) {
+                a.laborBlocksLeft = (int) Math.max(24, Math.min(256, Math.ceil(a.arrears / 4.0)));
+                a.laborPerBlock = a.arrears / a.laborBlocksLeft;
+                a.lastLaborTick = now;
+                data.markDirty();
+                if (!hasItem(p, ModItems.DEBTOR_PICKAXE.get().getDefaultInstance())) {
+                    BankService.give(p, new ItemStack(ModItems.DEBTOR_PICKAXE.get()));
+                }
+                BankService.msg(p, BankService.BANK + "§6Приехал Александр из службы взыскания. Вам выдана кирка. "
+                        + "Выкопайте §c" + a.laborBlocksLeft + "§6 блоков камня/земли/руды — и долг будет отработан. Добыча идёт банку.");
+            }
+            if (count(mine, AlexanderEntity.class) == 0) spawn(ModEntities.ALEXANDER.get(), w, p, 6, 10);
+        } else if (bs == 3) {
+            p.addPotionEffect(new EffectInstance(Effects.GLOWING, 60, 0, false, false));
+            int cops = count(mine, PoliceEntity.class);
+            if (cops == 0) {
+                if (a.policeWave == 0 || (a.nextPoliceTick > 0 && now >= a.nextPoliceTick)) {
+                    int n = Math.min(16, Config.POLICE_COUNT.get() + 2 * a.policeWave);
+                    for (int i = 0; i < n; i++) spawn(ModEntities.POLICE.get(), w, p, 10, 18);
+                    a.policeWave++;
+                    a.nextPoliceTick = 0;
+                    data.markDirty();
+                    BankService.msg(p, "§9§l[Полиция] §r§cВы окружены! " + n + " сотрудников. Сопротивление бесполезно!");
+                } else if (a.nextPoliceTick == 0) {
+                    a.nextPoliceTick = now + 1200;
+                    data.markDirty();
+                    BankService.msg(p, "§9§l[Полиция] §r§cВызвано подкрепление. Через минуту будут здесь.");
+                }
+            }
+        }
+
+        // ---------------- МФО
+        int ms = mfoStage(a);
+        if (ms == 1) {
+            if (count(mine, VovanEntity.class) == 0) {
+                spawn(ModEntities.VOVAN.get(), w, p, 8, 14);
+                BankService.msg(p, BankService.MFO + "§cК тебе выехал наш специалист по возврату. Вован. Не зли его.");
+            }
+        } else if (ms >= 2) {
+            int bros = count(mine, BratokEntity.class);
+            if (bros == 0 && now >= a.nextBratkiTick) {
+                int n = ms == 3 ? 4 : 3;
+                for (int i = 0; i < n; i++) spawn(ModEntities.BRATOK.get(), w, p, 8, 14);
+                a.nextBratkiTick = now + (ms == 3 ? 1200 : 3600);
+                data.markDirty();
+                if (ms == 3) {
+                    BankService.msg(p, BankService.MFO + "§4§lПриехали братки с паяльником. Беги. Хотя... не поможет.");
+                } else {
+                    BankService.msg(p, BankService.MFO + "§cК тебе приехали братки. Разговор будет коротким.");
+                }
+                if (!a.mfoBurned) {
+                    a.mfoBurned = true;
+                    arson(server, a, p, false);
+                }
+            }
+        }
+        if (ms >= 1 && now - a.lastSms > 2400) {
+            a.lastSms = now;
+            String[] sms = {"Верни долг §c%s§f, или будет хуже.", "Мы знаем, где ты живёшь. Долг: §c%s",
+                    "Твоя мама в курсе, что ты должен §c%s§f?", "Последнее предупреждение! §c%s"};
+            BankService.msg(p, "§8[СМС от «Шайкин и Ко»] §f" + String.format(sms[RANDOM.nextInt(sms.length)], Finance.money(a.mfoDebt)));
+        }
+    }
+
+    // ================================================================== NPC
+
+    public static List<DebtNpcEntity> findNpcs(ServerWorld w, PlayerEntity p) {
+        return w.getEntitiesWithinAABB(DebtNpcEntity.class, p.getBoundingBox().grow(96.0D),
+                e -> p.getUniqueID().equals(e.getTargetId()));
+    }
+
+    private static int count(List<DebtNpcEntity> list, Class<?> cls) {
+        int n = 0;
+        for (DebtNpcEntity e : list) if (cls.isInstance(e) && e.isAlive()) n++;
+        return n;
+    }
+
+    private static boolean hasItem(PlayerEntity p, ItemStack like) {
+        for (ItemStack s : p.inventory.mainInventory) if (s.getItem() == like.getItem()) return true;
+        return false;
+    }
+
+    public static <T extends DebtNpcEntity> T spawn(EntityType<T> type, ServerWorld w, PlayerEntity p, int minR, int maxR) {
+        T e = type.create(w);
+        if (e == null) return null;
+        BlockPos pos = findSpawnPos(w, p, minR, maxR);
+        e.setLocationAndAngles(pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5, RANDOM.nextFloat() * 360F, 0F);
+        e.setTarget(p);
+        e.setCustomName(new StringTextComponent(e.npcName()));
+        e.setCustomNameVisible(true);
+        w.addEntity(e);
+        return e;
+    }
+
+    public static void teleportNear(Entity e, PlayerEntity p, int r) {
+        if (!(e.world instanceof ServerWorld)) return;
+        BlockPos pos = findSpawnPos((ServerWorld) e.world, p, 2, r);
+        e.setPositionAndUpdate(pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5);
+    }
+
+    public static BlockPos findSpawnPos(ServerWorld w, PlayerEntity p, int minR, int maxR) {
+        BlockPos base = p.getPosition();
+        for (int i = 0; i < 24; i++) {
+            double ang = RANDOM.nextDouble() * Math.PI * 2;
+            int r = minR + RANDOM.nextInt(Math.max(1, maxR - minR + 1));
+            int x = base.getX() + (int) Math.round(Math.cos(ang) * r);
+            int z = base.getZ() + (int) Math.round(Math.sin(ang) * r);
+            for (int dy = 0; dy <= 8; dy++) {
+                for (int sign = -1; sign <= 1; sign += 2) {
+                    BlockPos pos = new BlockPos(x, base.getY() + dy * sign, z);
+                    if (w.isAirBlock(pos) && w.isAirBlock(pos.up()) && w.getBlockState(pos.down()).getMaterial().isSolid()) {
+                        return pos;
+                    }
+                }
+            }
+        }
+        if (w.getDimensionKey() == World.OVERWORLD) {
+            int x = base.getX() + 3, z = base.getZ() + 3;
+            int y = w.getHeight(Heightmap.Type.MOTION_BLOCKING_NO_LEAVES, x, z);
+            if (Math.abs(y - base.getY()) < 6) return new BlockPos(x, y, z);
+        }
+        return base;
+    }
+
+    // ================================================================== отработка долга копанием
+
+    /** @return true если событие разрушения надо отменить. */
+    public static boolean onBreak(ServerPlayerEntity p, BlockPos pos, BlockState state) {
+        MinecraftServer server = p.getServer();
+        if (server == null) return false;
+        EconomyData data = EconomyData.get(server);
+        Account a = data.get(p);
+        ServerWorld ow = EconomyData.overworld(server);
+        long now = ow.getGameTime();
+        if (a.captivity == Account.PIT) {
+            if (p.world == ow && Buildings.inPitMine(data.pitPos, pos) && !state.isAir(ow, pos)) {
+                ow.setBlockState(pos, Blocks.AIR.getDefaultState(), 3);
+                REGEN.add(new Regen(pos.toImmutable(), Buildings.pitBlock(RANDOM), now + 100));
+                a.pitBlocksLeft--;
+                data.markDirty();
+                BankService.actionBar(p, "§4Подвал Шайкина: §fосталось выкопать §c" + Math.max(0, a.pitBlocksLeft));
+                if (a.pitBlocksLeft <= 0) release(server, data, p, a);
+            }
+            return true;
+        }
+        if (a.captivity == Account.JAIL) return true;
+
+        if (bankStage(a) == 2 && a.laborBlocksLeft > 0) {
+            net.minecraft.block.material.Material m = state.getMaterial();
+            boolean diggable = m == net.minecraft.block.material.Material.ROCK
+                    || m == net.minecraft.block.material.Material.EARTH
+                    || m == net.minecraft.block.material.Material.ORGANIC
+                    || m == net.minecraft.block.material.Material.SAND
+                    || m == net.minecraft.block.material.Material.CLAY
+                    || state.isIn(net.minecraftforge.common.Tags.Blocks.ORES);
+            if (diggable && state.getBlockHardness(p.world, pos) >= 0) {
+                p.world.removeBlock(pos, false);
+                double bonus = com.baraaoi.reallife.economy.ItemValues.laborValue(state);
+                a.arrears -= a.laborPerBlock + bonus;
+                a.laborBlocksLeft--;
+                a.lastLaborTick = now;
+                data.markDirty();
+                if (bonus > 0) BankService.msg(p, "§7<§6Александр§7> §fО, руда! Это банку. Зачтено ещё " + Finance.money(bonus) + ".");
+                if (a.laborBlocksLeft <= 0 || a.arrears <= 0.01) {
+                    a.clearArrears();
+                    BankService.msg(p, BankService.BANK + "§aДолг отработан! Просрочка списана.");
+                } else {
+                    BankService.actionBar(p, "§6Отработка долга: §fосталось §c" + a.laborBlocksLeft
+                            + "§f блоков, просрочка §c" + Finance.money(a.arrears));
+                }
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // ================================================================== смерть, арест, похищение
+
+    public static void onPlayerDeath(ServerPlayerEntity p) {
+        MinecraftServer server = p.getServer();
+        if (server == null) return;
+        EconomyData data = EconomyData.get(server);
+        Account a = data.get(p);
+        if (a.captivity != Account.FREE) return;
+        if (bankStage(a) == 3) arrest(server, data, p, a);
+        else if (mfoStage(a) == 3) kidnap(server, data, p, a);
+    }
+
+    public static void onNpcKilled(DebtNpcEntity npc, ServerPlayerEntity killer) {
+        MinecraftServer server = killer.getServer();
+        if (server == null || npc.getTargetId() == null) return;
+        EconomyData data = EconomyData.get(server);
+        Account a = data.get(npc.getTargetId());
+        if (a == null) return;
+        PlayerEntity target = server.getPlayerList().getPlayerByUUID(a.id);
+        if (npc instanceof ZhoraEntity || npc instanceof AlexanderEntity) {
+            if (!a.wanted) {
+                a.wanted = true;
+                if (target != null) BankService.msg(target, BankService.BANK
+                        + "§4Нападение на сотрудника банка! Дело передано в полицию. За вами уже выехали.");
+            }
+        } else if (npc instanceof VovanEntity || (npc instanceof BratokEntity && mfoStage(a) == 2)) {
+            if (!a.mfoLethal) {
+                a.mfoLethal = true;
+                a.nextBratkiTick = 0;
+                if (target != null) BankService.msg(target, BankService.MFO
+                        + "§4Ты обидел наших пацанов. Теперь разговор будет другой. Жди гостей с паяльником.");
+            }
+        }
+        data.markDirty();
+    }
+
+    private static void removeNpcs(MinecraftServer server, PlayerEntity p, boolean bank) {
+        for (ServerWorld w : server.getWorlds()) {
+            for (DebtNpcEntity e : w.getEntitiesWithinAABB(DebtNpcEntity.class, p.getBoundingBox().grow(160.0D),
+                    e -> p.getUniqueID().equals(e.getTargetId()))) {
+                boolean isBank = e instanceof ZhoraEntity || e instanceof AlexanderEntity || e instanceof PoliceEntity;
+                if (isBank == bank) e.remove();
+            }
+        }
+    }
+
+    public static void arrest(MinecraftServer server, EconomyData data, ServerPlayerEntity p, Account a) {
+        ServerWorld ow = EconomyData.overworld(server);
+        long now = ow.getGameTime();
+        double debt = a.arrears + a.loanPrincipal + a.mortPrincipal;
+        double seizedCash = Math.max(0, a.balance);
+        double seizedItems = BankService.inventoryValue(p);
+        p.inventory.clear();
+        a.balance = Math.min(0, a.balance);
+        String house = a.hasHouse ? houseTitle(a) : null;
+        demolishHouse(ow, a);
+        a.clearLoan();
+        a.clearMortgage();
+        a.clearArrears();
+        a.wanted = false;
+        a.policeWave = 0;
+        a.nextPoliceTick = 0;
+        a.defaults++;
+        a.captivity = Account.JAIL;
+        a.jailUntil = now + Config.JAIL_TICKS.get();
+        data.markDirty();
+        removeNpcs(server, p, true);
+        BankService.msg(p, "§9§l[Полиция] §r§cВы арестованы за злостное уклонение от уплаты долга.");
+        BankService.msg(p, "§7Конфисковано: всё имущество (≈" + Finance.money(seizedItems) + "), счёт " + Finance.money(seizedCash)
+                + (house != null ? ", дом «" + house + "»" : "") + ". Долг " + Finance.money(debt) + " закрыт за счёт конфискации.");
+        BankService.msg(p, "§7Срок: " + (Config.JAIL_TICKS.get() / 1200) + " мин. Кредитная история испорчена.");
+        for (ServerPlayerEntity other : server.getPlayerList().getPlayers()) {
+            if (other != p) BankService.msg(other, "§9[Новости] §fИгрок §e" + p.getGameProfile().getName()
+                    + "§f арестован за долги перед «Реал Банком».");
+        }
+    }
+
+    public static void kidnap(MinecraftServer server, EconomyData data, ServerPlayerEntity p, Account a) {
+        double debt = a.mfoDebt;
+        p.inventory.clear();
+        double taken = Math.max(0, a.balance) * 0.5;
+        a.balance -= taken;
+        arson(server, a, p, true);
+        a.pitBlocksLeft = (int) Math.max(30, Math.min(250, Math.ceil(debt / 15.0)));
+        a.clearMfo();
+        a.captivity = Account.PIT;
+        data.markDirty();
+        removeNpcs(server, p, false);
+        BankService.msg(p, BankService.MFO + "§4Очнулся? Ты в подвале у Шайкина. Вещи твои теперь наши, со счёта ты «добровольно» перевёл "
+                + Finance.money(taken) + ", а дом... ну, бывает, горит.");
+        BankService.msg(p, BankService.MFO + "§cКопай. Выкопаешь §4" + a.pitBlocksLeft + "§c блоков — отпустим. Долг " + Finance.money(debt) + " будет закрыт.");
+    }
+
+    private static String houseTitle(Account a) {
+        HouseType t = HouseType.byId(a.houseType);
+        return t == null ? "дом" : t.title;
+    }
+
+    /** Изъятие дома банком: дом сносится полностью. */
+    public static void demolishHouse(ServerWorld ow, Account a) {
+        if (!a.hasHouse) return;
+        BlockPos min = a.houseMin, max = a.houseMax;
+        long volume = (long) (max.getX() - min.getX() + 1) * (max.getY() - min.getY() + 1) * (max.getZ() - min.getZ() + 1);
+        if (volume > 0 && volume < 20000) {
+            // сверху вниз, чтобы ничего не осыпалось
+            for (int y = max.getY(); y >= min.getY(); y--)
+                for (int x = min.getX(); x <= max.getX(); x++)
+                    for (int z = min.getZ(); z <= max.getZ(); z++) {
+                        BlockPos pos = new BlockPos(x, y, z);
+                        ow.removeTileEntity(pos);
+                        ow.setBlockState(pos, Blocks.AIR.getDefaultState(), 2 | 16);
+                    }
+            BlockPos sign = new BlockPos((min.getX() + max.getX()) / 2, min.getY(), min.getZ());
+            ow.setBlockState(sign, Blocks.OAK_SIGN.getDefaultState(), 3);
+            net.minecraft.tileentity.TileEntity te = ow.getTileEntity(sign);
+            if (te instanceof net.minecraft.tileentity.SignTileEntity) {
+                net.minecraft.tileentity.SignTileEntity s = (net.minecraft.tileentity.SignTileEntity) te;
+                s.setText(0, new StringTextComponent("ИЗЪЯТО"));
+                s.setText(1, new StringTextComponent("«Реал Банком»"));
+                s.setText(2, new StringTextComponent("за долги"));
+            }
+        }
+        a.hasHouse = false;
+        a.houseType = -1;
+    }
+
+    /** Поджог от братков. full=true — сжечь дом по-настоящему. */
+    public static void arson(MinecraftServer server, Account a, PlayerEntity p, boolean full) {
+        ServerWorld ow = EconomyData.overworld(server);
+        if (a.hasHouse) {
+            BlockPos min = a.houseMin, max = a.houseMax;
+            int fires = full ? 60 : 8;
+            for (int i = 0; i < fires * 6 && fires > 0; i++) {
+                int x = min.getX() + RANDOM.nextInt(max.getX() - min.getX() + 1);
+                int y = min.getY() + RANDOM.nextInt(max.getY() - min.getY() + 1);
+                int z = min.getZ() + RANDOM.nextInt(max.getZ() - min.getZ() + 1);
+                BlockPos pos = new BlockPos(x, y, z);
+                if (ow.isAirBlock(pos) && ow.getBlockState(pos.down()).getMaterial().isSolid()) {
+                    ow.setBlockState(pos, Blocks.FIRE.getDefaultState(), 3);
+                    fires--;
+                }
+                if (full && ow.getBlockState(pos).getMaterial() == net.minecraft.block.material.Material.GLASS) {
+                    ow.setBlockState(pos, Blocks.AIR.getDefaultState(), 3);
+                }
+            }
+            if (full) {
+                // братки забирают всё, что лежало в сундуках
+                for (int x = min.getX(); x <= max.getX(); x++)
+                    for (int y = min.getY(); y <= max.getY(); y++)
+                        for (int z = min.getZ(); z <= max.getZ(); z++) {
+                            net.minecraft.tileentity.TileEntity te = ow.getTileEntity(new BlockPos(x, y, z));
+                            if (te instanceof net.minecraft.inventory.IInventory) ((net.minecraft.inventory.IInventory) te).clear();
+                        }
+            }
+            if (p != null) BankService.msg(p, BankService.MFO + (full ? "§4Твой дом горит. Ничего личного." : "§cУ тебя дома что-то загорелось. Случайность, конечно."));
+        } else if (p != null && p.world instanceof ServerWorld && !full) {
+            ServerWorld w = (ServerWorld) p.world;
+            int lit = 0;
+            for (int i = 0; i < 40 && lit < 5; i++) {
+                BlockPos pos = p.getPosition().add(RANDOM.nextInt(13) - 6, RANDOM.nextInt(3) - 1, RANDOM.nextInt(13) - 6);
+                if (pos.distanceSq(p.getPosition()) < 9) continue;
+                if (w.isAirBlock(pos) && w.getBlockState(pos.down()).getMaterial().isSolid()) {
+                    w.setBlockState(pos, Blocks.FIRE.getDefaultState(), 3);
+                    lit++;
+                }
+            }
+            BankService.msg(p, BankService.MFO + "§cОй, а чего это вокруг тебя всё горит? Совпадение.");
+        }
+    }
+
+    // ================================================================== неволя
+
+    public static void ensureFacilities(MinecraftServer server, EconomyData data) {
+        ServerWorld ow = EconomyData.overworld(server);
+        IWorldInfo info = ow.getWorldInfo();
+        if (!data.jailBuilt) {
+            data.jailPos = new BlockPos(info.getSpawnX() + 1000, 12, info.getSpawnZ() + 1000);
+            Buildings.buildJail(ow, data.jailPos);
+            data.jailBuilt = true;
+            data.markDirty();
+        }
+        if (!data.pitBuilt) {
+            data.pitPos = new BlockPos(info.getSpawnX() - 1000, 12, info.getSpawnZ() - 1000);
+            Buildings.buildPit(ow, data.pitPos);
+            data.pitBuilt = true;
+            data.markDirty();
+        }
+    }
+
+    private static double[] cell(EconomyData data, Account a) {
+        BlockPos c = a.captivity == Account.JAIL ? data.jailPos : data.pitPos;
+        double dz = a.captivity == Account.JAIL ? 0.5 : 2.5;
+        return new double[]{c.getX() + 0.5, c.getY() + 1, c.getZ() + dz};
+    }
+
+    public static void sendToCaptivity(MinecraftServer server, EconomyData data, ServerPlayerEntity p, Account a) {
+        if (a.captivity == Account.FREE) return;
+        ensureFacilities(server, data);
+        ServerWorld ow = EconomyData.overworld(server);
+        double[] c = cell(data, a);
+        p.teleport(ow, c[0], c[1], c[2], p.rotationYaw, p.rotationPitch);
+    }
+
+    private static void tickCaptivity(MinecraftServer server, EconomyData data, ServerPlayerEntity p, Account a, long now) {
+        if (!p.isAlive()) return;
+        ensureFacilities(server, data);
+        ServerWorld ow = EconomyData.overworld(server);
+        double[] c = cell(data, a);
+        if (p.world != ow || p.getDistanceSq(c[0], c[1], c[2]) > 30) {
+            p.teleport(ow, c[0], c[1], c[2], p.rotationYaw, p.rotationPitch);
+        }
+        if (p.getFoodStats().getFoodLevel() < 6) {
+            p.getFoodStats().addStats(6, 0.6F);
+            BankService.msg(p, "§7Вам принесли миску баланды.");
+        }
+        if (a.captivity == Account.JAIL) {
+            long left = a.jailUntil - now;
+            if (left <= 0) {
+                release(server, data, p, a);
+            } else {
+                long sec = left / 20;
+                BankService.actionBar(p, String.format("§9СИЗО №1: §fдо освобождения §c%d:%02d", sec / 60, sec % 60));
+            }
+        } else if (a.captivity == Account.PIT) {
+            if (a.pitBlocksLeft <= 0) release(server, data, p, a);
+            else BankService.actionBar(p, "§4Подвал Шайкина: §fвыкопай ещё §c" + a.pitBlocksLeft + "§f блоков");
+        }
+    }
+
+    public static void release(MinecraftServer server, EconomyData data, ServerPlayerEntity p, Account a) {
+        int was = a.captivity;
+        a.captivity = Account.FREE;
+        a.pitBlocksLeft = 0;
+        a.jailUntil = 0;
+        data.markDirty();
+        ServerWorld ow = EconomyData.overworld(server);
+        IWorldInfo info = ow.getWorldInfo();
+        int x = info.getSpawnX(), z = info.getSpawnZ();
+        int y = ow.getHeight(Heightmap.Type.MOTION_BLOCKING_NO_LEAVES, x, z);
+        p.teleport(ow, x + 0.5, y, z + 0.5, p.rotationYaw, p.rotationPitch);
+        if (was == Account.JAIL) {
+            BankService.msg(p, "§9[Полиция] §fВы освобождены. Начните жизнь с чистого листа. И больше не берите кредитов, которые не можете вернуть.");
+        } else {
+            BankService.msg(p, BankService.MFO + "§fЛадно, отработал. Вали отсюда. И помни — мы всегда рядом. Нужны деньги — заходи!");
+        }
+    }
+}

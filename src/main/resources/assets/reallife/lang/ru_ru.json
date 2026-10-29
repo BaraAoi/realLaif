@@ -1,0 +1,21 @@
+{
+  "itemGroup.reallife": "Real Life: Суровая жизнь",
+  "item.reallife.banknote_10": "Купюра 10₽",
+  "item.reallife.banknote_100": "Купюра 100₽",
+  "item.reallife.banknote_1000": "Купюра 1000₽",
+  "item.reallife.banknote_5000": "Купюра 5000₽",
+  "item.reallife.bank_permit": "Разрешение на строительство банка",
+  "item.reallife.mfo_permit": "Разрешение на контору МФО",
+  "item.reallife.house_order": "Ордер на строительство дома",
+  "item.reallife.debtor_pickaxe": "Кирка должника",
+  "block.reallife.bank_counter": "Банковская стойка",
+  "block.reallife.mfo_counter": "Стойка МФО «Шайкин и Ко»",
+  "block.reallife.jail_wall": "Тюремная стена",
+  "entity.reallife.zhora": "Жора",
+  "entity.reallife.alexander": "Александр",
+  "entity.reallife.police": "Полицейский",
+  "entity.reallife.vovan": "Коллектор Вован",
+  "entity.reallife.bratok": "Браток",
+  "container.reallife.bank": "Реал Банк",
+  "container.reallife.mfo": "Шайкин и Ко"
+}

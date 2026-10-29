@@ -1,0 +1,8 @@
+{
+  "parent": "minecraft:block/orientable",
+  "textures": {
+    "top": "reallife:block/mfo_counter_top",
+    "front": "reallife:block/mfo_counter_front",
+    "side": "reallife:block/mfo_counter_side"
+  }
+}
