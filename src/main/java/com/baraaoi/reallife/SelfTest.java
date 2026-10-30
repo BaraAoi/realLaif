@@ -72,6 +72,95 @@ public class SelfTest {
         s.initiateShutdown(false);
     }
 
+    /** v1.10: дом без ипотеки, бизнес «под ключ», торговый центр, прибыль выше. */
+    private void v110(MinecraftServer s, ServerWorld ow, EconomyData data, BlockPos base) {
+        // ---- v1.10: дом без ипотеки, бизнес «под ключ», торговый центр, прибыль выше
+        for (com.baraaoi.reallife.economy.BizType bt : com.baraaoi.reallife.economy.BizType.values()) {
+            int net = bt.revenue() - bt.wage() - bt.supplyPrice();
+            check(net >= bt.base, bt.id() + ": net per worker " + net + " >= old revenue " + bt.base);
+            check(bt.turnkeyPrice() > bt.price + com.baraaoi.reallife.economy.BizType.BUILD_FEE && bt.fullEquipPrice() >= bt.kitPrice(),
+                    bt.id() + " turnkey price " + bt.turnkeyPrice());
+        }
+        Account hb = data.getOrCreate(UUID.randomUUID());
+        check(BankService.buyHouseRefusal(hb, HouseType.PENTHOUSE).isEmpty(), "a house can be bought outright without rating");
+        long hOrder = BankService.registerBoughtHouse(hb, HouseType.PENTHOUSE);
+        check(hb.pendingHouse == HouseType.PENTHOUSE.ordinal() && hb.houseOrderId == hOrder && !hb.hasMortgage(), "bought house = order, no mortgage");
+        check(!BankService.buyHouseRefusal(hb, HouseType.DIRT_HUT).isEmpty(), "next purchase waits until the house is built");
+        ItemStack paidOrder = com.baraaoi.reallife.item.HouseOrderItem.create(ModItems.HOUSE_ORDER.get(), hb.id, HouseType.PENTHOUSE.ordinal(), hOrder, true);
+        check(paidOrder.getTag() != null && paidOrder.getTag().getBoolean("paid") && paidOrder.getTag().getLong("order") == hOrder, "paid house order");
+        data.reset(hb.id);
+
+        UUID tkOwner = UUID.randomUUID();
+        BlockPos tkAt = base.add(-300, 0, 300);
+        String tkProblem = com.baraaoi.reallife.economy.BizBuild.turnkeyProblem(ow, tkAt, Direction.EAST, data, tkOwner);
+        check(tkProblem == null, "turnkey site is free: " + tkProblem);
+        com.baraaoi.reallife.economy.LegalBusiness tk = com.baraaoi.reallife.economy.BizBuild.buildTurnkeyAt(data, ow, tkAt, Direction.EAST,
+                com.baraaoi.reallife.economy.BizType.ELECTRONICS, tkOwner, "Turnkey");
+        com.baraaoi.reallife.economy.LegalBiz.Scan tks = com.baraaoi.reallife.economy.LegalBiz.scan(ow, tk);
+        check(tks.counterOk && tks.warehouse && tks.sets == com.baraaoi.reallife.economy.BizType.ELECTRONICS.maxWorkers
+                && tks.allowed == com.baraaoi.reallife.economy.BizType.ELECTRONICS.maxWorkers, "turnkey electronics fully equipped: sets " + tks.sets);
+        check(com.baraaoi.reallife.economy.LegalBiz.workerSpot(ow, tk, tks) != null, "turnkey has room for workers");
+        com.baraaoi.reallife.event.Inspections.Report tkRep = com.baraaoi.reallife.event.Inspections.sanepid(ow, tk, BankService.today(s), false);
+        boolean tkRoom = true;
+        for (String l : tkRep.lines) if (l.contains("помещени") || l.contains("земли")) tkRoom = false;
+        check(tkRoom, "turnkey building is a proper room: " + tkRep.lines);
+        check(com.baraaoi.reallife.economy.BizBuild.turnkeyProblem(ow, tkAt.add(4, 0, 0), Direction.EAST, data, UUID.randomUUID()) != null,
+                "can't build over someone's turnkey shop");
+        BlockPos tkAt2 = base.add(-300, 0, 360);
+        com.baraaoi.reallife.economy.LegalBusiness tk2 = com.baraaoi.reallife.economy.BizBuild.buildTurnkeyAt(data, ow, tkAt2, Direction.NORTH,
+                com.baraaoi.reallife.economy.BizType.SHAWARMA, tkOwner, "Turnkey");
+        com.baraaoi.reallife.economy.LegalBiz.Scan tks2 = com.baraaoi.reallife.economy.LegalBiz.scan(ow, tk2);
+        com.baraaoi.reallife.event.Inspections.Report tkRep2 = com.baraaoi.reallife.event.Inspections.sanepid(ow, tk2, BankService.today(s), false);
+        boolean sinkOk = true;
+        for (String l : tkRep2.lines) if (l.contains("раковин")) sinkOk = false;
+        check(tks2.sets == 2 && tks2.warehouse && sinkOk, "turnkey shawarma (north): sets " + tks2.sets + ", " + tkRep2.lines);
+
+        UUID mallOwner = UUID.randomUUID();
+        BlockPos mAt = base.add(-450, 0, -450);
+        String mProblem = com.baraaoi.reallife.economy.BizBuild.mallProblem(ow, mAt, Direction.SOUTH, data, mallOwner);
+        check(mProblem == null, "mall site is free: " + mProblem);
+        com.baraaoi.reallife.economy.Mall mall = com.baraaoi.reallife.economy.BizBuild.buildMallAt(data, ow, mAt, Direction.SOUTH, mallOwner, "MallTest");
+        check(mall.slots.size() == 8 && data.mallAt(mall.slots.get(3), 0) == mall && data.mallsOf(mallOwner).size() == 1, "mall has 8 slots");
+        boolean slotsOk = true;
+        for (int i = 0; i < mall.slots.size(); i++) {
+            BlockPos sp = mall.slots.get(i);
+            if (!ow.isAirBlock(sp) || ow.isAirBlock(sp.down()) || ow.canSeeSky(sp)) slotsOk = false;
+            for (int j = i + 1; j < mall.slots.size(); j++)
+                if (com.baraaoi.reallife.economy.LegalBusiness.zonesOverlap(sp, mall.slots.get(j))) slotsOk = false;
+            if (com.baraaoi.reallife.economy.LegalBiz.checkSite(ow, sp, data, mallOwner) != null) slotsOk = false;
+        }
+        check(slotsOk, "mall slots: empty, roofed, zones apart, site ok");
+        BlockPos hall = new BlockPos((mall.min.getX() + mall.max.getX()) / 2, mall.slots.get(0).getY(), (mall.min.getZ() + mall.max.getZ()) / 2);
+        check(com.baraaoi.reallife.economy.LegalBiz.checkSite(ow, hall, data, mallOwner) != null, "inside a mall only marked slots are allowed");
+        check(com.baraaoi.reallife.economy.BizBuild.mallProblem(ow, mAt.add(20, 0, 0), Direction.SOUTH, data, UUID.randomUUID()) != null, "no mall on top of a mall");
+        com.baraaoi.reallife.economy.LegalBusiness mb = com.baraaoi.reallife.economy.BizBuild.openInMall(data, ow, mall, 0, Direction.SOUTH, mallOwner, "MallTest");
+        check(mb.inMall() && mb.type == com.baraaoi.reallife.economy.Mall.LAYOUT[0] && mall.occupant(data, 0) == mb && mall.used(data) == 1, "business opened on a mall slot");
+        double plain = com.baraaoi.reallife.economy.LegalBiz.revenue(mb.type, 2, 1.0, 1.0);
+        check(Math.abs(com.baraaoi.reallife.economy.LegalBiz.dayRevenue(mb, 2, 1.0, 1.0) - Math.round(plain * 1.5)) < 1e-6, "mall revenue +50%");
+        mb.lastProfit = 2000;
+        check(Math.abs(com.baraaoi.reallife.economy.LegalBiz.safeLimit(mb) - 500) < 1e-6
+                && com.baraaoi.reallife.economy.LegalBiz.launderChance(2000, 0, 500, com.baraaoi.reallife.economy.LegalBiz.safeShare(mb)) == 0
+                && com.baraaoi.reallife.economy.LegalBiz.launderChance(2000, 0, 500) > 0, "mall: 25% laundering is safe (15% outside)");
+        com.baraaoi.reallife.economy.LegalBiz.Scan msc = com.baraaoi.reallife.economy.LegalBiz.scan(ow, mb);
+        com.baraaoi.reallife.event.Inspections.Report mRep = com.baraaoi.reallife.event.Inspections.sanepid(ow, mb, BankService.today(s), false);
+        boolean mallClean = msc.counterOk;
+        for (String l : mRep.lines) if (l.contains("помещени") || l.contains("земли") || l.contains("раковин")) mallClean = false;
+        check(mallClean, "mall slot passes SES room/sink checks: " + mRep.lines);
+        CompoundNBT msave = data.write(new CompoundNBT());
+        EconomyData mcopy = new EconomyData();
+        mcopy.read(msave);
+        com.baraaoi.reallife.economy.Mall mallCopy = mcopy.mallById(mall.id);
+        com.baraaoi.reallife.economy.LegalBusiness mbCopy = mcopy.bizAtCounter(mb.counter);
+        check(mallCopy != null && mallCopy.slots.equals(mall.slots) && mallCopy.types.equals(mall.types) && mbCopy != null && mbCopy.mallId == mall.id,
+                "malls saved");
+        data.businesses.remove(tk);
+        data.businesses.remove(tk2);
+        data.businesses.remove(mb);
+        data.malls.remove(mall);
+        data.reset(tkOwner);
+        data.reset(mallOwner);
+    }
+
     private void run(MinecraftServer s) {
         ServerWorld ow = EconomyData.overworld(s);
         BlockPos base = new BlockPos(ow.getWorldInfo().getSpawnX(), 120, ow.getWorldInfo().getSpawnZ());
@@ -522,8 +611,8 @@ public class SelfTest {
         // v1.7: версия и новые гости
         check(!"?".equals(RealLife.version()) && !RealLife.version().startsWith("1.0"), "mod version " + RealLife.version());
         check(Visitors.eventKinds().contains(VisitorKind.HOBO) && Visitors.eventKinds().contains(VisitorKind.BLACK_DIGGER), "nomad visitors present");
-        check(com.baraaoi.reallife.economy.LegalBiz.revenue(com.baraaoi.reallife.economy.BizType.MINIMARKET, 2, 1.0, 1.0) == 1900
-                && com.baraaoi.reallife.economy.LegalBiz.revenue(com.baraaoi.reallife.economy.BizType.MINIMARKET, 1, 1.0, 0.5) == 500, "revenue formula");
+        check(com.baraaoi.reallife.economy.LegalBiz.revenue(com.baraaoi.reallife.economy.BizType.MINIMARKET, 2, 1.0, 1.0) == 3325
+                && com.baraaoi.reallife.economy.LegalBiz.revenue(com.baraaoi.reallife.economy.BizType.MINIMARKET, 1, 1.0, 0.5) == 875, "revenue formula (v1.10: x1.75)");
         for (com.baraaoi.reallife.economy.BizType bt : com.baraaoi.reallife.economy.BizType.values()) {
             check(bt.need(com.baraaoi.reallife.economy.BizEquip.COUNTER) == 1 && bt.kitPrice() > 1500 && bt.supplyPrice() > 0 && bt.maxWorkers >= 2,
                     bt.id() + " kit: " + com.baraaoi.reallife.economy.LegalBiz.kitText(bt) + " = " + bt.kitPrice());
@@ -550,6 +639,7 @@ public class SelfTest {
         double c1 = com.baraaoi.reallife.economy.LegalBiz.launderChance(2000, 0, 600);
         double c2 = com.baraaoi.reallife.economy.LegalBiz.launderChance(2000, 600, 1000);
         check(c1 > 0 && c2 > c1, "risk grows: " + c1 + " -> " + c2);
+        v110(s, ow, data, base);
         java.util.Random lr = new java.util.Random(7);
         double sum = 0, lucky = 0;
         for (int i = 0; i < 4000; i++) {

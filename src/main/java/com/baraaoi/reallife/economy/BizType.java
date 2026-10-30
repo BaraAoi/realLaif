@@ -66,6 +66,29 @@ public enum BizType {
         return s;
     }
 
+    /** v1.10: прибыль бизнесов поднята — выручка работника = base × REVENUE_BOOST (зарплаты и сырьё остались прежними). */
+    public static final double REVENUE_BOOST = 1.75;
+
+    /** Выручка одного работника в обычный день (без удачи и бонуса ТЦ). */
+    public int revenue() {
+        return (int) Math.round(base * REVENUE_BOOST);
+    }
+
+    /** v1.10: «под ключ» — работа бригады строителей (здание с освещением и вывеской). */
+    public static final int BUILD_FEE = 8000;
+
+    /** Оборудование на максимум работников (главная касса идёт с лицензией, поэтому одна касса не считается). */
+    public int fullEquipPrice() {
+        int s = 0;
+        for (BizEquip e : BizEquip.values()) s += total(e, maxWorkers) * e.price;
+        return s - BizEquip.COUNTER.price;
+    }
+
+    /** Лицензия + стройка + всё оборудование на максимум работников. */
+    public int turnkeyPrice() {
+        return price + fullEquipPrice() + BUILD_FEE;
+    }
+
     /** Сырьё: сколько коробок в день расходует один работник (v1.7: коробки не стакаются — одна коробка на слот). */
     public static final int SUPPLY_PER_WORKER = 1;
 

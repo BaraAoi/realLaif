@@ -48,6 +48,9 @@ public class EconomyData extends WorldSavedData {
     /** Легальные заведения игроков (v5). */
     public final List<LegalBusiness> businesses = new ArrayList<>();
     public int nextBizId = 1;
+    /** v1.10: торговые центры игроков. */
+    public final List<Mall> malls = new ArrayList<>();
+    public int nextMallId = 1;
     /** Курс BTC в рублях и когда он последний раз менялся (игровые тики). */
     public double btcRate;
     public long btcUpdated;
@@ -179,6 +182,23 @@ public class EconomyData extends WorldSavedData {
         return null;
     }
 
+    /** Торговый центр, внутри которого (с запасом grow) находится точка. */
+    public Mall mallAt(BlockPos p, int grow) {
+        for (Mall m : malls) if (m.contains(p, grow)) return m;
+        return null;
+    }
+
+    public Mall mallById(int id) {
+        for (Mall m : malls) if (m.id == id) return m;
+        return null;
+    }
+
+    public List<Mall> mallsOf(UUID owner) {
+        List<Mall> l = new ArrayList<>();
+        for (Mall m : malls) if (owner.equals(m.owner)) l.add(m);
+        return l;
+    }
+
     public LegalBusiness bizById(int id) {
         for (LegalBusiness b : businesses) if (b.id == id) return b;
         return null;
@@ -225,6 +245,10 @@ public class EconomyData extends WorldSavedData {
         for (INBT n : nbt.getList("legal", 10)) businesses.add(LegalBusiness.read((CompoundNBT) n));
         nextBizId = Math.max(1, nbt.getInt("nextBizId"));
         for (LegalBusiness b : businesses) nextBizId = Math.max(nextBizId, b.id + 1);
+        malls.clear();
+        for (INBT n : nbt.getList("malls", 10)) malls.add(Mall.read((CompoundNBT) n));
+        nextMallId = Math.max(1, nbt.getInt("nextMallId"));
+        for (Mall m : malls) nextMallId = Math.max(nextMallId, m.id + 1);
         btcRate = nbt.getDouble("btcRate");
         btcUpdated = nbt.getLong("btcUpdated");
         for (int i = 1; i < altRates.length; i++) altRates[i] = nbt.getDouble("altRate" + i);
@@ -265,6 +289,10 @@ public class EconomyData extends WorldSavedData {
         for (LegalBusiness b : businesses) bl.add(b.write());
         nbt.put("legal", bl);
         nbt.putInt("nextBizId", nextBizId);
+        ListNBT ml = new ListNBT();
+        for (Mall m : malls) ml.add(m.write());
+        nbt.put("malls", ml);
+        nbt.putInt("nextMallId", nextMallId);
         nbt.putDouble("btcRate", btcRate);
         nbt.putLong("btcUpdated", btcUpdated);
         for (int i = 1; i < altRates.length; i++) if (altRates[i] > 0) nbt.putDouble("altRate" + i, altRates[i]);

@@ -114,13 +114,17 @@ public class PhoneScreen extends Screen {
                 break;
             }
             case 4: {
-                btn(8, 42, 114, (bizSub == 0 ? "§e" : "") + "Заведения", b -> { bizSub = 0; page = 0; rebuild(); });
-                btn(126, 42, 114, (bizSub == 1 ? "§e" : "") + "Оборудование", b -> { bizSub = 1; page = 0; rebuild(); });
+                btn(8, 42, 76, (bizSub == 0 ? "§e" : "") + "Заведения", b -> { bizSub = 0; page = 0; rebuild(); });
+                btn(86, 42, 76, (bizSub == 1 ? "§e" : "") + "Оборудование", b -> { bizSub = 1; page = 0; rebuild(); });
+                btn(164, 42, 76, (bizSub == 2 ? "§e" : "") + "ТЦ", b -> { bizSub = 2; page = 0; rebuild(); });
                 if (bizSub == 0) {
                     int n = BizType.values().length;
                     btn(8, 126, 20, "<", b -> bizType = (bizType + n - 1) % n);
                     btn(220, 126, 20, ">", b -> bizType = (bizType + 1) % n);
-                    btn(8, 188, 232, "§aКупить лицензию", b -> send(Actions.PHONE_BUY_BIZ, bizType, 0));
+                    btn(8, 188, 112, "§aЛицензия", b -> send(Actions.PHONE_BUY_BIZ, bizType, 0));
+                    btn(124, 188, 116, "§6Под ключ", b -> send(Actions.PHONE_BUY_TURNKEY, bizType, 0));
+                } else if (bizSub == 2) {
+                    btn(8, 188, 232, "§6Купить разрешение на ТЦ", b -> send(Actions.PHONE_BUY_MALL, 0, 0));
                 } else {
                     BizEquip[] eq = BizEquip.values();
                     int pages = Math.max(1, (eq.length + EQ_PAGE - 1) / EQ_PAGE);
@@ -283,6 +287,7 @@ public class PhoneScreen extends Screen {
 
     private void drawBusiness(MatrixStack ms, CompoundNBT t) {
         if (bizSub == 1) { drawEquip(ms, t); return; }
+        if (bizSub == 2) { drawMall(ms, t); return; }
         ListNBT biz = t.getList("bizList", 10);
         if (biz.isEmpty()) {
             small(ms, "§7Заведений пока нет. Купите лицензию, поставьте кассу на своей земле", 8, 64);
@@ -301,12 +306,35 @@ public class PhoneScreen extends Screen {
         fill(ms, left + 4, top + 116, left + W - 4, top + 117, 0xFF335577);
         BizType bt = BizType.values()[bizType % BizType.values().length];
         text(ms, "§e" + bt.title, 32, 130);
-        small(ms, "Лицензия: §e" + Finance.money(bt.price) + "§f  выручка §a" + Finance.money(bt.base) + "§f/день на работника, до §e"
-                + bt.maxWorkers + "§f раб.", 8, 146);
-        small(ms, "Комплект на 1 работника (≈" + Finance.money(bt.kitPrice()) + "):", 8, 155);
-        small(ms, "§e" + com.baraaoi.reallife.economy.LegalBiz.kitText(bt) + " §f+ склад: §e" + com.baraaoi.reallife.economy.LegalBiz.baseText(bt), 8, 164);
+        small(ms, "Лицензия: §e" + Finance.money(bt.price) + "§f  выручка §a" + Finance.money(bt.revenue()) + "§f/день на работника, до §e"
+                + bt.maxWorkers + "§f раб.", 8, 142);
+        small(ms, "Комплект на 1 работника (≈" + Finance.money(bt.kitPrice()) + "):", 8, 150);
+        small(ms, "§e" + com.baraaoi.reallife.economy.LegalBiz.kitText(bt) + " §f+ склад: §e" + com.baraaoi.reallife.economy.LegalBiz.baseText(bt), 8, 158);
         small(ms, "Сырьё: " + bt.supplyName + " §a" + Finance.money(bt.supplyPrice()) + "§f/шт, " + BizType.SUPPLY_PER_WORKER
-                + " кор./день на раб.; зарплата " + Finance.money(bt.wage()), 8, 173);
+                + " кор./день на раб.; зарплата " + Finance.money(bt.wage()), 8, 166);
+        small(ms, "§6Под ключ: §e" + Finance.money(bt.turnkeyPrice()) + "§7 — лицензия + здание + всё на " + bt.maxWorkers + " раб.", 8, 175);
+    }
+
+    private void drawMall(MatrixStack ms, CompoundNBT t) {
+        text(ms, "§6Торговый центр", 8, 62);
+        small(ms, "Разрешение со стройкой: §e" + Finance.money(com.baraaoi.reallife.economy.Mall.PRICE), 8, 74);
+        small(ms, "§7Огромный пустой зал 71×45 с 8 размеченными местами:", 8, 84);
+        small(ms, "§7шаурмичная, мини-маркет, ломбард, магазин техники — по 2.", 8, 93);
+        small(ms, "§aПрибыль заведений в ТЦ +50%§f, безопасный отмыв §a25%§f прибыли", 8, 102);
+        small(ms, "§7(вне ТЦ — 15%). Лицензию ставишь ПКМ по центру своего места.", 8, 111);
+        ListNBT malls = t.getList("malls", 10);
+        fill(ms, left + 4, top + 122, left + W - 4, top + 123, 0xFF335577);
+        if (malls.isEmpty()) {
+            small(ms, "§7У вас пока нет ТЦ. Нужна ровная площадка, вся земля —", 8, 128);
+            small(ms, "§7ваша или ничья. ПКМ разрешением — зал встанет перед вами.", 8, 137);
+        }
+        for (int i = 0; i < malls.size() && i < 3; i++) {
+            CompoundNBT m = malls.getCompound(i);
+            String free = m.getString("free");
+            small(ms, "§fТЦ №" + m.getInt("id") + " §7(" + m.getInt("x") + ", " + m.getInt("y") + ", " + m.getInt("z") + ") §fзанято §e"
+                    + m.getInt("used") + "/" + m.getInt("total"), 8, 128 + i * 18);
+            small(ms, free.isEmpty() ? "§aвсе места заняты" : "§7свободно: " + free, 14, 137 + i * 18);
+        }
     }
 
     private void drawEquip(MatrixStack ms, CompoundNBT t) {

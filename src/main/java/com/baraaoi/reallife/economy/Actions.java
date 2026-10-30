@@ -8,6 +8,8 @@ public class Actions {
     public static final int MORTGAGE = 5;
     public static final int REPAY_MORTGAGE = 6;
     public static final int REISSUE_ORDER = 7;
+    /** v1.10: купить дом сразу, без ипотеки (arg1 — HouseType). */
+    public static final int BUY_HOUSE = 8;
 
     public static final int MFO_TAKE = 20;
     public static final int MFO_PAY_SLOT = 21;
@@ -36,4 +38,10 @@ public class Actions {
     public static final int PHONE_SELL_BTC = 66;
     public static final int PHONE_BUY_EQUIP = 67;
     public static final int PHONE_BUY_CRYPTO = 68;
+    /** v1.10: лицензия + здание «под ключ» с оборудованием (arg1 — BizType). */
+    public static final int PHONE_BUY_TURNKEY = 69;
+    /** v1.10: разрешение на строительство торгового центра. */
+    public static final int PHONE_BUY_MALL = 70;
+    /** Последнее действие телефона (для диапазона). */
+    public static final int PHONE_LAST = 70;
 }

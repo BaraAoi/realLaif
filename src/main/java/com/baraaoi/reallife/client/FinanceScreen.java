@@ -98,6 +98,7 @@ public class FinanceScreen extends ContainerScreen<FinanceContainer> {
         btn(8, 24, 16, "<", b -> { house = (house + n - 1) % n; });
         btn(196, 24, 16, ">", b -> { house = (house + 1) % n; });
         btn(8, 86, 120, "§aОформить ипотеку", b -> send(Actions.MORTGAGE, house, 0));
+        btn(132, 86, 80, "§eКупить сразу", b -> send(Actions.BUY_HOUSE, house, 0));
         btn(8, 124, 66, "Внести 1000", b -> send(Actions.REPAY_MORTGAGE, 1000, 0));
         btn(76, 124, 66, "Погасить всё", b -> send(Actions.REPAY_MORTGAGE, 0, 0));
         btn(144, 124, 70, "Новый ордер", b -> send(Actions.REISSUE_ORDER, 0, 0));
@@ -231,7 +232,7 @@ public class FinanceScreen extends ContainerScreen<FinanceContainer> {
         small(ms, "Цена: §e" + Finance.money(h.price) + "§r   Срок: " + h.termDays + " дн.   Мин. рейтинг: " + h.minScore, 8, 51, 0xFFFFFF);
         small(ms, "Взнос " + Finance.percent(t.getDouble("downPct")) + ": §e" + Finance.money(ht.getDouble("down"))
                 + "§r   Ставка: " + Finance.percent(ht.getDouble("rate")) + "/день", 8, 60, 0xFFFFFF);
-        small(ms, "Платёж: §e" + Finance.money(ht.getDouble("pay")) + "/день", 8, 69, 0xFFFFFF);
+        small(ms, "Платёж: §e" + Finance.money(ht.getDouble("pay")) + "/день§r   Без ипотеки: §a" + Finance.money(h.price), 8, 69, 0xFFFFFF);
         String reason = ht.getString("reason");
         small(ms, reason.isEmpty() ? "§a✔ Предварительно одобрено" : "§c✘ " + reason, 8, 78, 0xFFFFFF);
         fill(ms, 8, 102, 212, 103, 0xFF555555);
@@ -242,7 +243,7 @@ public class FinanceScreen extends ContainerScreen<FinanceContainer> {
                     + (t.getBoolean("houseBuilt") ? "" : " §d(дом не построен)"), 8, 115, 0xCCCCCC);
         } else {
             small(ms, "§7Ипотеки нет. Дом строит бригада банка — бесплатно.", 8, 106, 0x999999);
-            small(ms, "§7Не платите — придут Жора, Александр, потом полиция.", 8, 115, 0x999999);
+            small(ms, "§7«Купить сразу» — полная цена (счёт + наличка), без рейтинга.", 8, 115, 0x999999);
         }
     }
 

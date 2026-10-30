@@ -76,14 +76,14 @@ public class BizScreen extends ContainerScreen<BizContainer> {
         double lp = t.getDouble("lastProfit");
         GuiUtil.small(font, ms, "Вчера: " + (lp >= 0 ? "§a+" : "§c") + Finance.money(lp) + " §7" + t.getString("lastNote"), 8, 65);
         GuiUtil.small(font, ms, "Всего: §a" + Finance.money(t.getDouble("total")) + "§f за " + t.getInt("days") + " раб. дн.  §7выручка "
-                + Finance.money(type.base) + "/раб., удача влияет", 8, 74);
+                + Finance.money(type.revenue() * (t.getBoolean("mall") ? 1.5 : 1.0)) + "/раб." + (t.getBoolean("mall") ? " §d(ТЦ +50%)" : ", удача влияет"), 8, 74);
         GuiUtil.small(font, ms, "Найм " + Finance.money(type.hireCost()) + ", зарплата " + Finance.money(type.wage()) + "/день каждому. "
                 + (t.getInt("undoc") > 0 ? "§cБез документов: " + t.getInt("undoc") + " чел.!" : t.getInt("workers") > 0
                 ? "§aДокументы до дня " + t.getLong("docsUntil") : "§7Сырьё: телефон → Опт."), 8, 83);
         double safe = t.getDouble("safe");
         double done = t.getDouble("laundered");
         GuiUtil.small(font, ms, "Отмыто сегодня: " + (done > safe ? "§c" : "§a") + Finance.money(done) + "§f / безопасно " + Finance.money(safe)
-                + " §7(15% вчерашней прибыли, налог " + Finance.percent(all.getDouble("launderTax")) + ")", 8, 132);
+                + " §7(" + Math.round((t.contains("safeShare") ? t.getDouble("safeShare") : 0.15) * 100) + "% вчерашней прибыли" + (t.getBoolean("mall") ? " — ТЦ" : "") + ", налог " + Finance.percent(all.getDouble("launderTax")) + ")", 8, 132);
         GuiUtil.small(font, ms, "Грязные", BizContainer.SLOT_X - 6, BizContainer.SLOT_Y - 9);
     }
 }

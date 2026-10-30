@@ -212,6 +212,7 @@ public class BankService {
         t.putLong("today", today);
         t.put("bizList", LegalBiz.infoList(data, a.id, today));
         t.putBoolean("ownsBiz", data.ownsBusiness(a.id));
+        t.put("malls", BizBuild.mallList(data, a.id));
         t.putDouble("safeShare", Config.LAUNDER_SAFE_SHARE.get());
         t.putDouble("launderTax", Config.LAUNDER_TAX.get());
         a.peakBalance = Math.max(a.peakBalance, a.balance);
@@ -283,7 +284,7 @@ public class BankService {
             if (action == Actions.CASINO_PLAY && cc.canInteractWith(p)) CasinoService.play(p, cc, arg1, arg2);
             return;
         }
-        if (action >= Actions.PHONE_SYNC && action <= Actions.PHONE_BUY_CRYPTO) {
+        if (action >= Actions.PHONE_SYNC && action <= Actions.PHONE_LAST) {
             phone(p, action, arg1, arg2);
             return;
         }
@@ -338,6 +339,7 @@ public class BankService {
                 case Actions.MORTGAGE: takeMortgage(p, a, today, arg1); break;
                 case Actions.REPAY_MORTGAGE: repayMortgage(p, a, arg1); break;
                 case Actions.REISSUE_ORDER: reissueOrder(p, a); break;
+                case Actions.BUY_HOUSE: buyHouse(p, a, arg1); break;
                 default: break;
             }
         }
@@ -372,6 +374,8 @@ public class BankService {
             case Actions.PHONE_BUY_EQUIP: LegalBiz.buyEquip(p, a, arg1, arg2); break;
             case Actions.PHONE_SELL_BTC: Crypto.sell(p, a, arg1, arg2); break;
             case Actions.PHONE_BUY_CRYPTO: Crypto.buy(p, a, arg1, arg2); break;
+            case Actions.PHONE_BUY_TURNKEY: BizBuild.buyTurnkey(p, a, arg1); break;
+            case Actions.PHONE_BUY_MALL: BizBuild.buyMallPermit(p, a); break;
             default: break;
         }
         data.markDirty();
@@ -540,6 +544,38 @@ public class BankService {
         msg(p, BANK + "§aИпотека одобрена: §e" + h.title + "§f! Взнос " + Finance.money(down) + " списан.");
         msg(p, BANK + "Платёж §e" + Finance.money(a.mortPayment()) + "§f/день, " + h.termDays + " дн. "
                 + "Используйте §dОрдер на строительство§f — бригада построит дом бесплатно.");
+    }
+
+    /** v1.10: почему нельзя купить дом сразу (пусто — можно). Деньги проверяются отдельно (счёт + наличка). */
+    public static String buyHouseRefusal(Account a, HouseType h) {
+        if (a.captivity != Account.FREE) return "Вы под арестом";
+        if (a.pendingHouse >= 0) return "Сначала постройте уже оплаченный дом по ордеру";
+        return "";
+    }
+
+    /** Оформить купленный дом: ордер на бесплатную стройку, без ипотеки. Деньги уже списаны. */
+    public static long registerBoughtHouse(Account a, HouseType h) {
+        a.houseOrderId = RANDOM.nextLong();
+        a.houseBuilt = false;
+        a.pendingHouse = h.ordinal();
+        return a.houseOrderId;
+    }
+
+    /** v1.10: купить дом за полную цену — без ипотеки, без рейтинга и проверки дохода. */
+    static void buyHouse(ServerPlayerEntity p, Account a, int houseIdx) {
+        if (!checkFree(p, a)) return;
+        HouseType h = HouseType.byId(houseIdx);
+        if (h == null) return;
+        String refusal = buyHouseRefusal(a, h);
+        if (!refusal.isEmpty()) { msg(p, BANK + "§cНельзя купить: " + refusal); return; }
+        if (!charge(p, a, h.price)) {
+            msg(p, BANK + "§c«" + h.title + "» стоит " + Finance.money(h.price) + ". На счёте и в наличке столько нет — возьмите ипотеку.");
+            return;
+        }
+        long order = registerBoughtHouse(a, h);
+        give(p, HouseOrderItem.create(ModItems.HOUSE_ORDER.get(), p.getUniqueID(), h.ordinal(), order, true));
+        msg(p, BANK + "§a§lПокупка оформлена: §r§e" + h.title + "§f за §c" + Finance.money(h.price) + "§f. Без ипотеки — дом сразу ваш, банк ни при чём.");
+        msg(p, BANK + "Используйте §dОрдер на строительство§f — бригада построит дом бесплатно там, где кликнете.");
     }
 
     static void repayMortgage(ServerPlayerEntity p, Account a, int amount) {

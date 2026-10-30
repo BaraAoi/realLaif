@@ -140,13 +140,21 @@ public final class LegalBiz {
 
     /** Безопасный дневной объём отмыва: доля ВЧЕРАШНЕЙ прибыли заведения (убыток/ноль — отмывать нельзя). */
     public static double safeLimit(LegalBusiness b) {
-        return Math.max(0, b.lastProfit) * Config.LAUNDER_SAFE_SHARE.get();
+        return Math.max(0, b.lastProfit) * safeShare(b);
+    }
+
+    /** v1.10: безопасная доля отмыва — в торговом центре 25%, иначе из конфига (15%). */
+    public static double safeShare(LegalBusiness b) {
+        return b != null && b.inMall() ? Mall.SAFE_SHARE : Config.LAUNDER_SAFE_SHARE.get();
     }
 
     /** Шанс, что налоговая заметит отмыв amount, если сегодня уже провели before; base — вчерашняя прибыль. */
     public static double launderChance(double base, double before, double amount) {
+        return launderChance(base, before, amount, Config.LAUNDER_SAFE_SHARE.get());
+    }
+
+    public static double launderChance(double base, double before, double amount, double share) {
         if (base <= 0) return 0.95;
-        double share = Config.LAUNDER_SAFE_SHARE.get();
         double after = before + amount;
         if (after <= base * share + 1e-6) return 0;
         return Math.max(0, Math.min(0.95, (after / base - share) * Config.LAUNDER_RISK_SLOPE.get()));
@@ -201,11 +209,20 @@ public final class LegalBiz {
                 return "это дом другого игрока";
             }
         }
+        for (Mall m : data.malls) {
+            if (m.contains(pos, LegalBusiness.R_XZ + 1) && !m.slots.contains(pos)) {
+                return "рядом торговый центр — внутри ТЦ заведения открывают только на размеченных местах";
+            }
+        }
         Account a = data.getOrCreate(owner);
         if (Business.inOwnProperty(data, a, pos)) return null;
         UUID landOwner = data.owner(EconomyData.chunkKey(pos));
         if (landOwner == null) return null; // ничья земля — оформим на вас
         return landOwner.equals(com.baraaoi.reallife.structure.Buildings.CITY) ? "это городская земля" : "участок принадлежит другому игроку";
+    }
+
+    static boolean hasSlot(Mall m, BizType t) {
+        return m.types.contains(t);
     }
 
     /** Поставить главную кассу по лицензии. true — заведение открыто. */
@@ -214,6 +231,30 @@ public final class LegalBiz {
         MinecraftServer server = p.getServer();
         if (server == null) return false;
         EconomyData data = EconomyData.get(server);
+        Mall mall = data.mallAt(pos, 0);
+        int slot = -1;
+        if (mall != null) {
+            if (!p.getUniqueID().equals(mall.owner)) {
+                BankService.msg(p, BIZ + "§cЭто чужой торговый центр (владелец " + mall.ownerName + "). Открывать заведения в нём может только владелец.");
+                return false;
+            }
+            slot = mall.slotNear(pos, Mall.SNAP);
+            if (slot < 0) {
+                BankService.msg(p, BIZ + "§cВ ТЦ заведения открывают только на размеченных местах: §fПКМ лицензией по цветной метке "
+                        + "в центре площадки (табличка на краю подскажет вид).");
+                return false;
+            }
+            if (mall.types.get(slot) != type) {
+                BankService.msg(p, BIZ + "§cЭто место отведено под «" + mall.types.get(slot).title + "». §fДля «" + type.title
+                        + "» в ТЦ есть своё место" + (hasSlot(mall, type) ? "" : " — нет, такой вид в ТЦ не предусмотрен") + ".");
+                return false;
+            }
+            if (mall.occupant(data, slot) != null) {
+                BankService.msg(p, BIZ + "§cЭто место в ТЦ уже занято.");
+                return false;
+            }
+            pos = mall.slots.get(slot);
+        }
         String problem = checkSite(world, pos, data, p.getUniqueID());
         if (problem != null) {
             BankService.msg(p, BIZ + "§cЗдесь открыть нельзя: §f" + problem);
@@ -223,6 +264,13 @@ public final class LegalBiz {
         if (!cur.getMaterial().isReplaceable()) {
             BankService.msg(p, BIZ + "§cМесто под кассу занято.");
             return false;
+        }
+        if (mall != null) {
+            com.baraaoi.reallife.economy.BizBuild.openInMall(data, world, mall, slot, facing, p.getUniqueID(), p.getGameProfile().getName());
+            BankService.msg(p, BIZ + "§a§lЗаведение «" + type.title + "» открыто в торговом центре! §r§fПрибыль §a+50%§f, безопасный отмыв §a"
+                    + Math.round(Mall.SAFE_SHARE * 100) + "%§f вчерашней прибыли. Оборудование ставь в пределах цветной площадки: §e"
+                    + kitText(type) + "§f на работника + склад §e" + baseText(type) + "§f.");
+            return true;
         }
         LegalBusiness b = register(data, world, pos, facing, type, p.getUniqueID(), p.getGameProfile().getName());
         int claimed = com.baraaoi.reallife.structure.Buildings.claimArea(data, p.getUniqueID(), pos, pos, true);
@@ -609,6 +657,8 @@ public final class LegalBiz {
         t.putInt("days", b.days);
         t.putDouble("laundered", b.launderedOn(today));
         t.putDouble("safe", safeLimit(b));
+        t.putDouble("safeShare", safeShare(b));
+        t.putBoolean("mall", b.inMall());
         t.putInt("x", b.counter.getX());
         t.putInt("y", b.counter.getY());
         t.putInt("z", b.counter.getZ());
@@ -681,7 +731,7 @@ public final class LegalBiz {
         long today = BankService.today(server);
         double amount = ItemValues.stackValue(st);
         double before = b.launderedOn(today);
-        double chance = launderChance(b.lastProfit, before, amount);
+        double chance = launderChance(b.lastProfit, before, amount, safeShare(b));
         b.launderDay = today;
         b.launderedToday = before + amount;
         c.getInput().setInventorySlotContents(0, ItemStack.EMPTY);
@@ -695,7 +745,7 @@ public final class LegalBiz {
         a.balance += clean;
         BankService.msg(p, BIZ + "Выручка проведена через кассу «" + b.type.title + "»: §2" + Finance.money(amount) + "§f → §a+"
                 + Finance.money(clean) + "§f на счёт (НДФЛ " + Finance.percent(tax) + "). Сегодня проведено: "
-                + Finance.money(b.launderedToday) + " из безопасных " + Finance.money(safeLimit(b)) + " (15% вчерашней прибыли).");
+                + Finance.money(b.launderedToday) + " из безопасных " + Finance.money(safeLimit(b)) + " (" + Math.round(safeShare(b) * 100) + "% вчерашней прибыли" + (b.inMall() ? ", льгота ТЦ" : "") + ").");
         if (chance > 0) BankService.msg(p, BIZ + "§eПронесло. Риск был " + Finance.percent(chance) + " — налоговая могла заметить.");
     }
 
@@ -798,7 +848,13 @@ public final class LegalBiz {
     /** Выручка дня до вычета зарплат. */
     public static double revenue(BizType t, int working, double mult, double supplyFraction) {
         if (working <= 0) return 0;
-        return Math.round(t.base * (1 + 0.9 * (working - 1)) * mult * supplyFraction);
+        return Math.round(t.base * BizType.REVENUE_BOOST * (1 + 0.9 * (working - 1)) * mult * supplyFraction);
+    }
+
+    /** v1.10: выручка конкретного заведения — в торговом центре +50%. */
+    public static double dayRevenue(LegalBusiness b, int working, double mult, double supplyFraction) {
+        double r = revenue(b.type, working, mult, supplyFraction);
+        return b.inMall() ? Math.round(r * Mall.REVENUE_BONUS) : r;
     }
 
     public static void processDay(MinecraftServer server, EconomyData data) {
@@ -820,7 +876,7 @@ public final class LegalBiz {
             double fraction = need > 0 ? used / (double) need : 0;
             double wages = b.type.wage() * hired;
             Roll r = roll(R, luckBonus(p), isBadNote(b.lastNote));
-            double revenue = revenue(b.type, working, r.mult, fraction);
+            double revenue = dayRevenue(b, working, r.mult, fraction);
             double profit = revenue - wages;
             String note;
             if (sealedDay) note = "опечатано: " + b.sealReason;
@@ -840,7 +896,7 @@ public final class LegalBiz {
             if (p != null) {
                 String color = working == 0 || used == 0 ? "§c" : r.kind == BAD ? "§c" : r.kind == NORMAL ? "§f" : r.kind == GOOD ? "§a" : "§6§l";
                 BankService.msg(p, BIZ + "СМС «" + b.type.title + "»: " + color + note + "§f. Работает " + working + "/" + hired
-                        + ", сырья ушло " + used + "/" + need + ". Выручка §a" + Finance.money(revenue) + "§f, зарплаты §c−"
+                        + ", сырья ушло " + used + "/" + need + ". Выручка §a" + Finance.money(revenue) + (b.inMall() && revenue > 0 ? " §d(ТЦ +50%)§f" : "") + "§f, зарплаты §c−"
                         + Finance.money(wages) + "§f → итог " + (profit >= 0 ? "§a+" : "§c") + Finance.money(profit) + "§f на счёт."
                         + (customers > 0 ? " §7Покупателей заходило при вас: " + customers + "." : "")
                         + (ratingUp ? " §aКредитный рейтинг растёт: банк видит рабочий бизнес." : ""));

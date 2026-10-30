@@ -43,6 +43,12 @@ public class LegalBusiness {
     /** v1.9: документы работников (медкнижки + патенты) действуют до этого дня и покрывают docsWorkers человек. */
     public long docsUntil;
     public int docsWorkers;
+    /** v1.10: заведение стоит на месте в торговом центре (id ТЦ, -1 — нет). */
+    public int mallId = -1;
+
+    public boolean inMall() {
+        return mallId >= 0;
+    }
 
     public void setCounter(BlockPos c) {
         counter = c.toImmutable();
@@ -93,6 +99,7 @@ public class LegalBusiness {
         t.putString("sealReason", sealReason);
         t.putLong("docsUntil", docsUntil);
         t.putInt("docsWorkers", docsWorkers);
+        t.putInt("mallId", mallId);
         return t;
     }
 
@@ -125,6 +132,7 @@ public class LegalBusiness {
         b.sealReason = t.getString("sealReason");
         b.docsUntil = t.getLong("docsUntil");
         b.docsWorkers = t.getInt("docsWorkers");
+        b.mallId = t.contains("mallId") ? t.getInt("mallId") : -1;
         return b;
     }
 }

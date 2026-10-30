@@ -90,7 +90,7 @@ public final class Inspections {
         }
     }
 
-    private static boolean food(BizType t) {
+    public static boolean food(BizType t) {
         return t == BizType.SHAWARMA || t == BizType.MINIMARKET;
     }
 

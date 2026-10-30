@@ -39,6 +39,13 @@ public class HouseOrderItem extends Item {
         return s;
     }
 
+    /** v1.10: ордер на дом, купленный сразу (paid — без залога банка). */
+    public static ItemStack create(Item item, UUID owner, int house, long orderId, boolean paid) {
+        ItemStack s = create(item, owner, house, orderId);
+        if (paid) s.getOrCreateTag().putBoolean("paid", true);
+        return s;
+    }
+
     @Override
     public ActionResultType onItemUse(ItemUseContext ctx) {
         World world = ctx.getWorld();
@@ -87,7 +94,7 @@ public class HouseOrderItem extends Item {
         if (claimed > 0) player.sendStatusMessage(new StringTextComponent("§3[Администрация] §fЗемля под домом и вокруг оформлена на вас: §e"
                 + claimed + "§f участк(а/ов). Стройте спокойно."), false);
         player.sendStatusMessage(new StringTextComponent("§6[Реал Банк] §fБригада построила вам: §e" + type.title
-                + "§f. Не забывайте платить по ипотеке — иначе дом изымут."), false);
+                + (a.hasMortgage() ? "§f. Не забывайте платить по ипотеке — иначе дом изымут." : "§f. Дом полностью ваш — с новосельем!")), false);
         return ActionResultType.SUCCESS;
     }
 
@@ -100,7 +107,11 @@ public class HouseOrderItem extends Item {
         }
         tooltip.add(new StringTextComponent("§7ПКМ по земле — бригада банка построит дом перед вами."));
         tooltip.add(new StringTextComponent("§7Нужна ровная площадка без чужих построек."));
-        tooltip.add(new StringTextComponent("§8Ордер действует, даже если ипотека уже погашена."));
-        tooltip.add(new StringTextComponent("§8Залог банка. При неуплате дом изымается."));
+        if (t != null && t.getBoolean("paid")) {
+            tooltip.add(new StringTextComponent("§aОплачен полностью — дом ваш, не в залоге."));
+        } else {
+            tooltip.add(new StringTextComponent("§8Ордер действует, даже если ипотека уже погашена."));
+            tooltip.add(new StringTextComponent("§8Залог банка. При неуплате дом изымается."));
+        }
     }
 }
