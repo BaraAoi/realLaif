@@ -49,6 +49,14 @@ public class ForgeEvents {
         DebtManager.onServerStarted(event.getServer());
     }
 
+    /** v1.9: в городских постройках (казино, банк, МФО) монстры не спавнятся. */
+    @SubscribeEvent
+    public void onCheckSpawn(net.minecraftforge.event.entity.living.LivingSpawnEvent.CheckSpawn event) {
+        if (!(event.getEntityLiving() instanceof net.minecraft.entity.monster.IMob)) return;
+        if (cityProtected(event.getWorld(), new net.minecraft.util.math.BlockPos(event.getX(), event.getY(), event.getZ())))
+            event.setResult(net.minecraftforge.eventbus.api.Event.Result.DENY);
+    }
+
     /** Блок внутри неразрушимой городской постройки (банк/МФО на спавне, казино). */
     private static boolean cityProtected(net.minecraft.world.IWorld world, net.minecraft.util.math.BlockPos pos) {
         if (!(world instanceof net.minecraft.world.server.ServerWorld)) return false;

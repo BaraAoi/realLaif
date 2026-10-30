@@ -37,6 +37,12 @@ public class LegalBusiness {
     public int cacheStock;
     /** Сколько покупателей-NPC дошло до кассы сегодня (косметика, не сохраняется). */
     public transient int customersToday;
+    /** v1.9: опечатано (СЭС, миграционная служба) — не работает в дни &lt; sealedUntil. */
+    public long sealedUntil;
+    public String sealReason = "";
+    /** v1.9: документы работников (медкнижки + патенты) действуют до этого дня и покрывают docsWorkers человек. */
+    public long docsUntil;
+    public int docsWorkers;
 
     public void setCounter(BlockPos c) {
         counter = c.toImmutable();
@@ -83,6 +89,10 @@ public class LegalBusiness {
         t.putDouble("launderedToday", launderedToday);
         t.putInt("cacheSets", cacheSets);
         t.putInt("cacheStock", cacheStock);
+        t.putLong("sealedUntil", sealedUntil);
+        t.putString("sealReason", sealReason);
+        t.putLong("docsUntil", docsUntil);
+        t.putInt("docsWorkers", docsWorkers);
         return t;
     }
 
@@ -111,6 +121,10 @@ public class LegalBusiness {
         b.launderedToday = t.getDouble("launderedToday");
         b.cacheSets = t.getInt("cacheSets");
         b.cacheStock = t.getInt("cacheStock");
+        b.sealedUntil = t.getLong("sealedUntil");
+        b.sealReason = t.getString("sealReason");
+        b.docsUntil = t.getLong("docsUntil");
+        b.docsWorkers = t.getInt("docsWorkers");
         return b;
     }
 }

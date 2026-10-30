@@ -501,6 +501,8 @@ public final class LegalBiz {
         EconomyData.get(p.getServer()).markDirty();
         BankService.msg(p, BIZ + "§aНанят работник (" + b.workers.size() + "/" + s.allowed + "). §fЗарплата " + Finance.money(b.type.wage())
                 + "/день, расход сырья " + BizType.SUPPLY_PER_WORKER + " коробка/день.");
+        BankService.msg(p, BIZ + "§eНе забудьте оформить ему документы (кнопка «Документы» в кассе, "
+                + Finance.money(com.baraaoi.reallife.event.Inspections.DOCS_PRICE) + "/чел. на 7 дней) — иначе СЭС и миграционная служба оштрафуют.");
     }
 
     static void fire(ServerPlayerEntity p, LegalBusiness b) {
@@ -595,7 +597,12 @@ public final class LegalBiz {
         t.putInt("maxWorkers", b.type.maxWorkers);
         t.putInt("stock", stock);
         t.putInt("need", BizType.SUPPLY_PER_WORKER * b.workers.size());
-        t.putString("reason", closedReason(b, s, sets, stock));
+        String reason = closedReason(b, s, sets, stock);
+        if (com.baraaoi.reallife.event.Inspections.sealed(b, today)) reason = "опечатано до дня " + b.sealedUntil + " (" + b.sealReason + ")";
+        t.putString("reason", reason);
+        int undoc = com.baraaoi.reallife.event.Inspections.undocumented(b, today);
+        t.putInt("undoc", undoc);
+        t.putLong("docsUntil", b.docsUntil);
         t.putDouble("lastProfit", b.lastProfit);
         t.putString("lastNote", b.lastNote);
         t.putDouble("total", b.totalProfit);
@@ -637,6 +644,25 @@ public final class LegalBiz {
         if (action == Actions.BIZ_HIRE) hire(p, a, b);
         else if (action == Actions.BIZ_FIRE) fire(p, b);
         else if (action == Actions.BIZ_LAUNDER) launder(p, a, b, c);
+        else if (action == Actions.BIZ_DOCS) docs(p, a, b);
+    }
+
+    /** v1.9: оформить документы (медкнижки + патенты) всем текущим работникам на 7 дней. */
+    static void docs(ServerPlayerEntity p, Account a, LegalBusiness b) {
+        MinecraftServer server = p.getServer();
+        if (server == null) return;
+        pruneWorkers(p.getServerWorld(), b);
+        int n = b.workers.size();
+        if (n == 0) { BankService.msg(p, BIZ + "Сначала наймите работников — оформлять пока некого."); return; }
+        long today = BankService.today(server);
+        int cost = com.baraaoi.reallife.event.Inspections.DOCS_PRICE * n;
+        if (!BankService.charge(p, a, cost)) { BankService.msg(p, BIZ + "§cНужно " + Finance.money(cost) + " (по "
+                + Finance.money(com.baraaoi.reallife.event.Inspections.DOCS_PRICE) + " на работника)."); return; }
+        b.docsUntil = today + com.baraaoi.reallife.event.Inspections.DOCS_DAYS;
+        b.docsWorkers = n;
+        EconomyData.get(server).markDirty();
+        BankService.msg(p, BIZ + "§aМедкнижки и патенты оформлены на " + n + " чел. до дня " + b.docsUntil + "§f (−" + Finance.money(cost)
+                + "). СЭС и миграционная служба претензий не имеют. Наняли нового — оформите и его.");
     }
 
     static void launder(ServerPlayerEntity p, Account a, LegalBusiness b, BizContainer c) {
@@ -705,7 +731,8 @@ public final class LegalBiz {
         EconomyData data = EconomyData.get(server);
         boolean night = ow.getDayTime() % 24000L >= 13000L && ow.getDayTime() % 24000L <= 23000L;
         for (LegalBusiness b : data.businesses) {
-            if (b.owner == null || !isOpen(b) || !ow.isBlockLoaded(b.counter)) continue;
+            if (b.owner == null || !isOpen(b) || !ow.isBlockLoaded(b.counter)
+                    || com.baraaoi.reallife.event.Inspections.sealed(b, BankService.today(server))) continue;
             BlockPos c = b.counter;
             if (ow.getClosestPlayer(c.getX() + 0.5, c.getY(), c.getZ() + 0.5, 64.0D, false) == null) continue;
             int working = Math.min(b.workers.size(), Math.max(1, b.cacheSets));
@@ -784,7 +811,9 @@ public final class LegalBiz {
             pruneWorkers(ow, b);
             Scan s = scan(ow, b); // при необходимости подгрузит чанк
             int hired = b.workers.size();
-            int working = Math.min(hired, s.allowed);
+            long day = BankService.today(server) - 1;
+            boolean sealedDay = com.baraaoi.reallife.event.Inspections.sealed(b, day);
+            int working = sealedDay ? 0 : Math.min(hired, s.allowed);
             int need = BizType.SUPPLY_PER_WORKER * working;
             int used = working > 0 ? consume(s, b.type, need) : 0;
             b.cacheStock = s.stock;
@@ -794,7 +823,8 @@ public final class LegalBiz {
             double revenue = revenue(b.type, working, r.mult, fraction);
             double profit = revenue - wages;
             String note;
-            if (hired == 0) note = "закрыто: нет работников";
+            if (sealedDay) note = "опечатано: " + b.sealReason;
+            else if (hired == 0) note = "закрыто: нет работников";
             else if (working == 0) note = "закрыто: " + closedReason(b, s, s.sets, s.stock + used);
             else if (used == 0) note = "простой: нет сырья";
             else note = r.note + (used < need ? ", сырья хватило на " + Math.round(fraction * 100) + "%" : "");

@@ -25,6 +25,7 @@ public class Actions {
     public static final int BIZ_HIRE = 50;
     public static final int BIZ_LAUNDER = 51;
     public static final int BIZ_FIRE = 52;
+    public static final int BIZ_DOCS = 53;
 
     public static final int PHONE_SYNC = 60;
     public static final int PHONE_WITHDRAW = 61;

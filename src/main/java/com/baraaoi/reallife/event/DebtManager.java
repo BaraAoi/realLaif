@@ -141,6 +141,7 @@ public class DebtManager {
 
         tickAlarms(server, data, now);
         if (now % 600 == 0) tickCashiers(data, ow, now);
+        if (now % 100 == 0) clearCityMobs(data, ow);
 
         tickLand(server, data, ow, now);
 
@@ -903,6 +904,41 @@ public class DebtManager {
         }
     }
 
+    /** v1.9: монстры, забредшие в городские постройки (казино, банк, МФО), «выводятся охраной». */
+    public static int clearCityMobs(EconomyData data, ServerWorld ow) {
+        int n = 0;
+        for (com.baraaoi.reallife.economy.Structure st : data.structures) {
+            if (!st.protect) continue; // getEntitiesWithinAABB сам пропускает невыгруженные чанки
+            for (net.minecraft.entity.monster.MonsterEntity m : ow.getEntitiesWithinAABB(net.minecraft.entity.monster.MonsterEntity.class,
+                    new net.minecraft.util.math.AxisAlignedBB(st.min, st.max.add(1, 1, 1)))) {
+                m.remove();
+                n++;
+            }
+        }
+        return n;
+    }
+
+    /**
+     * v1.9: досветить казино — каждый третий блок «шахматного» пола становится морским фонарём (уровень света на полу ≥ 12,
+     * монстры не спавнятся). Работает и для уже построенных казино. Возвращает число поставленных фонарей.
+     */
+    public static int lightCasino(ServerWorld w, com.baraaoi.reallife.economy.Structure st) {
+        int n = 0;
+        for (BlockPos mp : BlockPos.getAllInBoxMutable(st.min, st.max)) {
+            int rx = mp.getX() - st.min.getX(), rz = mp.getZ() - st.min.getZ();
+            if (rx % 3 != 1 || rz % 3 != 1) continue;
+            BlockState bs = w.getBlockState(mp);
+            if (bs.getBlock() != Blocks.BLACK_CONCRETE && bs.getBlock() != Blocks.RED_CONCRETE) continue;
+            BlockPos up = mp.up();
+            BlockState us = w.getBlockState(up);
+            if (us.isOpaqueCube(w, up) || w.canSeeSky(up)) continue;
+            if (!w.getBlockState(mp.down()).getMaterial().isSolid()) continue;
+            w.setBlockState(mp.toImmutable(), Blocks.SEA_LANTERN.getDefaultState(), 2 | 16);
+            n++;
+        }
+        return n;
+    }
+
     /** Посадить на место убитых кассиров (не раньше чем через полдня после убийства). */
     private static void tickCashiers(EconomyData data, ServerWorld ow, long now) {
         for (com.baraaoi.reallife.economy.Structure st : data.structures) {
@@ -1152,7 +1188,16 @@ public class DebtManager {
         }
         if (Config.SPAWN_CASINO.get() && !data.casinoBuilt) {
             data.casinoBuilt = true;
+            data.casinoLights = 1; // новое казино уже строится со светящимся полом
             buildSpawnCasino(ow, data, sx, sz);
+        }
+        if (data.casinoLights < 1) {
+            data.casinoLights = 1;
+            for (com.baraaoi.reallife.economy.Structure st : data.structures) {
+                if (!com.baraaoi.reallife.economy.Structure.CASINO.equals(st.type)) continue;
+                int lit = lightCasino(ow, st);
+                com.baraaoi.reallife.RealLife.LOG.info("Real Life: casino lit up with " + lit + " sea lanterns at " + st.min);
+            }
         }
         data.markDirty();
     }

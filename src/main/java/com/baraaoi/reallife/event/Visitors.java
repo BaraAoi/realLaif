@@ -8,6 +8,7 @@ import com.baraaoi.reallife.economy.CreditRating;
 import com.baraaoi.reallife.economy.EconomyData;
 import com.baraaoi.reallife.economy.Finance;
 import com.baraaoi.reallife.economy.ItemValues;
+import com.baraaoi.reallife.economy.LegalBusiness;
 import com.baraaoi.reallife.entity.VisitorEntity;
 import com.baraaoi.reallife.entity.VisitorKind;
 import com.baraaoi.reallife.registry.ModEntities;
@@ -35,6 +36,9 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.tags.FluidTags;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.DamageSource;
+import net.minecraft.util.SoundCategory;
+import net.minecraft.util.SoundEvents;
+import net.minecraft.network.play.server.STitlePacket;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.text.IFormattableTextComponent;
 import net.minecraft.util.text.ITextComponent;
@@ -93,6 +97,13 @@ public final class Visitors {
         AbstractHorseEntity horse;
         ItemStack offer = ItemStack.EMPTY;
         List<BlockPos> spots = new ArrayList<>();
+        // v1.9
+        boolean noNpc;
+        int count;
+        BlockPos target;
+        BlockPos[] box;
+        LegalBusiness biz;
+        World world;
 
         Session(UUID player, VisitorKind kind, long start) {
             this.player = player;
@@ -220,19 +231,73 @@ public final class Visitors {
     /** Кто вообще может прийти под землю. */
     static final Set<VisitorKind> UNDERGROUND_KINDS = new HashSet<>(Arrays.asList(VisitorKind.BLACK_DIGGER, VisitorKind.LOST_CAVER,
             VisitorKind.ECO_INSPECTOR, VisitorKind.PEDDLER, VisitorKind.GOPNIK, VisitorKind.PHILOSOPHER, VisitorKind.BANK_SCAMMER,
-            VisitorKind.COURIER, VisitorKind.HOBO));
+            VisitorKind.COURIER, VisitorKind.HOBO, VisitorKind.CAVE_IN));
 
     /** Игрок под землёй: ниже 56 и не видит неба. */
     public static boolean underground(PlayerEntity p) {
         return p.getPosY() < 56 && !p.world.canSeeSky(p.getPosition().up());
     }
 
-    /** Кочевник: нет своего дома или ушёл от него дальше 250 блоков. */
+    /**
+     * v1.9: «свой угол» — не только ипотечный дом, но и купленная земля (самострой), свои заведения
+     * и кровать (точка возрождения в верхнем мире).
+     */
+    public static List<BlockPos> homePoints(PlayerEntity p, Account a) {
+        List<BlockPos> l = new ArrayList<>();
+        if (houseOk(a)) l.add(new BlockPos((a.houseMin.getX() + a.houseMax.getX()) / 2, a.houseMin.getY(), (a.houseMin.getZ() + a.houseMax.getZ()) / 2));
+        MinecraftServer server = p.getServer();
+        if (server != null) {
+            EconomyData data = EconomyData.get(server);
+            for (Map.Entry<Long, UUID> e : data.landOwners.entrySet()) {
+                if (!a.id.equals(e.getValue())) continue;
+                l.add(new BlockPos(net.minecraft.util.math.ChunkPos.getX(e.getKey()) * 16 + 8, 64, net.minecraft.util.math.ChunkPos.getZ(e.getKey()) * 16 + 8));
+            }
+            for (LegalBusiness b : data.bizOf(a.id)) l.add(b.counter);
+        }
+        if (p instanceof ServerPlayerEntity) {
+            ServerPlayerEntity sp = (ServerPlayerEntity) p;
+            BlockPos bed = sp.func_241140_K_();
+            if (bed != null && sp.func_241141_L_() == World.OVERWORLD) l.add(bed);
+        }
+        return l;
+    }
+
+    /** Есть ли у игрока свой угол (дом по ипотеке, свой участок, заведение или кровать). */
+    public static boolean hasHome(PlayerEntity p, Account a) {
+        return !homePoints(p, a).isEmpty();
+    }
+
+    /** Кочевник: своего угла нет совсем или ушёл от всех своих мест дальше 250 блоков. */
     public static boolean nomad(PlayerEntity p, Account a) {
-        if (!a.hasHouse) return true;
-        double cx = (a.houseMin.getX() + a.houseMax.getX()) / 2.0, cz = (a.houseMin.getZ() + a.houseMax.getZ()) / 2.0;
-        double dx = p.getPosX() - cx, dz = p.getPosZ() - cz;
-        return dx * dx + dz * dz > 250 * 250;
+        for (BlockPos h : homePoints(p, a)) {
+            double dx = p.getPosX() - h.getX() - 0.5, dz = p.getPosZ() - h.getZ() - 0.5;
+            if (dx * dx + dz * dz <= 250 * 250) return false;
+        }
+        return true;
+    }
+
+    /** v1.9: события, которые приходят вдвое чаще (там, где применимы). */
+    static final Set<VisitorKind> SCARY = new HashSet<>(Arrays.asList(VisitorKind.SANEPID, VisitorKind.MIGRATION, VisitorKind.CAVE_IN,
+            VisitorKind.FIRE, VisitorKind.BURGLAR));
+
+    /** Своё заведение в 64 блоках (withWorkers — только с работниками; иначе — хотя бы раз работавшее или с работниками). */
+    @javax.annotation.Nullable
+    static LegalBusiness nearBiz(PlayerEntity p, Account a, boolean withWorkers) {
+        MinecraftServer server = p.getServer();
+        if (server == null) return null;
+        List<LegalBusiness> l = new ArrayList<>();
+        for (LegalBusiness b : EconomyData.get(server).bizOf(a.id)) {
+            if (withWorkers ? b.workers.isEmpty() : (b.workers.isEmpty() && b.days == 0)) continue;
+            if (b.counter.distanceSq(p.getPosX(), p.getPosY(), p.getPosZ(), true) > 64 * 64) continue;
+            l.add(b);
+        }
+        return l.isEmpty() ? null : l.get(R.nextInt(l.size()));
+    }
+
+    static void title(ServerPlayerEntity p, String title, String sub) {
+        p.connection.sendPacket(new STitlePacket(5, 60, 20));
+        p.connection.sendPacket(new STitlePacket(STitlePacket.Type.SUBTITLE, new StringTextComponent(sub)));
+        p.connection.sendPacket(new STitlePacket(STitlePacket.Type.TITLE, new StringTextComponent(title)));
     }
 
     public static void tick(MinecraftServer server) {
@@ -296,6 +361,7 @@ public final class Visitors {
                 if (!applicable(k, p, a, ow)) continue;
                 ok.add(k);
                 if (nomad && NOMAD_KINDS.contains(k)) ok.add(k); // бездомным/шахтёрам «их» гости — вдвое чаще
+                if (SCARY.contains(k)) ok.add(k); // проверки и ЧП — тоже вдвое чаще
             }
             if (!ok.isEmpty()) start(p, a, ok.get(R.nextInt(ok.size())), now, false);
         }
@@ -322,14 +388,23 @@ public final class Visitors {
             case PEDDLER:
                 return nomad(p, a);
             case UCHASTKOVY:
-                return !a.hasHouse;
             case HOBO:
-                return !a.hasHouse;
+                return !hasHome(p, a);
             case HITCHHIKER:
             case TREASURE_HUNTER:
                 return nomad(p, a) && !p.isPassenger();
             case DPS:
-                return p.isPassenger() || nomad(p, a);
+                return nomad(p, a); // v1.9: у своего дома/участка/кровати ДПС не тормозит
+            case SANEPID:
+                return nearBiz(p, a, false) != null;
+            case MIGRATION:
+                return nearBiz(p, a, true) != null;
+            case CAVE_IN:
+                return under;
+            case FIRE:
+                return !Inspections.homeBoxes(p, a, EconomyData.get(p.getServer()), 48).isEmpty();
+            case BURGLAR:
+                return isNight(w) && !Inspections.homeBoxes(p, a, EconomyData.get(p.getServer()), 64).isEmpty();
             case TAX:
             case PLUMBER:
             case ELECTRIC:
@@ -405,6 +480,8 @@ public final class Visitors {
     }
 
     private static void finishQuiet(Session s) {
+        // игрок умер/вышел посреди пожара — огонь гасят, чтобы не сгорело всё без него
+        if (s.kind == VisitorKind.FIRE && s.stage == 1 && s.box != null && s.world != null) Inspections.extinguish(s.world, s.box[0], s.box[1]);
         for (VisitorEntity e : s.npcs) {
             MANAGED.remove(e.getUniqueID());
             if (e.isAlive()) e.remove();
@@ -626,7 +703,11 @@ public final class Visitors {
         if ((k == VisitorKind.TAX || k == VisitorKind.PLUMBER || k == VisitorKind.ELECTRIC || k == VisitorKind.REALTOR
                 || k == VisitorKind.FIRE_INSPECTOR || k == VisitorKind.NEIGHBOR) && !houseOk(a)) return "нужен свой дом";
         if (k == VisitorKind.HORSE_THIEF && findHorse(p) == null) return "нужна своя осёдланная лошадь в 64 блоках";
-        if ((k == VisitorKind.BLACK_DIGGER || k == VisitorKind.LOST_CAVER) && !underground(p)) return "нужно быть под землёй (ниже 56, без неба над головой)";
+        if ((k == VisitorKind.BLACK_DIGGER || k == VisitorKind.LOST_CAVER || k == VisitorKind.CAVE_IN) && !underground(p)) return "нужно быть под землёй (ниже 56, без неба над головой)";
+        if (k == VisitorKind.SANEPID && nearBiz(p, a, false) == null) return "нужно своё работающее заведение в 64 блоках";
+        if (k == VisitorKind.MIGRATION && nearBiz(p, a, true) == null) return "нужно своё заведение с работниками в 64 блоках";
+        if ((k == VisitorKind.FIRE || k == VisitorKind.BURGLAR) && Inspections.homeBoxes(p, a, EconomyData.get(server), 64).isEmpty())
+            return "нужен свой дом, участок или заведение рядом";
         return start(p, a, k, now, false) == null ? "не получилось" : null;
     }
 
@@ -805,6 +886,17 @@ public final class Visitors {
                 s.price = 250;
                 ask(s, p, "Карту клада продам! Старинную, дед мой рисовал. Сам бы выкопал, да спина не та. Всего 250₽. Берёшь?", now);
                 break;
+            case SANEPID:
+            case MIGRATION:
+            case FIRE:
+            case CAVE_IN:
+            case BURGLAR:
+                if (!startScary(s, p, a, w, now)) {
+                    finishQuiet(s);
+                    ACTIVE.remove(p.getUniqueID());
+                    return null;
+                }
+                break;
             case DPS:
                 spawn(s, w, p, k, 3, 6);
                 ask(s, p, (p.isPassenger() ? "Инспектор ДПС, сержант Петренко. Превышаем, гражданин? Сто сорок в зоне шестьдесят! "
@@ -815,7 +907,7 @@ public final class Visitors {
                 ACTIVE.remove(p.getUniqueID());
                 return null;
         }
-        if (s.npcs.isEmpty()) {
+        if (s.npcs.isEmpty() && !s.noNpc) {
             ACTIVE.remove(p.getUniqueID());
             return null;
         }
@@ -1085,6 +1177,10 @@ public final class Visitors {
                     leave(s, now, 80);
                 }
                 break;
+            case SANEPID:
+            case MIGRATION:
+                answerScary(s, p, a, yes, now);
+                break;
             case UCHASTKOVY:
             case DPS: {
                 boolean dps = s.kind == VisitorKind.DPS;
@@ -1343,7 +1439,16 @@ public final class Visitors {
             horseThief(s, p, now);
             return;
         }
+        if (s.noNpc && s.npcs.isEmpty()) {
+            secondScary(s, p, a, w, now);
+            return;
+        }
         if (!npcsAlive(s)) {
+            if (s.kind == VisitorKind.BURGLAR && !s.offer.isEmpty()) {
+                BankService.give(p, s.offer);
+                s.offer = ItemStack.EMPTY;
+                note(p, "§aДомушник повержен — украденное вернулось к вам.");
+            }
             if (s.kind == VisitorKind.GOPNIK) note(p, "§aВы отбились от гопников! Район ваш.");
             else note(p, "§8" + s.kind.display + "§8 больше не придёт.");
             finish(s, now);
@@ -1356,11 +1461,18 @@ public final class Visitors {
             return;
         }
         // кто-то ушёл слишком далеко — «подъехал на такси»
-        for (VisitorEntity e : s.npcs) {
+        if (s.kind != VisitorKind.BURGLAR) for (VisitorEntity e : s.npcs) {
             if (e.isAlive() && e.mode != VisitorEntity.STAY && !e.isPassenger() && e.getDistanceSq(p) > 40 * 40) DebtManager.teleportNear(e, p, 6);
         }
         if (s.asking) return;
         switch (s.kind) {
+            case SANEPID:
+            case MIGRATION:
+            case FIRE:
+            case CAVE_IN:
+            case BURGLAR:
+                secondScary(s, p, a, w, now);
+                break;
             case TAX:
                 if (s.stage == 10 && now >= s.nextStep) {
                     taxCheck(s, p, a, s.forced ? 2 : 1);
@@ -1575,6 +1687,283 @@ public final class Visitors {
         }
     }
 
+    // =====================================================================================
+    //  v1.9: страшные события «здесь и сейчас»
+    // =====================================================================================
+
+    private static void sound(ServerPlayerEntity p, BlockPos at, net.minecraft.util.SoundEvent ev, float pitch) {
+        p.world.playSound(null, at, ev, SoundCategory.BLOCKS, 1.0F, pitch);
+    }
+
+    private static String where(BlockPos pos) {
+        return pos.getX() + " " + pos.getY() + " " + pos.getZ();
+    }
+
+    private static boolean startScary(Session s, ServerPlayerEntity p, Account a, ServerWorld w, long now) {
+        EconomyData data = EconomyData.get(p.getServer());
+        s.world = w;
+        switch (s.kind) {
+            case SANEPID: {
+                LegalBusiness b = nearBiz(p, a, false);
+                if (b == null) return false;
+                s.biz = b;
+                if (spawn(s, w, p, s.kind, 3, 6) == null) return false;
+                ask(s, p, pick("Поступила жалоба: покупатель отравился в «" + b.type.title + "».",
+                        "Анонимка на «" + b.type.title + "»: крысы, грязь, продавцы без медкнижек.",
+                        "Внеплановая проверка «" + b.type.title + "». Почему внеплановая? Потому что можем.")
+                        + " §fСанэпидемстанция! Проводите в заведение: смотрим отделку, свет, паутину, раковину, просрочку и медкнижки.", now);
+                return true;
+            }
+            case MIGRATION: {
+                LegalBusiness b = nearBiz(p, a, true);
+                if (b == null) return false;
+                s.biz = b;
+                if (spawn(s, w, p, s.kind, 3, 6) == null) return false;
+                spawn(s, w, p, VisitorKind.TAX_POLICE, 3, 6);
+                title(p, "§9§lРЕЙД", "§7Миграционная служба в «" + b.type.title + "»");
+                ask(s, p, "Управление по вопросам миграции! Рейд по «" + b.type.title + "»: у вас работает " + b.workers.size()
+                        + " чел. Предъявите патенты и медкнижки! §7([Да] — показать документы, [Нет] — «никого нет, это родственники»)", now);
+                return true;
+            }
+            case FIRE: {
+                List<BlockPos[]> boxes = Inspections.homeBoxes(p, a, data, 48);
+                Collections.shuffle(boxes, R);
+                for (BlockPos[] bx : boxes) {
+                    List<BlockPos> spots = Inspections.fireSpots(w, bx[0], bx[1], 2 + R.nextInt(2), R, data);
+                    if (spots.isEmpty()) continue;
+                    s.noNpc = true;
+                    s.box = new BlockPos[]{bx[0].add(-6, -3, -6), bx[1].add(6, 6, 6)};
+                    Inspections.ignite(w, spots);
+                    s.target = spots.get(0);
+                    s.stage = 1;
+                    s.nextStep = now + 1200;
+                    title(p, "§4§lПОЖАР!", "§cКороткое замыкание — 60 секунд, чтобы потушить");
+                    note(p, "§4§l[!] ПОЖАР! §cЗакоротило проводку — горит у вас около §e" + where(s.target) + "§c (" + spots.size()
+                            + " очага). §fТушите водой или ломайте огонь! Через 60 секунд приедут пожарные: штраф 1500₽ и по 100₽ за каждый очаг.");
+                    sound(p, s.target, SoundEvents.BLOCK_BELL_USE, 0.6F);
+                    return true;
+                }
+                return false;
+            }
+            case CAVE_IN: {
+                if (!underground(p)) return false;
+                List<BlockPos> bl = Inspections.caveIn(w, p.getPosition(), data);
+                if (bl.size() < 5) return false;
+                s.noNpc = true;
+                s.spots = bl;
+                s.stage = 1;
+                s.nextStep = now + 60;
+                title(p, "§6§lОБВАЛ!", "§eПорода трещит — бегите!");
+                note(p, "§6§l[!] §eС потолка сыплется пыль, крепь трещит... §cУ вас 3 секунды, чтобы отбежать!");
+                sound(p, p.getPosition().up(3), SoundEvents.BLOCK_GRAVEL_BREAK, 0.4F);
+                return true;
+            }
+            case BURGLAR: {
+                BlockPos chest = Inspections.burglarTarget(w, Inspections.homeBoxes(p, a, data, 64), R);
+                if (chest == null) return false;
+                VisitorEntity e = spawn(s, w, p, s.kind, 3, 6);
+                if (e == null) return false;
+                BlockPos from = DebtManager.standNear(w, chest.add(R.nextInt(13) - 6, 0, R.nextInt(13) - 6), 4);
+                if (from == null) from = DebtManager.standNear(w, chest, 5);
+                if (from != null) e.setPositionAndUpdate(from.getX() + 0.5, from.getY(), from.getZ() + 0.5);
+                BlockPos to = DebtManager.standNear(w, chest, 2);
+                e.mode = VisitorEntity.GOTO;
+                e.gotoPos = to != null ? to : chest;
+                s.target = chest;
+                title(p, "§8§lСИГНАЛИЗАЦИЯ", "§7В вашем доме чужой...");
+                note(p, "§c§l[!] Сработала сигнализация: §fдомушник лезет к сундуку у §e" + where(chest)
+                        + "§f! Ударьте его, пока он не вскрыл замок, — или прощайтесь с самым ценным.");
+                sound(p, p.getPosition(), SoundEvents.BLOCK_BELL_USE, 1.4F);
+                return true;
+            }
+            default:
+                return false;
+        }
+    }
+
+    /** Убрать n работников (депортация). */
+    private static int deport(ServerWorld w, LegalBusiness b, int n) {
+        int done = 0;
+        while (done < n && !b.workers.isEmpty()) {
+            UUID u = b.workers.remove(b.workers.size() - 1);
+            Entity e = w.getEntityByUuid(u);
+            if (e != null) e.remove();
+            done++;
+        }
+        b.docsWorkers = Math.min(b.docsWorkers, b.workers.size());
+        return done;
+    }
+
+    private static void answerScary(Session s, ServerPlayerEntity p, Account a, boolean yes, long now) {
+        MinecraftServer server = p.getServer();
+        if (server == null || s.biz == null) { leave(s, now, 60); return; }
+        long today = BankService.today(server);
+        ServerWorld w = p.getServerWorld();
+        LegalBusiness b = s.biz;
+        if (s.kind == VisitorKind.SANEPID) {
+            if (s.stage == 0) {
+                if (yes) {
+                    VisitorEntity m = s.main();
+                    BlockPos at = DebtManager.standNear(w, b.counter, 4);
+                    if (m != null && at != null) {
+                        m.setPositionAndUpdate(at.getX() + 0.5, at.getY(), at.getZ() + 0.5);
+                        m.mode = VisitorEntity.STAY;
+                    }
+                    say(s, p, "Так-с... §8*надевает перчатки, достаёт фонарик и люксметр*");
+                    note(p, "§7Инспектор осматривает «" + b.type.title + "». Акт — через 5 секунд.");
+                    s.stage = 1;
+                    s.nextStep = now + 100;
+                } else {
+                    forceCharge(p, a, 2000);
+                    Inspections.seal(b, today, 1, "отказ в допуске СЭС");
+                    say(s, p, "§cВоспрепятствование проверке! Штраф 2000₽, заведение опечатано на сутки.");
+                    leave(s, now, 100);
+                }
+            } else if (s.stage == 2) {
+                int half = s.price / 2;
+                if (yes && BankService.charge(p, a, half)) {
+                    if (R.nextDouble() < 0.3) {
+                        forceCharge(p, a, s.price * 2);
+                        Inspections.seal(b, today, 3, "взятка инспектору СЭС");
+                        say(s, p, "§4Контрольная закупка! §cПопытка дать взятку: штраф в двойном размере (" + Finance.money(s.price * 2)
+                                + "), заведение опечатано на 3 дня.");
+                    } else {
+                        say(s, p, "Я ничего не видела. Но чтоб к следующему разу — чисто, светло и с медкнижками!");
+                    }
+                } else {
+                    forceCharge(p, a, s.price);
+                    boolean seal = s.count >= 3;
+                    if (seal) Inspections.seal(b, today, 2, "нарушения СЭС");
+                    say(s, p, "§cАкт составлен. Штраф " + Finance.money(s.price) + (seal ? ". Нарушений " + s.count + " — опечатываю на 2 дня." : ". Исправляйте."));
+                }
+                leave(s, now, 100);
+            }
+            return;
+        }
+        // миграционная служба
+        int undoc = Inspections.undocumented(b, today);
+        if (yes) {
+            if (undoc == 0) {
+                say(s, p, "Патенты, медкнижки, регистрация... Всё в порядке. Работайте.");
+            } else {
+                int fine = 3000 * undoc;
+                forceCharge(p, a, fine);
+                int d = deport(w, b, undoc);
+                say(s, p, "§cУ " + undoc + " работник(ов) нет документов! §fШтраф " + Finance.money(fine) + ", " + d
+                        + " чел. — на депортацию. Нанимайте новых и оформляйте как положено.");
+            }
+        } else if (R.nextDouble() < 0.4) {
+            say(s, p, "Родственники, говорите... Ладно. Но мы ещё вернёмся.");
+        } else if (undoc > 0) {
+            int fine = 6000 * undoc;
+            forceCharge(p, a, fine);
+            int d = deport(w, b, undoc);
+            say(s, p, "§4Нашли в подсобке " + undoc + " нелегал(ов)! §cШтраф в двойном размере: " + Finance.money(fine) + ", " + d + " чел. депортировано.");
+        } else {
+            forceCharge(p, a, 1500);
+            say(s, p, "§cДокументы-то у вас есть, а врать зачем? Воспрепятствование — 1500₽.");
+        }
+        EconomyData.get(server).markDirty();
+        leave(s, now, 100);
+    }
+
+    private static void secondScary(Session s, ServerPlayerEntity p, Account a, ServerWorld w, long now) {
+        switch (s.kind) {
+            case SANEPID: {
+                if (s.stage != 1 || now < s.nextStep || s.biz == null) return;
+                long today = BankService.today(p.getServer());
+                Inspections.Report r = Inspections.sanepid(w, s.biz, today, true);
+                if (r.violations == 0) {
+                    say(s, p, "§aЧисто, светло, раковина есть, медкнижки в порядке. Нарушений нет. Работайте!");
+                    leave(s, now, 100);
+                    return;
+                }
+                say(s, p, "§cАкт проверки «" + s.biz.type.title + "»:");
+                for (String l : r.lines) note(p, "§7 • §f" + l);
+                s.price = r.fine;
+                s.count = r.violations;
+                s.stage = 2;
+                ask(s, p, "Итого " + Finance.money(r.fine) + (r.violations >= 3 ? " и опечатывание на 2 дня" : "")
+                        + ". Хотя... можно и по-хорошему: половину — мне, и акт я «потеряю». Договоримся?", now);
+                return;
+            }
+            case FIRE: {
+                if (s.stage != 1 || s.box == null) return;
+                int left = Inspections.countFire(w, s.box[0], s.box[1]);
+                if (left == 0) {
+                    note(p, "§a§lПожар потушен! §aУспели до приезда пожарных — ни штрафа, ни протокола.");
+                    s.stage = 3;
+                    finish(s, now);
+                    return;
+                }
+                if (now >= s.nextStep) {
+                    for (int i = 0; i < 2; i++) {
+                        VisitorEntity f = spawn(s, w, p, VisitorKind.FIREMAN, 3, 6);
+                        if (f != null) { f.mode = VisitorEntity.GOTO; f.gotoPos = s.target; }
+                    }
+                    int put = Inspections.extinguish(w, s.box[0], s.box[1]);
+                    double fine = 1500 + 100.0 * put;
+                    forceCharge(p, a, fine);
+                    s.stage = 2;
+                    sayAs(VisitorKind.FIREMAN, p, "§cПожарная охрана! Потушили " + put + " очаг(ов). §fШтраф и выезд: " + Finance.money(fine)
+                            + ". Огнетушитель — это ведро воды, хозяин.");
+                    EconomyData.get(p.getServer()).markDirty();
+                    if (s.npcs.isEmpty()) finish(s, now);
+                    else leave(s, now, 200);
+                } else if ((now - s.start) % 200 == 0) {
+                    note(p, "§c§l[!] §cГорит: " + left + " блок(ов) огня. До приезда пожарных " + (s.nextStep - now) / 20 + " с.");
+                    sound(p, s.target, SoundEvents.BLOCK_BELL_USE, 0.6F);
+                }
+                return;
+            }
+            case CAVE_IN: {
+                if (now < s.nextStep) return;
+                int n = Inspections.collapse(w, s.spots);
+                sound(p, p.getPosition().up(2), SoundEvents.BLOCK_GRAVEL_BREAK, 0.3F);
+                boolean under = false;
+                for (BlockPos q : s.spots) if (Math.abs(q.getX() - p.getPosX() + 0.5) <= 1 && Math.abs(q.getZ() - p.getPosZ() + 0.5) <= 1) under = true;
+                note(p, n == 0 ? "§7Потрещало и затихло. Повезло." : "§6*ГРОХОТ* §eОбрушилось " + n + " блоков породы."
+                        + (under ? " §cВас завалило — копайте наружу!" : " §aВы успели отскочить."));
+                finish(s, now);
+                return;
+            }
+            case BURGLAR: {
+                VisitorEntity m = s.main();
+                if (m == null || s.target == null) return;
+                if (s.stage == 0) {
+                    if (m.getDistanceSq(s.target.getX() + 0.5, s.target.getY() + 0.5, s.target.getZ() + 0.5) <= 3.0 * 3.0) {
+                        s.stage = 1;
+                        s.nextStep = now + 120;
+                        note(p, "§c*Скрежет отмычки...* §fДомушник вскрывает сундук у §e" + where(s.target) + "§f — 6 секунд!");
+                        sound(p, s.target, SoundEvents.BLOCK_CHEST_LOCKED, 0.8F);
+                    } else if (now - s.start > 1800) {
+                        BlockPos at = DebtManager.standNear(w, s.target, 2);
+                        if (at != null) m.setPositionAndUpdate(at.getX() + 0.5, at.getY(), at.getZ() + 0.5);
+                    }
+                } else if (s.stage == 1 && now >= s.nextStep) {
+                    ItemStack st = confiscateBest(w, s.target, s.target);
+                    if (st.isEmpty()) {
+                        say(s, p, "Пусто... тьфу ты!");
+                        leave(s, now, 60);
+                        return;
+                    }
+                    s.offer = st;
+                    s.stage = 2;
+                    s.nextStep = now + 400;
+                    m.mode = VisitorEntity.FLEE;
+                    note(p, "§4§lДомушник украл: §c" + st.getDisplayName().getString() + " ×" + st.getCount() + "§4§l! §fДогоните и ударьте — 20 секунд.");
+                    sound(p, s.target, SoundEvents.BLOCK_CHEST_OPEN, 0.7F);
+                } else if (s.stage == 2 && now >= s.nextStep) {
+                    note(p, "§8Домушник растворился в ночи вместе с «" + s.offer.getDisplayName().getString() + "». Поставьте замок понадёжнее... или дверь.");
+                    s.offer = ItemStack.EMPTY;
+                    leave(s, now, 20);
+                }
+                return;
+            }
+            default:
+        }
+    }
+
     private static void horseThief(Session s, ServerPlayerEntity p, long now) {
         VisitorEntity thief = s.main();
         AbstractHorseEntity horse = s.horse;
@@ -1652,11 +2041,25 @@ public final class Visitors {
             case TAX:
             case TAX_POLICE:
             case BAILIFF:
+            case BURGLAR:
+                if (!s.offer.isEmpty()) {
+                    BankService.give(p, s.offer.copy());
+                    s.offer = ItemStack.EMPTY;
+                    sayAs(VisitorKind.BURGLAR, p, "§cАй! Всё-всё, забирай! §8*бросает добычу и убегает*");
+                    note(p, "§aВы отбили украденное!");
+                } else if (s.leaveAt < 0) {
+                    sayAs(VisitorKind.BURGLAR, p, "§cШухер! §8*убегает*");
+                    note(p, "§aВы спугнули домушника — сундук цел.");
+                }
+                if (s.leaveAt < 0) leave(s, now, 60);
+                return false;
             case FIRE_INSPECTOR:
             case FIREMAN:
             case UCHASTKOVY:
             case ECO_INSPECTOR:
             case DPS:
+            case SANEPID:
+            case MIGRATION:
                 if (!s.fined) {
                     s.fined = true;
                     Account a = EconomyData.get(p.getServer()).get(p);

@@ -1051,6 +1051,13 @@ public class Buildings {
         // пол «шахматкой», стены, крыша
         for (int x = -15; x <= 15; x++)
             for (int z = 0; z <= 30; z++) b.set(x, 0, z, ((x + z) & 1) == 0 ? black : red);
+        // v1.9: светящийся пол и бра на стенах — в казино всегда светло, монстры не заводятся
+        for (int x = -13; x <= 13; x += 3) for (int z = 2; z <= 29; z += 3) b.set(x, 0, z, s(Blocks.SEA_LANTERN));
+        for (int z = 3; z <= 27; z += 4) {
+            b.set(-15, 8, z, s(Blocks.SEA_LANTERN));
+            b.set(15, 8, z, s(Blocks.SEA_LANTERN));
+        }
+        for (int x = -12; x <= 12; x += 4) b.set(x, 8, 30, s(Blocks.SEA_LANTERN));
         b.walls(-15, 0, 0, 15, 11, 30, black);
         b.fill(-15, 12, 0, 15, 12, 30, black);
         b.walls(-15, 13, 0, 15, 13, 30, s(Blocks.BLACKSTONE_SLAB));

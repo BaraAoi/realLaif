@@ -39,6 +39,8 @@ public class EconomyData extends WorldSavedData {
     public boolean spawnBuilt;
     /** Версия городских построек на спавне (3 — неразрушимые, новый банк с кассирами). */
     public int spawnVersion;
+    /** v1.9: казино досвечено (пол с морскими фонарями), чтобы внутри не спавнились монстры. */
+    public int casinoLights;
     /** Казино возле спавна уже построено (или место не найдено). */
     public boolean casinoBuilt;
     /** Все постройки мода: банки, МФО, казино. */
@@ -215,6 +217,7 @@ public class EconomyData extends WorldSavedData {
         pitPos = BlockPos.fromLong(nbt.getLong("pitPos"));
         spawnBuilt = nbt.getBoolean("spawnBuilt");
         spawnVersion = nbt.getInt("spawnVersion");
+        casinoLights = nbt.getInt("casinoLights");
         casinoBuilt = nbt.getBoolean("casinoBuilt");
         structures.clear();
         for (INBT n : nbt.getList("structures", 10)) structures.add(Structure.read((CompoundNBT) n));
@@ -253,6 +256,7 @@ public class EconomyData extends WorldSavedData {
         nbt.putLong("pitPos", pitPos.toLong());
         nbt.putBoolean("spawnBuilt", spawnBuilt);
         nbt.putInt("spawnVersion", spawnVersion);
+        nbt.putInt("casinoLights", casinoLights);
         nbt.putBoolean("casinoBuilt", casinoBuilt);
         ListNBT sl = new ListNBT();
         for (Structure st : structures) sl.add(st.write());

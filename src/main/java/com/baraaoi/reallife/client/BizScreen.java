@@ -29,8 +29,9 @@ public class BizScreen extends ContainerScreen<BizContainer> {
     @Override
     protected void init() {
         super.init();
-        this.addButton(new Button(guiLeft + 8, guiTop + 94, 96, 16, new StringTextComponent("§aНанять (+1)"), b -> send(Actions.BIZ_HIRE)));
-        this.addButton(new Button(guiLeft + 108, guiTop + 94, 64, 16, new StringTextComponent("§cУволить"), b -> send(Actions.BIZ_FIRE)));
+        this.addButton(new Button(guiLeft + 8, guiTop + 94, 72, 16, new StringTextComponent("§aНанять (+1)"), b -> send(Actions.BIZ_HIRE)));
+        this.addButton(new Button(guiLeft + 84, guiTop + 94, 56, 16, new StringTextComponent("§cУволить"), b -> send(Actions.BIZ_FIRE)));
+        this.addButton(new Button(guiLeft + 144, guiTop + 94, 78, 16, new StringTextComponent("§eДокументы"), b -> send(Actions.BIZ_DOCS)));
         this.addButton(new Button(guiLeft + 8, guiTop + 114, 150, 16, new StringTextComponent("§2Провести выручку из слота"), b -> send(Actions.BIZ_LAUNDER)));
     }
 
@@ -77,7 +78,8 @@ public class BizScreen extends ContainerScreen<BizContainer> {
         GuiUtil.small(font, ms, "Всего: §a" + Finance.money(t.getDouble("total")) + "§f за " + t.getInt("days") + " раб. дн.  §7выручка "
                 + Finance.money(type.base) + "/раб., удача влияет", 8, 74);
         GuiUtil.small(font, ms, "Найм " + Finance.money(type.hireCost()) + ", зарплата " + Finance.money(type.wage()) + "/день каждому. "
-                + "§7Сырьё: телефон → Опт.", 8, 83);
+                + (t.getInt("undoc") > 0 ? "§cБез документов: " + t.getInt("undoc") + " чел.!" : t.getInt("workers") > 0
+                ? "§aДокументы до дня " + t.getLong("docsUntil") : "§7Сырьё: телефон → Опт."), 8, 83);
         double safe = t.getDouble("safe");
         double done = t.getDouble("laundered");
         GuiUtil.small(font, ms, "Отмыто сегодня: " + (done > safe ? "§c" : "§a") + Finance.money(done) + "§f / безопасно " + Finance.money(safe)

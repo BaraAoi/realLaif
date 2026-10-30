@@ -112,6 +112,25 @@ public class SelfTest {
         boolean near = ce.getX() >= casino.min.getX() - 6 && ce.getX() <= casino.max.getX() + 6 && ce.getZ() >= casino.min.getZ() - 6 && ce.getZ() <= casino.max.getZ() + 6;
         check(outside && near, "casino exit is just outside: " + ce);
         check(!ow.getEntitiesWithinAABB(SellerEntity.class, new AxisAlignedBB(casino.min, casino.max.add(1, 1, 1))).isEmpty(), "casino bartender");
+        // v1.9: казино светлое, монстры внутри не живут
+        int lanterns = 0;
+        for (BlockPos q : BlockPos.getAllInBoxMutable(casino.min, casino.max)) if (ow.getBlockState(q).getBlock() == Blocks.SEA_LANTERN) lanterns++;
+        check(lanterns >= 100, "casino is well lit: " + lanterns + " sea lanterns");
+        BlockPos inCasino = null;
+        int ccx = (casino.min.getX() + casino.max.getX()) / 2, ccz = (casino.min.getZ() + casino.max.getZ()) / 2;
+        for (int y = casino.min.getY(); y < casino.max.getY() && inCasino == null; y++) {
+            BlockPos q = new BlockPos(ccx + 5, y, ccz);
+            if (ow.isAirBlock(q) && ow.isAirBlock(q.up()) && ow.getBlockState(q.down()).getMaterial().isSolid()) inCasino = q;
+        }
+        net.minecraft.entity.monster.ZombieEntity zomb = EntityType.ZOMBIE.create(ow);
+        if (zomb != null && inCasino != null) {
+            zomb.setPosition(inCasino.getX() + 0.5, inCasino.getY(), inCasino.getZ() + 0.5);
+            ow.addEntity(zomb);
+            int cleared = DebtManager.clearCityMobs(data, ow);
+            check(cleared >= 1 && !zomb.isAlive(), "monsters are removed from the casino (" + cleared + ")");
+        } else {
+            check(false, "zombie test spot in casino: " + inCasino);
+        }
         // v4: шансы подняты, но казино всё ещё (чуть-чуть) в плюсе
         int wheelSum = 0, wheelWins = 0;
         for (int m : CasinoService.WHEEL) { wheelSum += m; if (m >= 2) wheelWins++; }
@@ -466,6 +485,27 @@ public class SelfTest {
                 "customer spawned and heads to the counter");
         if (cust != null) cust.remove();
         check(com.baraaoi.reallife.economy.LegalBiz.isOpen(shop), "shop with worker, kit and stock is open for customers");
+        // v1.9: СЭС, документы, пломба
+        long iday = BankService.today(s);
+        com.baraaoi.reallife.event.Inspections.Report rep1 = com.baraaoi.reallife.event.Inspections.sanepid(ow, shop, iday, false);
+        LOG.info("SES report: " + rep1.lines + " = " + rep1.fine);
+        check(com.baraaoi.reallife.event.Inspections.undocumented(shop, iday) == 1 && rep1.violations >= 2 && rep1.fine >= 800,
+                "SES finds undocumented workers and no sink: " + rep1.lines);
+        shop.docsUntil = iday + com.baraaoi.reallife.event.Inspections.DOCS_DAYS;
+        shop.docsWorkers = 1;
+        com.baraaoi.reallife.event.Inspections.Report rep2 = com.baraaoi.reallife.event.Inspections.sanepid(ow, shop, iday, false);
+        check(com.baraaoi.reallife.event.Inspections.undocumented(shop, iday) == 0 && rep2.fine == rep1.fine - 800, "documents remove the med-book fine");
+        check(com.baraaoi.reallife.event.Inspections.undocumented(shop, iday + 7) == 1, "documents expire after 7 days");
+        com.baraaoi.reallife.event.Inspections.seal(shop, iday, 2, "test");
+        check(com.baraaoi.reallife.event.Inspections.sealed(shop, iday) && com.baraaoi.reallife.event.Inspections.sealed(shop, iday + 1)
+                && !com.baraaoi.reallife.event.Inspections.sealed(shop, iday + 2), "business sealed for 2 days");
+        CompoundNBT sealedSave = shop.write();
+        com.baraaoi.reallife.economy.LegalBusiness sealedCopy = com.baraaoi.reallife.economy.LegalBusiness.read(sealedSave);
+        check(sealedCopy.sealedUntil == shop.sealedUntil && sealedCopy.docsWorkers == 1 && "test".equals(sealedCopy.sealReason), "seal and documents saved");
+        shop.sealedUntil = 0;
+        shop.sealReason = "";
+        shop.docsUntil = 0;
+        shop.docsWorkers = 0;
         for (int i = 0; i < com.baraaoi.reallife.entity.CustomerEntity.VARIANTS; i++) {
             java.nio.file.Path ct = net.minecraftforge.fml.ModList.get().getModFileById(RealLife.MODID).getFile()
                     .findResource("assets/reallife/textures/entity/customer/c" + i + ".png");
@@ -651,6 +691,34 @@ public class SelfTest {
         for (int y = 5; y < 255; y++) if (!ow.isAirBlock(new BlockPos((cx << 4) + 7, y, (cz << 4) + 7))) clean = false;
         check(clean, "evicted chunk wiped");
         check(ow.getBlockState(new BlockPos(cx << 4, 0, cz << 4)).getBlock() == Blocks.BEDROCK, "bedrock remains");
+
+        // ---- v1.9: пожар, обвал, домушник
+        BlockPos fp = base.add(-60, 0, 60);
+        for (int dx = -1; dx <= 1; dx++) for (int dz = -1; dz <= 1; dz++) ow.setBlockState(fp.add(dx, 0, dz), Blocks.OAK_PLANKS.getDefaultState(), 3);
+        List<BlockPos> fspots = com.baraaoi.reallife.event.Inspections.fireSpots(ow, fp.add(-1, 0, -1), fp.add(1, 1, 1), 2, new java.util.Random(1), null);
+        check(!fspots.isEmpty(), "fire spots on planks: " + fspots.size());
+        com.baraaoi.reallife.event.Inspections.ignite(ow, fspots);
+        check(com.baraaoi.reallife.event.Inspections.countFire(ow, fp.add(-2, 0, -2), fp.add(2, 2, 2)) >= 1, "fire started");
+        com.baraaoi.reallife.event.Inspections.extinguish(ow, fp.add(-2, 0, -2), fp.add(2, 2, 2));
+        check(com.baraaoi.reallife.event.Inspections.countFire(ow, fp.add(-2, 0, -2), fp.add(2, 2, 2)) == 0, "fire extinguished");
+        for (BlockPos q : BlockPos.getAllInBoxMutable(fp.add(-2, 0, -2), fp.add(2, 2, 2))) ow.setBlockState(q.toImmutable(), Blocks.AIR.getDefaultState(), 3);
+        BlockPos cp0 = base.add(-80, 0, 80);
+        for (int dx = -3; dx <= 3; dx++) for (int dz = -3; dz <= 3; dz++) ow.setBlockState(cp0.add(dx, 4, dz), Blocks.STONE.getDefaultState(), 3);
+        List<BlockPos> cave = com.baraaoi.reallife.event.Inspections.caveIn(ow, cp0, data);
+        check(cave.size() >= 15, "cave-in finds ceiling rock: " + cave.size());
+        int fell = com.baraaoi.reallife.event.Inspections.collapse(ow, cave);
+        check(fell == cave.size() && ow.getBlockState(cave.get(0)).getBlock() == Blocks.GRAVEL, "ceiling turns into falling gravel");
+        for (BlockPos q : BlockPos.getAllInBoxMutable(cp0.add(-3, 4, -3), cp0.add(3, 4, 3))) ow.setBlockState(q.toImmutable(), Blocks.AIR.getDefaultState(), 2);
+        BlockPos chestAt = base.add(-90, 0, 40);
+        ow.setBlockState(chestAt, Blocks.CHEST.getDefaultState(), 3);
+        net.minecraft.tileentity.TileEntity cte = ow.getTileEntity(chestAt);
+        if (cte instanceof net.minecraft.inventory.IInventory) ((net.minecraft.inventory.IInventory) cte).setInventorySlotContents(0, new ItemStack(Items.DIAMOND, 3));
+        BlockPos btarget = com.baraaoi.reallife.event.Inspections.burglarTarget(ow, java.util.Collections.singletonList(new BlockPos[]{chestAt.add(-2, -1, -2), chestAt.add(2, 1, 2)}), new java.util.Random(2));
+        check(chestAt.equals(btarget), "burglar goes for the chest with loot: " + btarget);
+        if (cte instanceof net.minecraft.inventory.IInventory) ((net.minecraft.inventory.IInventory) cte).clear();
+        ow.setBlockState(chestAt, Blocks.AIR.getDefaultState(), 3);
+        check(Visitors.eventKinds().contains(VisitorKind.SANEPID) && Visitors.eventKinds().contains(VisitorKind.BURGLAR)
+                && Visitors.eventKinds().contains(VisitorKind.CAVE_IN), "scary events registered");
 
         // ---- экономика
         Account a = data.getOrCreate(UUID.randomUUID());

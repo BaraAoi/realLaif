@@ -39,7 +39,13 @@ public enum VisitorKind {
     PEDDLER("§6Коробейник Ашот", false),
     HOBO("§7Бомж Валера", false),
     TREASURE_HUNTER("§6Кладоискатель Семёныч", false),
-    DPS("§9Инспектор ДПС Петренко", false);
+    DPS("§9Инспектор ДПС Петренко", false),
+    // v1.9: страшные события «здесь и сейчас»
+    SANEPID("§2Инспектор СЭС Зловредова", false),
+    MIGRATION("§9Майор миграционной службы", false),
+    FIRE("§4Пожар", false),
+    CAVE_IN("§6Обвал", false),
+    BURGLAR("§8Домушник", false);
 
     public final String display;
     /** Помощник — сам по себе не приходит, только вместе с главным гостем. */
