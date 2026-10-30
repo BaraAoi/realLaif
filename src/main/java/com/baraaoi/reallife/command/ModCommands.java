@@ -46,7 +46,13 @@ public class ModCommands {
                                 .executes(c -> mfoOverdue(c.getSource().asPlayer(), IntegerArgumentType.getInteger(c, "days")))))
                         .then(Commands.literal("build")
                                 .then(Commands.literal("bank").executes(c -> build(c.getSource().asPlayer(), true)))
-                                .then(Commands.literal("mfo").executes(c -> build(c.getSource().asPlayer(), false))))
+                                .then(Commands.literal("mfo").executes(c -> build(c.getSource().asPlayer(), false)))
+                                .then(Commands.literal("casino").executes(c -> {
+                                    ServerPlayerEntity cp = c.getSource().asPlayer();
+                                    net.minecraft.util.Direction cf = cp.getHorizontalFacing();
+                                    Buildings.buildCasino(cp.world, cp.getPosition().offset(cf, 2), cf, false);
+                                    return 1;
+                                })))
                         .then(Commands.literal("free").executes(c -> free(c.getSource().asPlayer()))
                                 .then(Commands.argument("player", EntityArgument.player())
                                         .executes(c -> free(EntityArgument.getPlayer(c, "player")))))
