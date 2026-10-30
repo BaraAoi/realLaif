@@ -451,9 +451,9 @@ public class SelfTest {
         for (com.baraaoi.reallife.economy.BizEquip e : com.baraaoi.reallife.economy.BizEquip.values()) {
             check(e.block.get() != null && com.baraaoi.reallife.economy.BizEquip.of(e.block.get()) == e && e.price > 0, "equipment " + e.title);
         }
-        java.util.List<com.baraaoi.reallife.economy.Wholesale.Lot> slots = com.baraaoi.reallife.economy.Wholesale.lots();
+        java.util.List<com.baraaoi.reallife.economy.Wholesale.Lot> supLots = com.baraaoi.reallife.economy.Wholesale.lots();
         int supplyLots = 0;
-        for (com.baraaoi.reallife.economy.Wholesale.Lot l : slots) if (l.supply != null) supplyLots++;
+        for (com.baraaoi.reallife.economy.Wholesale.Lot l : supLots) if (l.supply != null) supplyLots++;
         check(supplyLots == com.baraaoi.reallife.economy.BizType.values().length, "supply lots in wholesale: " + supplyLots);
         // отмыв — от вчерашней прибыли
         com.baraaoi.reallife.economy.LegalBusiness lossy = new com.baraaoi.reallife.economy.LegalBusiness();
