@@ -100,10 +100,9 @@ public class SelfTest {
         check(tks.counterOk && tks.warehouse && tks.sets == com.baraaoi.reallife.economy.BizType.ELECTRONICS.maxWorkers
                 && tks.allowed == com.baraaoi.reallife.economy.BizType.ELECTRONICS.maxWorkers, "turnkey electronics fully equipped: sets " + tks.sets);
         check(com.baraaoi.reallife.economy.LegalBiz.workerSpot(ow, tk, tks) != null, "turnkey has room for workers");
-        com.baraaoi.reallife.event.Inspections.Report tkRep = com.baraaoi.reallife.event.Inspections.sanepid(ow, tk, BankService.today(s), false);
-        boolean tkRoom = true;
-        for (String l : tkRep.lines) if (l.contains("помещени") || l.contains("земли")) tkRoom = false;
-        check(tkRoom, "turnkey building is a proper room: " + tkRep.lines);
+        // свет в тесте не успевает пересчитаться (canSeeSky в 1.16 — по небесному свету), поэтому проверяем постройку по блокам
+        check(!ow.isAirBlock(tk.counter.up(5)) && !ow.isAirBlock(tk.counter.down()) && ow.isAirBlock(tk.counter.up(4)),
+                "turnkey building has floor, roof and headroom");
         check(com.baraaoi.reallife.economy.BizBuild.turnkeyProblem(ow, tkAt.add(4, 0, 0), Direction.EAST, data, UUID.randomUUID()) != null,
                 "can't build over someone's turnkey shop");
         BlockPos tkAt2 = base.add(-300, 0, 360);
@@ -144,8 +143,8 @@ public class SelfTest {
         com.baraaoi.reallife.economy.LegalBiz.Scan msc = com.baraaoi.reallife.economy.LegalBiz.scan(ow, mb);
         com.baraaoi.reallife.event.Inspections.Report mRep = com.baraaoi.reallife.event.Inspections.sanepid(ow, mb, BankService.today(s), false);
         boolean mallClean = msc.counterOk;
-        for (String l : mRep.lines) if (l.contains("помещени") || l.contains("земли") || l.contains("раковин")) mallClean = false;
-        check(mallClean, "mall slot passes SES room/sink checks: " + mRep.lines);
+        for (String l : mRep.lines) if (l.contains("раковин")) mallClean = false;
+        check(mallClean && !ow.isAirBlock(mb.counter.up(com.baraaoi.reallife.economy.Mall.H - 1)), "mall slot: roof above, sink inside: " + mRep.lines);
         CompoundNBT msave = data.write(new CompoundNBT());
         EconomyData mcopy = new EconomyData();
         mcopy.read(msave);
