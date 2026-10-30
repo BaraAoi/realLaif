@@ -37,5 +37,17 @@
   "entity.reallife.cashier": "Кассир",
   "entity.reallife.ambal": "Амбал казино",
   "block.reallife.business_chest": "Сундук цеха",
-  "entity.reallife.visitor": "Гость"
+  "entity.reallife.visitor": "Гость",
+  "item.reallife.banknote_500": "Купюра 500₽",
+  "item.reallife.biz_permit": "Разрешение на заведение",
+  "block.reallife.biz_counter": "Касса заведения",
+  "block.reallife.crypto_rig": "Майнинг-ферма",
+  "item.reallife.motherboard": "Материнская плата",
+  "item.reallife.cpu": "Процессор",
+  "item.reallife.ram": "Оперативная память",
+  "item.reallife.psu": "Блок питания",
+  "item.reallife.cooler": "Кулер",
+  "item.reallife.gpu": "Видеокарта",
+  "item.reallife.phone": "Смартфон",
+  "entity.reallife.worker": "Работник"
 }

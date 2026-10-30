@@ -21,4 +21,13 @@ public class ModContainers {
 
     public static final RegistryObject<ContainerType<CasinoContainer>> CASINO = CONTAINERS.register("casino",
             () -> IForgeContainerType.create((id, inv, buf) -> new CasinoContainer(id, inv, buf.readBlockPos(), buf.readVarInt())));
+
+    public static final RegistryObject<ContainerType<com.baraaoi.reallife.container.PrinterContainer>> PRINTER = CONTAINERS.register("money_printer",
+            () -> IForgeContainerType.create((id, inv, buf) -> new com.baraaoi.reallife.container.PrinterContainer(id, inv, buf.readBlockPos())));
+
+    public static final RegistryObject<ContainerType<com.baraaoi.reallife.container.BizContainer>> BIZ = CONTAINERS.register("biz_counter",
+            () -> IForgeContainerType.create((id, inv, buf) -> new com.baraaoi.reallife.container.BizContainer(id, inv, buf.readBlockPos())));
+
+    public static final RegistryObject<ContainerType<com.baraaoi.reallife.container.CryptoContainer>> CRYPTO = CONTAINERS.register("crypto_rig",
+            () -> IForgeContainerType.create((id, inv, buf) -> new com.baraaoi.reallife.container.CryptoContainer(id, inv, buf.readBlockPos())));
 }

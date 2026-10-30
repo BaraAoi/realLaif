@@ -962,16 +962,10 @@ public class Buildings {
     }
 
     /**
-     * Можно ли здесь строить ипотечный дом. null — можно, иначе причина отказа.
-     * Нельзя: на другом доме, на банке/МФО/казино, на чужой или городской земле, на чужом имуществе,
-     * на неровной площадке (перепад больше houseFlatness).
+     * Занята ли коробка: постройки мода, дома, легальные заведения, чужая или городская земля.
+     * null — свободно, иначе причина.
      */
-    public static String checkHouseSite(World w, BlockPos origin, Direction facing, HouseType type, EconomyData data, UUID player) {
-        int[] bx = HOUSE_BOX[type.ordinal()];
-        Blueprint b = new Blueprint(w, origin, facing);
-        BlockPos p1 = b.pos(bx[0], bx[1], bx[2]), p2 = b.pos(bx[3], bx[4], bx[5]);
-        BlockPos min = new BlockPos(Math.min(p1.getX(), p2.getX()), origin.getY() - 1, Math.min(p1.getZ(), p2.getZ()));
-        BlockPos max = new BlockPos(Math.max(p1.getX(), p2.getX()), Math.max(p1.getY(), p2.getY()), Math.max(p1.getZ(), p2.getZ()));
+    public static String checkOccupied(BlockPos min, BlockPos max, EconomyData data, UUID player) {
         for (Structure st : data.structures) {
             if (!st.intersects(min, max, 3)) continue;
             if (Structure.BANK.equals(st.type)) return "здесь стоит банк";
@@ -985,12 +979,33 @@ public class Buildings {
                         : "здесь стоит дом игрока " + (o.name.isEmpty() ? "?" : o.name);
             }
         }
+        for (com.baraaoi.reallife.economy.LegalBusiness lb : data.businesses) {
+            if (boxesIntersect(min, max, lb.min, lb.max, 1)) {
+                return "здесь стоит заведение «" + lb.type.title + "»" + (player.equals(lb.owner) ? " (ваше)" : "");
+            }
+        }
         for (int cx = min.getX() >> 4; cx <= max.getX() >> 4; cx++)
             for (int cz = min.getZ() >> 4; cz <= max.getZ() >> 4; cz++) {
                 UUID owner = data.owner(ChunkPos.asLong(cx, cz));
                 if (owner == null || owner.equals(player)) continue;
                 return owner.equals(CITY) ? "это городская земля (рядом банк/МФО/казино)" : "участок принадлежит другому игроку";
             }
+        return null;
+    }
+
+    /**
+     * Можно ли здесь строить ипотечный дом. null — можно, иначе причина отказа.
+     * Нельзя: на другом доме, на банке/МФО/казино, на чужой или городской земле, на чужом имуществе,
+     * на неровной площадке (перепад больше houseFlatness).
+     */
+    public static String checkHouseSite(World w, BlockPos origin, Direction facing, HouseType type, EconomyData data, UUID player) {
+        int[] bx = HOUSE_BOX[type.ordinal()];
+        Blueprint b = new Blueprint(w, origin, facing);
+        BlockPos p1 = b.pos(bx[0], bx[1], bx[2]), p2 = b.pos(bx[3], bx[4], bx[5]);
+        BlockPos min = new BlockPos(Math.min(p1.getX(), p2.getX()), origin.getY() - 1, Math.min(p1.getZ(), p2.getZ()));
+        BlockPos max = new BlockPos(Math.max(p1.getX(), p2.getX()), Math.max(p1.getY(), p2.getY()), Math.max(p1.getZ(), p2.getZ()));
+        String occ = checkOccupied(min, max, data, player);
+        if (occ != null) return occ;
         int z1 = type == HouseType.PENTHOUSE ? -2 : bx[2];
         int lo = Integer.MAX_VALUE, hi = Integer.MIN_VALUE;
         for (int x = bx[0]; x <= bx[3]; x++)

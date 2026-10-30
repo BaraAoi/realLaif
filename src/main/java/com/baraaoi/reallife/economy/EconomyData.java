@@ -43,6 +43,12 @@ public class EconomyData extends WorldSavedData {
     public boolean casinoBuilt;
     /** Все постройки мода: банки, МФО, казино. */
     public final List<Structure> structures = new ArrayList<>();
+    /** Легальные заведения игроков (v5). */
+    public final List<LegalBusiness> businesses = new ArrayList<>();
+    public int nextBizId = 1;
+    /** Курс BTC в рублях и когда он последний раз менялся (игровые тики). */
+    public double btcRate;
+    public long btcUpdated;
     /** Центры (уровень пола) всех контор МФО — под ними делается подвал. */
     public final List<BlockPos> mfoCenters = new ArrayList<>();
 
@@ -162,6 +168,27 @@ public class EconomyData extends WorldSavedData {
     }
 
     /** Блок внутри неразрушимой городской постройки. */
+    public LegalBusiness bizAtCounter(BlockPos p) {
+        for (LegalBusiness b : businesses) if (b.counter.equals(p)) return b;
+        return null;
+    }
+
+    public LegalBusiness bizById(int id) {
+        for (LegalBusiness b : businesses) if (b.id == id) return b;
+        return null;
+    }
+
+    public List<LegalBusiness> bizOf(UUID owner) {
+        List<LegalBusiness> l = new ArrayList<>();
+        for (LegalBusiness b : businesses) if (owner.equals(b.owner)) l.add(b);
+        return l;
+    }
+
+    public boolean ownsBusiness(UUID owner) {
+        for (LegalBusiness b : businesses) if (owner.equals(b.owner)) return true;
+        return false;
+    }
+
     public boolean isProtected(BlockPos p) {
         for (Structure st : structures) if (st.protect && st.contains(p, 0)) return true;
         return false;
@@ -187,6 +214,12 @@ public class EconomyData extends WorldSavedData {
         casinoBuilt = nbt.getBoolean("casinoBuilt");
         structures.clear();
         for (INBT n : nbt.getList("structures", 10)) structures.add(Structure.read((CompoundNBT) n));
+        businesses.clear();
+        for (INBT n : nbt.getList("legal", 10)) businesses.add(LegalBusiness.read((CompoundNBT) n));
+        nextBizId = Math.max(1, nbt.getInt("nextBizId"));
+        for (LegalBusiness b : businesses) nextBizId = Math.max(nextBizId, b.id + 1);
+        btcRate = nbt.getDouble("btcRate");
+        btcUpdated = nbt.getLong("btcUpdated");
         mfoCenters.clear();
         for (long l : nbt.getLongArray("mfoCenters")) mfoCenters.add(BlockPos.fromLong(l));
         landOwners.clear();
@@ -219,6 +252,12 @@ public class EconomyData extends WorldSavedData {
         ListNBT sl = new ListNBT();
         for (Structure st : structures) sl.add(st.write());
         nbt.put("structures", sl);
+        ListNBT bl = new ListNBT();
+        for (LegalBusiness b : businesses) bl.add(b.write());
+        nbt.put("legal", bl);
+        nbt.putInt("nextBizId", nextBizId);
+        nbt.putDouble("btcRate", btcRate);
+        nbt.putLong("btcUpdated", btcUpdated);
         long[] mc = new long[mfoCenters.size()];
         for (int i = 0; i < mc.length; i++) mc[i] = mfoCenters.get(i).toLong();
         nbt.putLongArray("mfoCenters", mc);

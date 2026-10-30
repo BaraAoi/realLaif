@@ -151,6 +151,15 @@ public final class Visitors {
         return MANAGED.contains(e.getUniqueID());
     }
 
+    /** Взять сущность под управление (иначе она сама исчезнет). */
+    public static void manage(VisitorEntity e) {
+        MANAGED.add(e.getUniqueID());
+    }
+
+    public static void unmanage(VisitorEntity e) {
+        MANAGED.remove(e.getUniqueID());
+    }
+
     // =====================================================================================
     //  планировщик
     // =====================================================================================
@@ -159,6 +168,13 @@ public final class Visitors {
         int min = Config.EVENTS_MIN_MINUTES.get();
         int max = Math.max(min, Config.EVENTS_MAX_MINUTES.get());
         return (min + R.nextInt(max - min + 1)) * 1200L + R.nextInt(1200);
+    }
+
+    /** Чем больше станков у игрока, тем чаще гости и проверки (не реже раза в 90 с). */
+    public static long interval(int printers) {
+        long base = interval();
+        if (printers <= 0) return base;
+        return Math.max(1800L, (long) (base / (1.0 + 0.15 * printers)));
     }
 
     public static void tick(MinecraftServer server) {
@@ -206,9 +222,9 @@ public final class Visitors {
             Account a = data.get(p);
             if (a.captivity != Account.FREE) continue;
             Long next = NEXT.get(id);
-            if (next == null) { NEXT.put(id, now + interval()); continue; }
+            if (next == null) { NEXT.put(id, now + interval(a.printerList.size())); continue; }
             if (now < next) continue;
-            NEXT.put(id, now + interval());
+            NEXT.put(id, now + interval(a.printerList.size()));
             List<VisitorKind> ok = new ArrayList<>();
             for (VisitorKind k : eventKinds()) if (applicable(k, p, a, ow)) ok.add(k);
             if (!ok.isEmpty()) start(p, a, ok.get(R.nextInt(ok.size())), now, false);
@@ -314,7 +330,7 @@ public final class Visitors {
     }
 
     /** Списать штраф: со счёта и наличными, а чего не хватило — в долг банку. */
-    static double forceCharge(PlayerEntity p, Account a, double amt) {
+    public static double forceCharge(PlayerEntity p, Account a, double amt) {
         if (amt <= 0) return 0;
         if (BankService.charge(p, a, amt)) return amt;
         double bal = Math.max(0, a.balance);
@@ -1194,6 +1210,7 @@ public final class Visitors {
 
     /** Урон по гостю. true — отменить урон. */
     public static boolean onHurt(VisitorEntity e, DamageSource src) {
+        if (e.getKind() == VisitorKind.OBEP) return src != DamageSource.OUT_OF_WORLD;
         Session s = sessionOf(e);
         if (s == null || e.world.getServer() == null) return false;
         Entity attacker = src.getTrueSource();

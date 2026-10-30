@@ -53,6 +53,11 @@ public class ModEntities {
             () -> EntityType.Builder.<VisitorEntity>create(VisitorEntity::new, EntityClassification.MISC)
                     .size(0.6F, 1.8F).build(RealLife.MODID + ":visitor"));
 
+    /** Работник легального заведения. */
+    public static final RegistryObject<EntityType<com.baraaoi.reallife.entity.WorkerEntity>> WORKER = ENTITIES.register("worker",
+            () -> EntityType.Builder.<com.baraaoi.reallife.entity.WorkerEntity>create(com.baraaoi.reallife.entity.WorkerEntity::new, EntityClassification.MISC)
+                    .size(0.6F, 1.8F).build(RealLife.MODID + ":worker"));
+
     private static AttributeModifierMap attrs(double health, double speed, double damage) {
         return MobEntity.func_233666_p_()
                 .createMutableAttribute(Attributes.MAX_HEALTH, health)
@@ -71,6 +76,11 @@ public class ModEntities {
         GlobalEntityTypeAttributes.put(INSPECTOR.get(), attrs(20, 0.34, 1));
         GlobalEntityTypeAttributes.put(AMBAL.get(), attrs(80, 0.38, 6));
         GlobalEntityTypeAttributes.put(VISITOR.get(), attrs(20, 0.32, 2));
+        GlobalEntityTypeAttributes.put(WORKER.get(), MobEntity.func_233666_p_()
+                .createMutableAttribute(Attributes.MAX_HEALTH, 20)
+                .createMutableAttribute(Attributes.MOVEMENT_SPEED, 0.0D)
+                .createMutableAttribute(Attributes.FOLLOW_RANGE, 16.0D)
+                .create());
         GlobalEntityTypeAttributes.put(CASHIER.get(), MobEntity.func_233666_p_()
                 .createMutableAttribute(Attributes.MAX_HEALTH, 20)
                 .createMutableAttribute(Attributes.MOVEMENT_SPEED, 0.0D)

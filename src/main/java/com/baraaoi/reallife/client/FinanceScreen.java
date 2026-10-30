@@ -71,10 +71,10 @@ public class FinanceScreen extends ContainerScreen<FinanceContainer> {
 
     private void initAccount() {
         btn(8, 106, 110, "Внести из слота →", b -> send(Actions.DEPOSIT, 0, 0));
-        int[] notes = {10, 100, 1000, 5000};
+        int[] notes = {10, 100, 500, 1000, 5000};
         for (int i = 0; i < notes.length; i++) {
             final int n = notes[i];
-            btn(8 + i * 52, 124, 50, "Снять " + n, b -> send(Actions.WITHDRAW, n, 0));
+            btn(8 + i * 42, 124, 40, "−" + n, b -> send(Actions.WITHDRAW, n, 0));
         }
     }
 
@@ -111,7 +111,6 @@ public class FinanceScreen extends ContainerScreen<FinanceContainer> {
         }
         if (mfoTab == 1) {
             btn(8, 52, 120, "§aКупить станок", b -> send(Actions.MFO_BUY_PRINTER, 0, 0));
-            btn(8, 92, 120, "Купить ООО «Отмыв»", b -> send(Actions.MFO_BUY_LAUNDER, 0, 0));
             btn(8, 124, 140, "§2Отмыть из слота (−50%)", b -> send(Actions.MFO_LAUNDER, 0, 0));
             return;
         }
@@ -250,24 +249,20 @@ public class FinanceScreen extends ContainerScreen<FinanceContainer> {
     private void drawBusiness(MatrixStack ms, CompoundNBT t) {
         text(ms, "§2§lШАЙКИН И КО", 8, 7);
         text(ms, "§fПечатные станки §7(ставишь сам — дома или на участке)", 8, 25);
-        small(ms, "§7Станок — §e" + Finance.money(t.getInt("printerPrice")) + "§7, печатает §2" + Finance.money(t.getInt("printerDaily"))
-                + "§7/день в «Сундук цеха» (выдаём один раз).", 8, 36, 0xFFFFFF);
+        small(ms, "§7Станок — §e" + Finance.money(t.getInt("printerPrice")) + "§7. Номинал выбираешь в станке: 10₽/5с, 100₽/1м,", 8, 36, 0xFFFFFF);
+        small(ms, "§7500₽/5м, 1000₽/10м, 5000₽/50м. Печать — в «Сундук цеха» или в лоток.", 8, 44, 0xFFFFFF);
         if (t.getBoolean("hasBusiness")) {
-            small(ms, "§a✔ Куплено: " + t.getInt("printers") + "/" + t.getInt("maxPrinters") + ", подключено: " + t.getInt("printersOn")
-                    + " → " + Finance.money(t.getInt("printersOn") * t.getInt("printerDaily")) + "/день", 8, 44, 0xFFFFFF);
-            if (!t.getBoolean("chestLinked")) small(ms, "§c✘ Сундук цеха не поставлен", 132, 56, 0xFFFFFF);
-            else small(ms, "§a✔ Сундук цеха на месте", 132, 56, 0xFFFFFF);
+            small(ms, "§a✔ Куплено станков: " + t.getInt("printers") + ", подключено: " + t.getInt("printersOn"), 132, 56, 0xFFFFFF);
+            small(ms, t.getBoolean("chestLinked") ? "§a✔ Сундук цеха на месте" : "§c✘ Сундук цеха не поставлен", 132, 64, 0xFFFFFF);
         } else {
-            small(ms, "§7Первая покупка = станок + «Сундук цеха».", 8, 44, 0xFFFFFF);
+            small(ms, "§7Первая покупка = станок + «Сундук цеха».", 132, 56, 0xFFFFFF);
         }
-        fill(ms, 8, 69, 212, 70, 0xFF335533);
-        text(ms, "§fООО «Отмыв денег»", 8, 74);
-        small(ms, "§7Аппарат ставишь у себя дома, комиссия " + Finance.percent(t.getDouble("launderCommission")) + ". Здесь, в конторе — "
-                + Finance.percent(t.getDouble("mfoLaunderCommission")) + ".", 8, 84, 0xFFFFFF);
-        if (t.getBoolean("hasLaundering")) small(ms, t.getBoolean("launderPlaced") ? "§a✔ ООО, аппарат стоит" : "§e✔ ООО, аппарат не стоит", 132, 96, 0xFFFFFF);
-        else small(ms, "Цена: §e" + Finance.money(t.getInt("launderPrice")), 132, 96, 0xFFFFFF);
-        small(ms, "§8Банк палит грязные в " + Finance.percent(t.getDouble("dirtyChance")) + " случаев: изымет", 8, 108, 0x777777);
-        small(ms, "§8и снизит рейтинг. Оплата: счёт, потом наличные.", 8, 115, 0x777777);
+        fill(ms, 8, 72, 212, 73, 0xFF335533);
+        small(ms, "§cСтанки прячь! §7Увидит прохожий — настучит, придёт ОБЭП", 8, 78, 0xFFFFFF);
+        small(ms, "§7и прокопает к станку даже сквозь стены. Чем больше станков,", 8, 86, 0xFFFFFF);
+        small(ms, "§7тем чаще ходят «подозрительные типы».", 8, 94, 0xFFFFFF);
+        small(ms, "§7Отмыв здесь: −" + Finance.percent(t.getDouble("mfoLaunderCommission")) + ". Дешевле — через кассу своего заведения.", 8, 104, 0xFFFFFF);
+        small(ms, "§8Банк палит грязные в " + Finance.percent(t.getDouble("dirtyChance")) + " случаев: изымет и снизит рейтинг.", 8, 113, 0x777777);
     }
 
     private void drawMfo(MatrixStack ms, CompoundNBT t) {

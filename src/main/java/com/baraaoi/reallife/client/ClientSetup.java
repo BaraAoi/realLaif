@@ -12,6 +12,9 @@ public class ClientSetup {
             ScreenManager.registerFactory(ModContainers.BANK.get(), FinanceScreen::new);
             ScreenManager.registerFactory(ModContainers.MFO.get(), FinanceScreen::new);
             ScreenManager.registerFactory(ModContainers.CASINO.get(), CasinoScreen::new);
+            ScreenManager.registerFactory(ModContainers.PRINTER.get(), PrinterScreen::new);
+            ScreenManager.registerFactory(ModContainers.BIZ.get(), BizScreen::new);
+            ScreenManager.registerFactory(ModContainers.CRYPTO.get(), CryptoScreen::new);
         });
         RenderingRegistry.registerEntityRenderingHandler(ModEntities.ZHORA.get(), m -> new NpcRenderer<>(m, "zhora"));
         RenderingRegistry.registerEntityRenderingHandler(ModEntities.ALEXANDER.get(), m -> new NpcRenderer<>(m, "alexander"));
@@ -23,5 +26,6 @@ public class ClientSetup {
         RenderingRegistry.registerEntityRenderingHandler(ModEntities.CASHIER.get(), m -> new NpcRenderer<>(m, "cashier"));
         RenderingRegistry.registerEntityRenderingHandler(ModEntities.AMBAL.get(), m -> new NpcRenderer<>(m, "ambal"));
         RenderingRegistry.registerEntityRenderingHandler(ModEntities.VISITOR.get(), VisitorRenderer::new);
+        RenderingRegistry.registerEntityRenderingHandler(ModEntities.WORKER.get(), WorkerRenderer::new);
     }
 }

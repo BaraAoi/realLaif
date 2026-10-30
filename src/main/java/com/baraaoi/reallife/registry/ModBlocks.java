@@ -47,7 +47,7 @@ public class ModBlocks {
             () -> new VendingBlock(AbstractBlock.Properties.create(Material.IRON).hardnessAndResistance(3.0F, 1200.0F).sound(SoundType.METAL).setLightLevel(s -> 7), Trades.VENDING_RESOURCES));
 
     public static final RegistryObject<Block> MONEY_PRINTER = BLOCKS.register("money_printer",
-            () -> new DecorBlock(AbstractBlock.Properties.create(Material.IRON).hardnessAndResistance(3.0F, 6.0F).sound(SoundType.METAL)));
+            () -> new com.baraaoi.reallife.block.MoneyPrinterBlock(AbstractBlock.Properties.create(Material.IRON).hardnessAndResistance(3.0F, 6.0F).sound(SoundType.METAL)));
 
     /** «Сундук цеха»: сюда все станки игрока складывают грязные деньги. Выдаётся один раз. */
     public static final RegistryObject<Block> BUSINESS_CHEST = BLOCKS.register("business_chest",
@@ -68,6 +68,14 @@ public class ModBlocks {
             () -> new CasinoBlock(casino().setLightLevel(s -> 9), CasinoService.ANARCHY));
     public static final RegistryObject<Block> ROULETTE_TABLE = BLOCKS.register("roulette_table",
             () -> new CasinoBlock(casino(), CasinoService.ROULETTE));
+
+    /** Касса легального заведения (неразрушимая, ставится бригадой). */
+    public static final RegistryObject<Block> BIZ_COUNTER = BLOCKS.register("biz_counter",
+            () -> new com.baraaoi.reallife.block.BizCounterBlock(AbstractBlock.Properties.create(Material.WOOD).hardnessAndResistance(-1.0F, 3600000.0F).noDrops().sound(SoundType.WOOD)));
+
+    /** Майнинг-ферма: корпус под комплектующие. */
+    public static final RegistryObject<Block> CRYPTO_RIG = BLOCKS.register("crypto_rig",
+            () -> new com.baraaoi.reallife.block.CryptoRigBlock(AbstractBlock.Properties.create(Material.IRON).hardnessAndResistance(3.0F, 6.0F).sound(SoundType.METAL).setLightLevel(s -> 4)));
 
     private static AbstractBlock.Properties casino() {
         return AbstractBlock.Properties.create(Material.WOOD).hardnessAndResistance(2.5F, 1200.0F).sound(SoundType.WOOD);

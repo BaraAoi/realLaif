@@ -37,5 +37,17 @@
   "entity.reallife.cashier": "Cashier",
   "entity.reallife.ambal": "Casino Bouncer",
   "block.reallife.business_chest": "Workshop Chest",
-  "entity.reallife.visitor": "Visitor"
+  "entity.reallife.visitor": "Visitor",
+  "item.reallife.banknote_500": "500 RUB note",
+  "item.reallife.biz_permit": "Business permit",
+  "block.reallife.biz_counter": "Business counter",
+  "block.reallife.crypto_rig": "Mining rig",
+  "item.reallife.motherboard": "Motherboard",
+  "item.reallife.cpu": "CPU",
+  "item.reallife.ram": "RAM",
+  "item.reallife.psu": "Power supply",
+  "item.reallife.cooler": "Cooler",
+  "item.reallife.gpu": "Graphics card",
+  "item.reallife.phone": "Smartphone",
+  "entity.reallife.worker": "Worker"
 }

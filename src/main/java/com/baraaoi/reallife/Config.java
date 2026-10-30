@@ -49,6 +49,19 @@ public class Config {
     public static final ForgeConfigSpec.IntValue PRINTER_PRICE;
     public static final ForgeConfigSpec.IntValue PRINTER_DAILY;
     public static final ForgeConfigSpec.IntValue MAX_PRINTERS;
+    public static final ForgeConfigSpec.IntValue PRINTER_COST;
+    public static final ForgeConfigSpec.IntValue RAID_FINE;
+    public static final ForgeConfigSpec.IntValue RAID_JAIL_TICKS;
+    public static final ForgeConfigSpec.IntValue SPOT_RANGE;
+
+    // ===== Легальный бизнес / крипта =====
+    public static final ForgeConfigSpec.DoubleValue LAUNDER_SAFE_SHARE;
+    public static final ForgeConfigSpec.DoubleValue LAUNDER_RISK_SLOPE;
+    public static final ForgeConfigSpec.DoubleValue LAUNDER_TAX;
+    public static final ForgeConfigSpec.DoubleValue TAX_FINE_MULT;
+    public static final ForgeConfigSpec.IntValue TAX_JAIL_TICKS;
+    public static final ForgeConfigSpec.DoubleValue BTC_PER_GPU_SECOND;
+    public static final ForgeConfigSpec.IntValue BTC_BASE_RATE;
 
     // ===== Казино =====
     public static final ForgeConfigSpec.BooleanValue SPAWN_CASINO;
@@ -135,10 +148,18 @@ public class Config {
                 .defineInRange("dailyDirtyMoney", 500, 0, 10000000);
         PRINTER_DAILY = b.comment("Сколько грязных денег печатает один станок за игровой день (кратно 100)")
                 .defineInRange("printerDaily", 300, 0, 10000000);
-        PRINTER_PRICE = b.comment("Цена печатного станка в МФО (первая покупка даёт ещё и «Сундук цеха»)")
+        PRINTER_PRICE = b.comment("Устарело (версия 5): цена станка теперь printerCost")
                 .defineInRange("printerPrice", 3000, 0, 10000000);
-        MAX_PRINTERS = b.comment("Максимум станков у игрока (куплено и подключено)")
-                .defineInRange("maxPrinters", 8, 1, 12);
+        MAX_PRINTERS = b.comment("Устарело (версия 5): лимита станков больше нет")
+                .defineInRange("maxPrinters", 8, 1, 1000);
+        PRINTER_COST = b.comment("Цена печатного станка в МФО (первая покупка даёт ещё и «Сундук цеха»)")
+                .defineInRange("printerCost", 1000, 0, 10000000);
+        RAID_FINE = b.comment("Штраф ОБЭП за каждый найденный станок")
+                .defineInRange("raidFine", 3000, 0, 10000000);
+        RAID_JAIL_TICKS = b.comment("Сколько тиков СИЗО, если ОБЭП нашёл станок (3600 = 3 минуты)")
+                .defineInRange("raidJailTicks", 3600, 0, 1000000);
+        SPOT_RANGE = b.comment("С какого расстояния NPC замечают станок (если его видно)")
+                .defineInRange("spotRange", 12, 2, 64);
         LAUNDER_PRICE = b.comment("Цена ООО «Отмыв»")
                 .defineInRange("launderPrice", 8000, 0, 10000000);
         LAUNDER_COMMISSION = b.comment("Комиссия ООО «Отмыв» (аппарат у игрока дома)")
@@ -147,6 +168,26 @@ public class Config {
                 .defineInRange("mfoLaunderCommission", 0.5, 0.0, 1.0);
         DIRTY_CAUGHT_CHANCE = b.comment("Шанс, что банк «спалит» грязные деньги при внесении и изымет их")
                 .defineInRange("dirtyCaughtChance", 0.8, 0.0, 1.0);
+        b.pop();
+
+        b.comment("Легальный бизнес (заведения) и отмывание через кассу").push("legal");
+        LAUNDER_SAFE_SHARE = b.comment("Сколько грязных в день можно провести через кассу без риска (доля базовой прибыли заведения)")
+                .defineInRange("launderSafeShare", 0.15, 0.0, 10.0);
+        LAUNDER_RISK_SLOPE = b.comment("Как быстро растёт риск сверх безопасной доли: шанс = (сумма/база - безопасная доля) * slope")
+                .defineInRange("launderRiskSlope", 1.5, 0.0, 100.0);
+        LAUNDER_TAX = b.comment("Налог с отмытой выручки (НДФЛ)")
+                .defineInRange("launderTax", 0.13, 0.0, 1.0);
+        TAX_FINE_MULT = b.comment("Штраф налоговой при поимке: доля от (базовой прибыли заведения + суммы грязных)")
+                .defineInRange("taxFineMult", 2.0, 0.0, 100.0);
+        TAX_JAIL_TICKS = b.comment("Сколько тиков СИЗО при поимке налоговой (6000 = 5 минут)")
+                .defineInRange("taxJailTicks", 6000, 0, 1000000);
+        b.pop();
+
+        b.comment("Криптовалюта").push("crypto");
+        BTC_PER_GPU_SECOND = b.comment("Сколько BTC добывает одна видеокарта за секунду")
+                .defineInRange("btcPerGpuSecond", 0.0000005, 0.0, 1.0);
+        BTC_BASE_RATE = b.comment("Средний курс BTC в рублях (курс гуляет вокруг него)")
+                .defineInRange("btcBaseRate", 1000000, 1000, 1000000000);
         b.pop();
 
         b.comment("Мир").push("world");

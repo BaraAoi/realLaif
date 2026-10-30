@@ -1,0 +1,8 @@
+{
+  "parent": "minecraft:block/orientable",
+  "textures": {
+    "top": "reallife:block/crypto_rig_top",
+    "front": "reallife:block/crypto_rig_front",
+    "side": "reallife:block/crypto_rig_side"
+  }
+}

@@ -572,4 +572,100 @@ vis('bank_scammer', SKIN, (60, 50, 40), (30, 30, 35), (30, 30, 35), (10, 10, 10)
 vis('postman', SKIN, (110, 75, 45), (30, 60, 140), (30, 60, 140), (30, 25, 20), hat=(30, 60, 140), extra=badge((250, 250, 250)))
 vis('sociologist', SKIN, (150, 100, 60), (230, 230, 230), (100, 100, 110), (60, 40, 30), extra=combo(glasses, badge((40, 120, 220))))
 
+
+# ---------------- Round 5: подозрительный тип, ОБЭП, работники, крипта, телефон, касса, 500₽
+def hood(c):
+    def f(im):
+        rect(im, 0, 8, 7, 15, c); rect(im, 16, 8, 23, 15, c); rect(im, 24, 8, 31, 15, c); rect(im, 8, 8, 15, 10, c)
+        rect(im, 32, 0, 63, 15, (0, 0, 0, 0)); rect(im, 40, 0, 47, 7, c)
+    return f
+
+
+def obep_vest(im):
+    rect(im, 20, 20, 27, 31, (30, 30, 35))
+    rect(im, 21, 24, 26, 25, (240, 240, 240))
+    rect(im, 32, 20, 39, 31, (30, 30, 35))
+    rect(im, 33, 24, 38, 25, (240, 240, 240))
+
+
+vis('snoop', (210, 170, 140), (50, 40, 30), (70, 70, 75), (40, 40, 50), (20, 20, 20), extra=combo(hood((55, 55, 60)), glasses, stubble))
+vis('obep', SKIN, (40, 30, 25), (50, 55, 60), (35, 40, 50), (10, 10, 10), hat=(25, 25, 30), extra=combo(obep_vest, badge((230, 190, 50))))
+
+
+def worker(name, *args, **kw):
+    skin('worker/' + name, *args, **kw)
+
+
+worker('shawarma', (200, 150, 110), (20, 15, 10), (240, 240, 240), (60, 60, 70), (40, 30, 20), hat=(240, 240, 240), extra=combo(apron((200, 60, 40)), mustache))
+worker('minimarket', (230, 190, 165), (170, 90, 40), (60, 140, 200), (50, 50, 70), (60, 40, 30), extra=combo(apron((40, 160, 80)), badge((250, 250, 250))))
+worker('car_wash', SKIN, (40, 30, 20), (30, 80, 170), (30, 80, 170), (230, 200, 30), hat=(30, 80, 170), extra=helmet_stripe)
+worker('quarry', SKIN, (90, 70, 50), (230, 120, 20), (60, 60, 70), (60, 40, 20), hat=(250, 210, 30), extra=combo(helmet_stripe, stubble))
+worker('pawnshop', SKIN, (30, 25, 20), (60, 30, 30), (30, 30, 35), (10, 10, 10), extra=combo(tie((200, 170, 40)), glasses, mustache))
+worker('gas_station', SKIN, (110, 75, 45), (240, 200, 20), (40, 40, 50), (20, 20, 20), hat=(230, 40, 30), extra=badge((230, 40, 30)))
+worker('electronics', SKIN, (150, 100, 60), (230, 100, 20), (40, 40, 50), (20, 20, 20), extra=combo(badge((250, 250, 250)), tie((40, 40, 45))))
+
+note((200, 120, 200), (110, 40, 110), [(7, 6), (8, 6), (7, 7), (8, 8), (7, 9), (8, 9), (10, 7), (10, 8), (11, 6), (11, 9), (12, 7), (12, 8)], 'banknote_500')
+
+PCB = (30, 110, 60)
+
+
+def chip(base=(30, 30, 35)):
+    im = img()
+    return im
+
+
+mb = img(); rect(mb, 1, 1, 14, 14, PCB); outline(mb, 1, 1, 14, 14, (20, 70, 40))
+rect(mb, 4, 4, 7, 7, (190, 190, 195)); rect(mb, 9, 3, 12, 4, (40, 40, 45)); rect(mb, 9, 6, 12, 7, (40, 40, 45))
+rect(mb, 3, 10, 12, 11, (30, 30, 35)); pix(mb, [(2, 2), (13, 13), (13, 2), (2, 13)], GOLD)
+mb.save(f'{R}/item/motherboard.png')
+
+cpu = img(); rect(cpu, 3, 3, 12, 12, (160, 160, 165)); outline(cpu, 3, 3, 12, 12, (90, 90, 95)); rect(cpu, 5, 5, 10, 10, (200, 200, 205))
+for i in range(4, 12, 2):
+    pix(cpu, [(i, 2), (i, 13), (2, i), (13, i)], GOLD)
+pix(cpu, [(6, 7), (7, 7), (8, 7), (9, 7)], (60, 60, 70)); cpu.save(f'{R}/item/cpu.png')
+
+ram = img(); rect(ram, 1, 5, 14, 10, PCB); outline(ram, 1, 5, 14, 10, (20, 70, 40))
+for x in (2, 5, 8, 11): rect(ram, x, 6, x + 1, 8, (30, 30, 35))
+for x in range(2, 14, 2): ram.putpixel((x, 10), GOLD + (255,))
+ram.save(f'{R}/item/ram.png')
+
+psu = img(); rect(psu, 2, 3, 13, 12, (50, 50, 55)); outline(psu, 2, 3, 13, 12, (25, 25, 28))
+rect(psu, 4, 5, 9, 10, (80, 80, 85)); outline(psu, 4, 5, 9, 10, (30, 30, 35)); pix(psu, [(6, 7), (7, 8), (6, 8), (7, 7)], (120, 120, 125))
+pix(psu, [(11, 5), (11, 7)], (230, 200, 30)); pix(psu, [(11, 9)], (220, 40, 30)); psu.save(f'{R}/item/psu.png')
+
+cool = img(); rect(cool, 2, 2, 13, 13, (60, 60, 65)); outline(cool, 2, 2, 13, 13, (30, 30, 35))
+for (x, y) in [(7, 4), (8, 4), (10, 6), (10, 7), (8, 10), (7, 10), (4, 8), (4, 7), (6, 5), (9, 5), (9, 9), (6, 9)]:
+    cool.putpixel((x, y), (120, 190, 230, 255))
+rect(cool, 7, 7, 8, 8, (180, 180, 185)); cool.save(f'{R}/item/cooler.png')
+
+gpu = img(); rect(gpu, 1, 4, 14, 11, (35, 35, 40)); outline(gpu, 1, 4, 14, 11, (15, 15, 18))
+for cx in (4, 10):
+    rect(gpu, cx - 2, 6, cx + 1, 9, (70, 70, 80)); pix(gpu, [(cx - 1, 7), (cx, 8)], (160, 160, 170))
+rect(gpu, 2, 12, 12, 12, GOLD); rect(gpu, 1, 3, 14, 3, (120, 200, 90)); gpu.save(f'{R}/item/gpu.png')
+
+ph = img(); rect(ph, 4, 1, 11, 14, (25, 25, 30)); outline(ph, 4, 1, 11, 14, (70, 70, 80))
+rect(ph, 5, 3, 10, 11, (60, 130, 210)); pix(ph, [(6, 4), (7, 4), (8, 4)], (240, 200, 60)); rect(ph, 6, 6, 9, 6, (230, 230, 240))
+rect(ph, 6, 8, 8, 8, (230, 230, 240)); pix(ph, [(7, 13), (8, 13)], (120, 120, 130)); ph.save(f'{R}/item/phone.png')
+
+bz = paper(); rect(bz, 7, 9, 11, 13, (60, 160, 70)); outline(bz, 7, 9, 11, 13, (30, 100, 40)); pix(bz, [(9, 10), (9, 11), (9, 12)], (240, 240, 200))
+bz.save(f'{R}/item/biz_permit.png')
+
+# майнинг-ферма
+rs = metal((45, 45, 50), 5); outline(rs, 0, 0, 15, 15, (20, 20, 22))
+for y in range(3, 13, 3): rect(rs, 2, y, 13, y, (25, 25, 28))
+rs.save(f'{R}/block/crypto_rig_side.png')
+rt = metal((40, 40, 45), 4); outline(rt, 0, 0, 15, 15, (20, 20, 22))
+for x in range(3, 13, 2): rect(rt, x, 3, x, 12, (25, 25, 28))
+rt.save(f'{R}/block/crypto_rig_top.png')
+rfz = metal((40, 40, 45), 4); outline(rfz, 0, 0, 15, 15, (20, 20, 22))
+for i, cy in enumerate((3, 8)):
+    rect(rfz, 2, cy, 13, cy + 3, (25, 25, 30)); pix(rfz, [(4, cy + 1), (7, cy + 1), (10, cy + 1)], (80, 220, 120) if i == 0 else (220, 80, 200))
+rect(rfz, 2, 13, 13, 13, (80, 220, 120)); rfz.save(f'{R}/block/crypto_rig_front.png')
+
+# касса заведения
+ks = planks((150, 110, 70)); outline(ks, 0, 0, 15, 15, (90, 65, 40)); ks.save(f'{R}/block/biz_counter_side.png')
+kt = planks((170, 130, 85)); outline(kt, 0, 0, 15, 15, (90, 65, 40)); rect(kt, 9, 3, 13, 7, (40, 40, 45)); kt.save(f'{R}/block/biz_counter_top.png')
+kf = planks((150, 110, 70)); outline(kf, 0, 0, 15, 15, (90, 65, 40)); rect(kf, 3, 3, 12, 8, (40, 40, 45)); rect(kf, 4, 4, 11, 7, (90, 200, 120))
+pix(kf, [(5, 5), (6, 5), (8, 6), (9, 6)], (20, 60, 30)); rect(kf, 3, 11, 12, 12, (60, 160, 70)); kf.save(f'{R}/block/biz_counter_front.png')
+
 print('ok')

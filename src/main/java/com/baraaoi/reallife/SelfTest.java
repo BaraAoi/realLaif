@@ -3,6 +3,7 @@ package com.baraaoi.reallife;
 import com.baraaoi.reallife.economy.Structure;
 import com.baraaoi.reallife.economy.CasinoService;
 import com.baraaoi.reallife.entity.CashierEntity;
+import net.minecraft.item.Item;
 import net.minecraft.item.Items;
 import net.minecraft.nbt.CompoundNBT;
 
@@ -256,12 +257,31 @@ public class SelfTest {
         TileEntity bizChest = ow.getTileEntity(chestPos);
         check(bizChest instanceof FridgeTileEntity && "Сундук цеха".equals(((FridgeTileEntity) bizChest).getDisplayName().getString()), "business chest block works");
         biz.businessChest = chestPos;
-        int perPrinter = Config.PRINTER_DAILY.get() / 100;
-        check(BankService.produceDirty(s, biz) == 2 * perPrinter, "2 printers print into the linked chest");
-        ow.setBlockState(pr2, Blocks.AIR.getDefaultState(), 3);
-        check(BankService.produceDirty(s, biz) == perPrinter && biz.printerList.size() == 1, "removed printer stops printing");
-        check(((IInventory) bizChest).count(ModItems.DIRTY_MONEY.get()) == 3 * perPrinter, "dirty money in the business chest");
+        // станок v5: печать по номиналу в «Сундук цеха», без него — в свой лоток
+        TileEntity pte1 = ow.getTileEntity(pr1);
+        check(pte1 instanceof com.baraaoi.reallife.tile.PrinterTileEntity, "printer has a tile entity");
+        com.baraaoi.reallife.tile.PrinterTileEntity pt1 = (com.baraaoi.reallife.tile.PrinterTileEntity) pte1;
+        pt1.setOwner(biz.id);
+        pt1.setDenomIdx(2);
+        check(pt1.denom() == 500 && com.baraaoi.reallife.tile.PrinterTileEntity.TICKS[0] == 100
+                && com.baraaoi.reallife.tile.PrinterTileEntity.TICKS[4] == 60000, "printer denominations: 10₽/5с … 5000₽/50мин");
+        check(pt1.printOne() && pt1.printOne(), "printer prints");
+        check(((IInventory) bizChest).count(ModItems.DIRTY_MONEY.get()) == 2, "printed notes go to the business chest");
+        ItemStack printedNote = ((IInventory) bizChest).getStackInSlot(0);
+        check(com.baraaoi.reallife.item.DirtyMoneyItem.denom(printedNote) == 500 && ItemValues.stackValue(printedNote) == 1000, "dirty 500₽ notes, value " + ItemValues.stackValue(printedNote));
+        ((IInventory) bizChest).clear();
+        biz.businessChest = BlockPos.ZERO;
+        pt1.setDenomIdx(0);
+        check(pt1.printOne() && pt1.count(ModItems.DIRTY_MONEY.get()) == 1, "without a chest the printer fills its own tray");
+        pt1.clear();
+        biz.businessChest = chestPos;
+        for (int i = 0; i < 120; i++) pt1.tick();
+        check(pt1.getStatus() == com.baraaoi.reallife.tile.PrinterTileEntity.WORKING, "registered printer works: status " + pt1.getStatus());
         check(ItemValues.valueOf(new ItemStack(ModItems.DIRTY_MONEY.get())) == 100, "dirty money worth 100");
+        check(Config.PRINTER_COST.get() < 3000, "printer is cheaper now");
+        ow.setBlockState(pr2, Blocks.AIR.getDefaultState(), 3);
+        Business.workingPrinters(ow, biz);
+        check(biz.printerList.size() == 1, "removed printer is dropped");
         // старый подвал: станки переносятся в список
         biz.businessMin = base.add(700, -20, 0);
         biz.businessMax = biz.businessMin.add(8, 5, 8);
@@ -286,7 +306,7 @@ public class SelfTest {
         data.landOwners.remove(EconomyData.chunkKey(outLand));
 
         // ---- случайные гости
-        check(Visitors.eventKinds().size() == VisitorKind.values().length - 3 && Visitors.eventKinds().size() >= 19, "visitor kinds: " + Visitors.eventIds());
+        check(Visitors.eventKinds().size() == VisitorKind.values().length - 5 && Visitors.eventKinds().size() >= 19, "visitor kinds: " + Visitors.eventIds());
         for (VisitorKind k : VisitorKind.values()) {
             java.nio.file.Path tex = net.minecraftforge.fml.ModList.get().getModFileById(RealLife.MODID).getFile()
                     .findResource("assets/reallife/textures/entity/visitor/" + k.id() + ".png");
@@ -332,6 +352,145 @@ public class SelfTest {
         BlockPos box = Visitors.buildNeighborBox(ow, data, vmin, vmax);
         check(box != null && ow.getBlockState(box).getBlock() == Blocks.DIRT && ow.isAirBlock(box.add(1, 1, 1))
                 && ow.getBlockState(box.add(1, 2, 1)).getBlock() == Blocks.DIRT, "neighbor dirt box at " + box);
+
+        // ---- v5: станки видно — стучат; ОБЭП копает и всё восстанавливает
+        BlockPos spot = base.add(0, 30, 900);
+        for (BlockPos p : BlockPos.getAllInBoxMutable(spot.add(-6, -1, -6), spot.add(6, -1, 6))) ow.setBlockState(p.toImmutable(), Blocks.STONE.getDefaultState(), 2);
+        BlockPos eye = spot.add(-5, 1, 0);
+        check(com.baraaoi.reallife.event.Raids.canSee(ow, new net.minecraft.util.math.vector.Vector3d(eye.getX() + 0.5, eye.getY() + 0.6, eye.getZ() + 0.5), spot),
+                "npc sees an open printer");
+        ow.setBlockState(spot.add(-2, 0, 0), Blocks.STONE.getDefaultState(), 2);
+        ow.setBlockState(spot.add(-2, 1, 0), Blocks.STONE.getDefaultState(), 2);
+        ow.setBlockState(spot.add(-3, 0, 0), Blocks.STONE.getDefaultState(), 2);
+        ow.setBlockState(spot.add(-3, 1, 0), Blocks.STONE.getDefaultState(), 2);
+        check(!com.baraaoi.reallife.event.Raids.canSee(ow, new net.minecraft.util.math.vector.Vector3d(eye.getX() + 0.5, eye.getY() + 0.6, eye.getZ() + 0.5), spot),
+                "wall hides the printer");
+        ow.setBlockState(spot.add(-2, 0, 0), Blocks.GLASS.getDefaultState(), 2);
+        ow.setBlockState(spot.add(-2, 1, 0), Blocks.GLASS.getDefaultState(), 2);
+        ow.setBlockState(spot.add(-3, 0, 0), Blocks.GLASS.getDefaultState(), 2);
+        ow.setBlockState(spot.add(-3, 1, 0), Blocks.GLASS.getDefaultState(), 2);
+        check(com.baraaoi.reallife.event.Raids.canSee(ow, new net.minecraft.util.math.vector.Vector3d(eye.getX() + 0.5, eye.getY() + 0.6, eye.getZ() + 0.5), spot),
+                "glass does not hide the printer");
+        // тоннель: каменный куб вокруг цели, копаем и восстанавливаем
+        for (BlockPos p : BlockPos.getAllInBoxMutable(spot.add(-6, 0, -6), spot.add(6, 4, 6))) ow.setBlockState(p.toImmutable(), Blocks.STONE.getDefaultState(), 2);
+        ow.setBlockState(spot.add(-4, 1, 0), Blocks.CHEST.getDefaultState(), 2);
+        ((IInventory) ow.getTileEntity(spot.add(-4, 1, 0))).setInventorySlotContents(0, new ItemStack(Items.EMERALD, 7));
+        ow.setBlockState(spot, Blocks.AIR.getDefaultState(), 2);
+        net.minecraft.nbt.ListNBT tunnel = new net.minecraft.nbt.ListNBT();
+        BlockPos cur = spot.add(-6, 0, 0);
+        int steps = 0;
+        while (!com.baraaoi.reallife.event.Raids.arrived(cur, spot) && steps < 40) {
+            BlockPos nx = com.baraaoi.reallife.event.Raids.nextCell(cur, spot, steps++);
+            check(com.baraaoi.reallife.event.Raids.dig(ow, data, tunnel, nx, spot) && com.baraaoi.reallife.event.Raids.dig(ow, data, tunnel, nx.up(), spot), "dig " + nx);
+            cur = nx;
+        }
+        check(com.baraaoi.reallife.event.Raids.arrived(cur, spot) && ow.isAirBlock(spot.add(-4, 1, 0)) && tunnel.size() >= 8,
+                "obep tunnel reaches the tip (" + steps + " steps, " + tunnel.size() + " blocks)");
+        ow.setBlockState(spot.add(0, 8, 0), Blocks.BEDROCK.getDefaultState(), 2);
+        check(!com.baraaoi.reallife.event.Raids.dig(ow, data, new net.minecraft.nbt.ListNBT(), spot.add(0, 8, 0), spot), "obep cannot dig through bedrock");
+        ow.setBlockState(spot.add(0, 8, 0), Blocks.AIR.getDefaultState(), 2);
+        Blueprint.restore(ow, tunnel);
+        check(ow.getBlockState(spot.add(-5, 0, 0)).getBlock() == Blocks.STONE && ow.getBlockState(spot.add(-4, 1, 0)).getBlock() == Blocks.CHEST
+                && ((IInventory) ow.getTileEntity(spot.add(-4, 1, 0))).count(Items.EMERALD) == 7, "nothing found: everything restored, chest contents too");
+        check(Visitors.interval(1000) == 1800, "many printers - visitors every 90 s");
+        check(com.baraaoi.reallife.event.Raids.snoopInterval(20) == 1800 && com.baraaoi.reallife.event.Raids.snoopInterval(1) > 6000, "more printers - more snoops");
+
+        // ---- v5: легальный бизнес
+        UUID bizOwner = UUID.randomUUID();
+        Account bo = data.getOrCreate(bizOwner);
+        BlockPos lot = base.add(0, 30, 1000);
+        for (BlockPos p : BlockPos.getAllInBoxMutable(lot.add(-8, -1, -2), lot.add(8, -1, 14))) ow.setBlockState(p.toImmutable(), Blocks.STONE.getDefaultState(), 2);
+        String bsite = com.baraaoi.reallife.structure.BizBuildings.checkSite(ow, lot, Direction.SOUTH, data, bizOwner);
+        check(bsite == null, "business site accepted (" + bsite + ")");
+        int bizBefore = data.businesses.size();
+        java.util.List<com.baraaoi.reallife.economy.LegalBusiness> made = new java.util.ArrayList<>();
+        int bx = 0;
+        for (com.baraaoi.reallife.economy.BizType bt : com.baraaoi.reallife.economy.BizType.values()) {
+            BlockPos o = lot.add(bx, 0, 0);
+            for (BlockPos p : BlockPos.getAllInBoxMutable(o.add(-8, -1, -2), o.add(8, -1, 14))) ow.setBlockState(p.toImmutable(), Blocks.STONE.getDefaultState(), 2);
+            com.baraaoi.reallife.economy.LegalBusiness lb = com.baraaoi.reallife.economy.LegalBiz.register(data, ow, o, Direction.SOUTH, bt, bizOwner, "Test");
+            made.add(lb);
+            check(ow.getBlockState(lb.counter).getBlock() == ModBlocks.BIZ_COUNTER.get(), bt.id() + " built with a counter at " + lb.counter);
+            check(data.bizAtCounter(lb.counter) == lb, bt.id() + " registered");
+            java.nio.file.Path wt = net.minecraftforge.fml.ModList.get().getModFileById(RealLife.MODID).getFile()
+                    .findResource("assets/reallife/textures/entity/worker/" + bt.id() + ".png");
+            check(java.nio.file.Files.exists(wt), "worker texture " + bt.id());
+            bx += 30;
+        }
+        String overlap = com.baraaoi.reallife.structure.BizBuildings.checkSite(ow, lot.add(2, 0, 2), Direction.SOUTH, data, UUID.randomUUID());
+        check(overlap != null, "business on a business refused: " + overlap);
+        check(data.ownsBusiness(bizOwner) && data.bizOf(bizOwner).size() == made.size(), "owner has businesses");
+        com.baraaoi.reallife.economy.LegalBusiness shop = made.get(1);
+        com.baraaoi.reallife.entity.WorkerEntity worker = com.baraaoi.reallife.economy.LegalBiz.spawnWorker(ow, shop);
+        check(worker != null && shop.worker && ow.getEntityByUuid(shop.workerId) == worker, "worker hired");
+        double bal0 = bo.balance;
+        com.baraaoi.reallife.economy.LegalBiz.processDay(s, data);
+        check(bo.balance != bal0 && shop.days == 1 && !made.get(0).worker && made.get(0).lastProfit == 0,
+                "business with a worker earns, without - closed (" + Finance.money(bo.balance - bal0) + ")");
+        java.util.Random lr = new java.util.Random(7);
+        double sum = 0, lucky = 0;
+        for (int i = 0; i < 4000; i++) {
+            sum += com.baraaoi.reallife.economy.LegalBiz.roll(lr, 0).mult;
+            lucky += com.baraaoi.reallife.economy.LegalBiz.roll(lr, 0.3).mult;
+        }
+        check(sum / 4000 > 0.9 && sum / 4000 < 1.3 && lucky > sum, "luck: avg x" + (sum / 4000) + ", with luck x" + (lucky / 4000));
+        int sbase = shop.type.base;
+        check(com.baraaoi.reallife.economy.LegalBiz.launderChance(sbase, 0, sbase * 0.15) == 0, "laundering up to 15% of base profit is safe");
+        double c1 = com.baraaoi.reallife.economy.LegalBiz.launderChance(sbase, 0, sbase * 0.3);
+        double c2 = com.baraaoi.reallife.economy.LegalBiz.launderChance(sbase, sbase * 0.3, sbase * 0.5);
+        check(c1 > 0 && c2 > c1, "risk grows: " + c1 + " -> " + c2);
+        CompoundNBT dsave = data.write(new CompoundNBT());
+        EconomyData dcopy = new EconomyData();
+        dcopy.read(dsave);
+        check(dcopy.bizAtCounter(shop.counter) != null && dcopy.bizAtCounter(shop.counter).type == shop.type, "businesses saved");
+        worker.remove();
+        for (com.baraaoi.reallife.economy.LegalBusiness lb : made) data.businesses.remove(lb);
+        check(data.businesses.size() == bizBefore, "test businesses removed");
+        data.reset(bizOwner);
+
+        // ---- v5: майнинг-ферма, крипта, опт
+        BlockPos rigPos = spot.add(0, 10, 0);
+        ow.setBlockState(rigPos, ModBlocks.CRYPTO_RIG.get().getDefaultState(), 3);
+        TileEntity rte = ow.getTileEntity(rigPos);
+        check(rte instanceof com.baraaoi.reallife.tile.CryptoRigTileEntity, "rig tile entity");
+        com.baraaoi.reallife.tile.CryptoRigTileEntity rig = (com.baraaoi.reallife.tile.CryptoRigTileEntity) rte;
+        rig.work(100);
+        check(rig.getMined() == 0 && !rig.complete() && rig.missing().size() == 6, "empty rig does not mine: " + rig.missing());
+        Item[] parts = {ModItems.MOTHERBOARD.get(), ModItems.CPU.get(), ModItems.RAM.get(), ModItems.PSU.get(), ModItems.COOLER.get()};
+        for (int i = 0; i < parts.length; i++) {
+            check(com.baraaoi.reallife.tile.CryptoRigTileEntity.fits(i, new ItemStack(parts[i])), "slot " + i + " takes " + parts[i].getRegistryName());
+            rig.setInventorySlotContents(i, new ItemStack(parts[i]));
+        }
+        check(!com.baraaoi.reallife.tile.CryptoRigTileEntity.fits(0, new ItemStack(ModItems.GPU.get())), "gpu does not fit the motherboard slot");
+        rig.work(100);
+        check(rig.getMined() == 0 && rig.missing().size() == 1, "rig without gpu does not mine");
+        rig.setInventorySlotContents(5, new ItemStack(ModItems.GPU.get()));
+        rig.setInventorySlotContents(6, new ItemStack(ModItems.GPU.get()));
+        rig.work(100);
+        check(rig.complete() && rig.gpus() == 2 && Math.abs(rig.getMined() - 200 * Config.BTC_PER_GPU_SECOND.get()) < 1e-12, "full rig mines: " + rig.getMined());
+        double took = rig.takeMined();
+        check(took > 0 && rig.getMined() == 0, "mined btc withdrawn");
+        double rate = Config.BTC_BASE_RATE.get();
+        java.util.Random cr = new java.util.Random(3);
+        for (int i = 0; i < 2000; i++) rate = com.baraaoi.reallife.economy.Crypto.step(rate, Config.BTC_BASE_RATE.get(), cr);
+        check(rate >= Config.BTC_BASE_RATE.get() * 0.29 && rate <= Config.BTC_BASE_RATE.get() * 4.01, "btc rate stays in range: " + rate);
+        rig.clear();
+        ow.setBlockState(rigPos, Blocks.AIR.getDefaultState(), 3);
+        java.util.List<com.baraaoi.reallife.economy.Wholesale.Lot> lots = com.baraaoi.reallife.economy.Wholesale.lots();
+        int cheaper = 0;
+        for (com.baraaoi.reallife.economy.Wholesale.Lot l : lots) {
+            if (l.retail > 0) {
+                check(l.price < l.retail, "wholesale " + l.name() + " cheaper: " + l.price + " < " + l.retail);
+                check(l.price >= ItemValues.valueOf(new ItemStack(l.item.get())) * l.count, "wholesale " + l.name() + " not resellable to the bank");
+                cheaper++;
+            }
+        }
+        check(cheaper >= 6, "wholesale lots: " + cheaper);
+        Account ph = data.getOrCreate(UUID.randomUUID());
+        ph.crypto = 0.01;
+        CompoundNBT phSave = ph.write();
+        check(Math.abs(Account.read(phSave).crypto - 0.01) < 1e-12, "crypto wallet saved");
+        data.reset(ph.id);
 
         // ---- ипотека: погашение до постройки не аннулирует ордер
         Account mo = data.getOrCreate(UUID.randomUUID());

@@ -1,7 +1,7 @@
 package com.baraaoi.reallife.economy;
 
 import com.baraaoi.reallife.Config;
-import com.baraaoi.reallife.item.DirtyMoneyItem;
+import com.baraaoi.reallife.tile.PrinterTileEntity;
 import com.baraaoi.reallife.registry.ModBlocks;
 import com.baraaoi.reallife.registry.ModItems;
 import net.minecraft.block.Block;
@@ -19,14 +19,14 @@ import net.minecraft.world.server.ServerWorld;
 import java.util.Iterator;
 
 /**
- * Подпольный бизнес v4: станки покупаются в МФО и ставятся самим игроком — в своём доме,
- * на своём участке (или в старом подвале цеха). Все станки печатают в один «Сундук цеха»,
- * который выдаётся один раз при первой покупке.
+ * Подпольный бизнес v5: станки покупаются в МФО (без лимита) и ставятся самим игроком — в своём доме,
+ * на своём участке (или в старом подвале цеха). Каждый станок печатает купюры выбранного номинала
+ * в «Сундук цеха» (или в свой лоток). Засвеченные станки ищет ОБЭП — см. {@link com.baraaoi.reallife.event.Raids}.
  */
 public final class Business {
     private Business() {}
 
-    public static final int OK = 0, NOT_OWNER = 1, LIMIT = 2, ALREADY = 3;
+    public static final int OK = 0, NOT_OWNER = 1, ALREADY = 3;
 
     private static String xyz(BlockPos p) {
         return p.getX() + ", " + p.getY() + ", " + p.getZ();
@@ -51,7 +51,6 @@ public final class Business {
         BlockPos ip = pos.toImmutable();
         if (a.printerList.contains(ip)) return ALREADY;
         if (!inOwnProperty(data, a, ip)) return NOT_OWNER;
-        if (a.printerList.size() >= Config.MAX_PRINTERS.get()) return LIMIT;
         a.printerList.add(ip);
         data.markDirty();
         return OK;
@@ -67,7 +66,7 @@ public final class Business {
             if (ow.getBlockState(p).getBlock() != ModBlocks.MONEY_PRINTER.get()) it.remove();
             else n++;
         }
-        return Math.min(n, Config.MAX_PRINTERS.get());
+        return n;
     }
 
     /** Старый мир: станки из подвала цеха перенести в список. */
@@ -77,8 +76,12 @@ public final class Business {
                 * (a.businessMax.getZ() - a.businessMin.getZ() + 1);
         if (volume <= 0 || volume > 4000) return;
         for (BlockPos p : BlockPos.getAllInBoxMutable(a.businessMin, a.businessMax)) {
-            if (ow.getBlockState(p).getBlock() == ModBlocks.MONEY_PRINTER.get() && !a.printerList.contains(p)
-                    && a.printerList.size() < Config.MAX_PRINTERS.get()) a.printerList.add(p.toImmutable());
+            if (ow.getBlockState(p).getBlock() == ModBlocks.MONEY_PRINTER.get() && !a.printerList.contains(p)) {
+                BlockPos ip = p.toImmutable();
+                a.printerList.add(ip);
+                TileEntity te = ow.getTileEntity(ip);
+                if (te instanceof PrinterTileEntity && ((PrinterTileEntity) te).getOwner() == null) ((PrinterTileEntity) te).setOwner(a.id);
+            }
         }
     }
 
@@ -100,14 +103,18 @@ public final class Business {
                 return;
             }
             int r = registerPrinter(data, a, pos);
+            if (r == OK || r == ALREADY) {
+                TileEntity te = p.world.getTileEntity(pos);
+                if (te instanceof PrinterTileEntity) ((PrinterTileEntity) te).setOwner(a.id);
+            }
             if (r == OK) {
                 BankService.msg(p, BankService.MFO + "§aСтанок подключён (" + xyz(pos) + "). §fРаботает станков: §e" + a.printerList.size()
-                        + "§f → §2" + Finance.money(a.printerList.size() * Config.PRINTER_DAILY.get()) + "§f/день"
-                        + (a.businessChest.equals(BlockPos.ZERO) ? "§c. Поставь «Сундук цеха» — без него печатать некуда!" : " в сундук цеха."));
+                        + "§f. ПКМ по станку — выбрать номинал."
+                        + (a.businessChest.equals(BlockPos.ZERO) ? "§e Сундука цеха нет — купюры копятся в лотке станка." : " Купюры падают в сундук цеха."));
+                BankService.msg(p, BankService.MFO + "§7Прячь его: если станок увидит посторонний (гость, коллектор, житель), "
+                        + "он стуканёт — и придёт ОБЭП. Они раскопают даже замурованный станок.");
             } else if (r == NOT_OWNER) {
                 BankService.msg(p, BankService.MFO + "§cСтанок не подключён: ставь его в своём доме или на своём участке (/reallife land buy). Тут спалят.");
-            } else if (r == LIMIT) {
-                BankService.msg(p, BankService.MFO + "§cБольше " + Config.MAX_PRINTERS.get() + " станков — соседи услышат. Этот работать не будет.");
             }
         } else if (block == ModBlocks.BUSINESS_CHEST.get()) {
             if (!a.hasBusiness) return;
@@ -116,18 +123,7 @@ public final class Business {
             BankService.msg(p, BankService.MFO + "§aСундук цеха привязан (" + xyz(pos) + "). §fВсе твои станки будут складывать сюда грязные. "
                     + "Станков подключено: §e" + a.printerList.size());
         } else if (block == ModBlocks.LAUNDER_MACHINE.get()) {
-            if (!a.hasLaundering) {
-                BankService.msg(p, "§8[ООО «Отмыв денег»] §7Аппарат не зарегистрирован на тебя — это просто железный ящик.");
-                return;
-            }
-            if (!inOwnProperty(data, a, pos)) {
-                BankService.msg(p, "§8[ООО «Отмыв денег»] §cЮрадрес ООО — только твой дом или участок. Тут аппарат работать не будет.");
-                return;
-            }
-            a.launderPos = pos.toImmutable();
-            data.markDirty();
-            BankService.msg(p, "§8[ООО «Отмыв денег»] §aАппарат установлен (" + xyz(pos) + "). §fПКМ — отмыть все грязные из карманов, комиссия "
-                    + Finance.percent(Config.LAUNDER_COMMISSION.get()) + ".");
+            BankService.msg(p, "§8[ООО «Отмыв денег»] §7ООО ликвидировано налоговой. Отмывать теперь можно через кассу своего заведения (телефон → Бизнес).");
         }
     }
 
@@ -157,9 +153,7 @@ public final class Business {
     // ------------------------------------------------------------------ покупки в МФО
 
     static void buyPrinter(ServerPlayerEntity p, Account a, boolean checkFree) {
-        int max = Config.MAX_PRINTERS.get();
-        if (a.printers >= max) { BankService.msg(p, BankService.MFO + "§cБольше " + max + " станков не продаём — соседи услышат."); return; }
-        int price = Config.PRINTER_PRICE.get();
+        int price = Config.PRINTER_COST.get();
         if (!BankService.charge(p, a, price)) { BankService.msg(p, BankService.MFO + "§cСтанок стоит " + Finance.money(price) + ". Счёт + наличка — не хватает."); return; }
         boolean first = !a.hasBusiness;
         a.hasBusiness = true;
@@ -171,63 +165,15 @@ public final class Business {
         }
         EconomyData.get(p.getServer()).markDirty();
         BankService.msg(p, BankService.MFO + "§aДержи станок" + (first ? " и «Сундук цеха» (выдаём один раз — не потеряй!)" : "") + ". "
-                + "§fСтавь у себя дома или на своём участке: каждый печатает §2" + Finance.money(Config.PRINTER_DAILY.get())
-                + "§f грязными в день, всё падает в сундук цеха. Куплено станков: §e" + a.printers + "/" + max);
+                + "§fСтавь у себя дома или на своём участке. Номинал выбираешь сам: 10₽ за 5 с … 5000₽ за 50 мин. Куплено станков: §e" + a.printers);
+        BankService.msg(p, BankService.MFO + "§7Чем больше станков — тем чаще к тебе заглядывают подозрительные личности и проверки. Не свети станки.");
         if (first) BankService.msg(p, BankService.MFO + "§7В банке грязные палят в " + Finance.percent(Config.DIRTY_CAUGHT_CHANCE.get())
                 + " случаев. Отмыть: у нас (−" + Finance.percent(Config.MFO_LAUNDER_COMMISSION.get())
-                + ") или своим ООО (−" + Finance.percent(Config.LAUNDER_COMMISSION.get()) + ").");
+                + ") или через кассу своего легального заведения.");
     }
 
     static void buyLaunder(ServerPlayerEntity p, Account a) {
-        ServerWorld ow = EconomyData.overworld(p.getServer());
-        boolean placed = !a.launderPos.equals(BlockPos.ZERO) && ow.getBlockState(a.launderPos).getBlock() == ModBlocks.LAUNDER_MACHINE.get();
-        if (a.hasLaundering && placed) {
-            BankService.msg(p, BankService.MFO + "ООО уже на тебя оформлено — аппарат стоит (" + xyz(a.launderPos) + ").");
-            return;
-        }
-        if (a.hasLaundering) {
-            // ООО есть, аппарата нет — новый аппарат за четверть цены
-            int price = Math.max(0, Config.LAUNDER_PRICE.get() / 4);
-            if (!BankService.charge(p, a, price)) { BankService.msg(p, BankService.MFO + "§cНовый аппарат — " + Finance.money(price) + ". Не хватает."); return; }
-            give(p, new ItemStack(ModItems.LAUNDER_MACHINE.get()));
-            BankService.msg(p, BankService.MFO + "Новый аппарат ООО за " + Finance.money(price) + ". Поставь у себя дома.");
-            return;
-        }
-        int price = Config.LAUNDER_PRICE.get();
-        if (!BankService.charge(p, a, price)) { BankService.msg(p, BankService.MFO + "§cООО стоит " + Finance.money(price) + ". Не хватает."); return; }
-        a.hasLaundering = true;
-        give(p, new ItemStack(ModItems.LAUNDER_MACHINE.get()));
-        EconomyData.get(p.getServer()).markDirty();
-        BankService.msg(p, BankService.MFO + "§aООО «Отмыв денег» зарегистрировано! §fДиректор — твоя бабушка. Держи аппарат: поставь его у себя "
-                + "дома или на участке, ПКМ — отмывает все грязные из карманов, комиссия " + Finance.percent(Config.LAUNDER_COMMISSION.get()) + ".");
-    }
-
-    // ------------------------------------------------------------------ производство
-
-    /** Положить грязные деньги в сундук цеха. Возвращает, сколько пачек влезло. */
-    public static int produceDirty(MinecraftServer server, Account a) {
-        if (!a.hasBusiness) return 0;
-        ServerWorld ow = EconomyData.overworld(server);
-        int working = workingPrinters(ow, a);
-        int packs = working * Config.PRINTER_DAILY.get() / DirtyMoneyItem.VALUE;
-        if (packs <= 0 || a.businessChest.equals(BlockPos.ZERO)) return 0;
-        TileEntity te = ow.getTileEntity(a.businessChest);
-        if (!(te instanceof IInventory)) return 0;
-        IInventory inv = (IInventory) te;
-        int left = packs;
-        for (int i = 0; i < inv.getSizeInventory() && left > 0; i++) {
-            ItemStack cur = inv.getStackInSlot(i);
-            if (cur.isEmpty()) {
-                int n = Math.min(64, left);
-                inv.setInventorySlotContents(i, new ItemStack(ModItems.DIRTY_MONEY.get(), n));
-                left -= n;
-            } else if (cur.getItem() == ModItems.DIRTY_MONEY.get() && cur.getCount() < 64) {
-                int n = Math.min(64 - cur.getCount(), left);
-                cur.grow(n);
-                left -= n;
-            }
-        }
-        te.markDirty();
-        return packs - left;
+        BankService.msg(p, BankService.MFO + "§cООО «Отмыв» больше не регистрируем — налоговая всех накрыла. "
+                + "Купи легальное заведение (телефон → Бизнес) и проводи грязные через его кассу.");
     }
 }

@@ -28,7 +28,7 @@ public class BankService {
     public static final String BANK = "§6[Реал Банк] §f";
     public static final String MFO = "§2[Шайкин и Ко] §f";
     public static final int[] LOAN_TERMS = {5, 10, 20};
-    public static final int[] NOTES = {5000, 1000, 100, 10};
+    public static final int[] NOTES = {5000, 1000, 500, 100, 10};
     private static final Random RANDOM = new Random();
 
     // ---------------------------------------------------------------- utils
@@ -49,6 +49,7 @@ public class BankService {
         switch (value) {
             case 5000: return ModItems.BANKNOTE_5000.get();
             case 1000: return ModItems.BANKNOTE_1000.get();
+            case 500: return ModItems.BANKNOTE_500.get();
             case 100: return ModItems.BANKNOTE_100.get();
             default: return ModItems.BANKNOTE_10.get();
         }
@@ -195,22 +196,42 @@ public class BankService {
         t.putBoolean("hasBusiness", a.hasBusiness);
         t.putBoolean("hasLaundering", a.hasLaundering);
         t.putInt("businessPrice", Config.BUSINESS_PRICE.get());
-        t.putInt("businessDaily", Config.PRINTER_DAILY.get() * Math.max(2, a.printers));
         t.putInt("printers", a.printers);
         t.putInt("printersOn", a.printerList.size());
         t.putBoolean("chestLinked", !a.businessChest.equals(net.minecraft.util.math.BlockPos.ZERO));
         t.putBoolean("launderPlaced", !a.launderPos.equals(net.minecraft.util.math.BlockPos.ZERO));
-        t.putInt("printerPrice", Config.PRINTER_PRICE.get());
-        t.putInt("printerDaily", Config.PRINTER_DAILY.get());
-        t.putInt("maxPrinters", Config.MAX_PRINTERS.get());
+        t.putInt("printerPrice", Config.PRINTER_COST.get());
         t.putDouble("mfoLaunderCommission", Config.MFO_LAUNDER_COMMISSION.get());
         long gt = EconomyData.overworld(server).getGameTime();
         t.putInt("casinoMaxBet", Config.CASINO_MAX_BET.get());
         t.putDouble("casinoProfit", a.casinoDay == today ? a.casinoProfit : 0);
         t.putLong("cash", cashInInventory(p));
         t.put("casino", CasinoService.last(p.getUniqueID()));
-        t.putInt("launderPrice", Config.LAUNDER_PRICE.get());
-        t.putDouble("launderCommission", Config.LAUNDER_COMMISSION.get());
+        t.putLong("today", today);
+        t.put("bizList", LegalBiz.infoList(data, a.id, today));
+        t.putBoolean("ownsBiz", data.ownsBusiness(a.id));
+        t.putDouble("safeShare", Config.LAUNDER_SAFE_SHARE.get());
+        t.putDouble("launderTax", Config.LAUNDER_TAX.get());
+        t.putDouble("crypto", a.crypto);
+        t.putDouble("btcRate", Crypto.rate(data));
+        t.putDouble("btcBase", Config.BTC_BASE_RATE.get());
+        if (p.openContainer instanceof com.baraaoi.reallife.container.BizContainer) {
+            LegalBusiness ob = data.bizAtCounter(((com.baraaoi.reallife.container.BizContainer) p.openContainer).getPos());
+            if (ob != null) t.put("openBiz", LegalBiz.info(ob, today));
+        }
+        if (p.openContainer instanceof com.baraaoi.reallife.container.CryptoContainer) {
+            net.minecraft.tileentity.TileEntity te = p.world.getTileEntity(((com.baraaoi.reallife.container.CryptoContainer) p.openContainer).getPos());
+            if (te instanceof com.baraaoi.reallife.tile.CryptoRigTileEntity) {
+                com.baraaoi.reallife.tile.CryptoRigTileEntity rig = (com.baraaoi.reallife.tile.CryptoRigTileEntity) te;
+                CompoundNBT r = new CompoundNBT();
+                r.putDouble("mined", rig.getMined());
+                r.putBoolean("complete", rig.complete());
+                r.putString("missing", String.join(", ", rig.missing()));
+                r.putInt("gpus", rig.gpus());
+                r.putDouble("rate", rig.ratePerSecond());
+                t.put("rig", r);
+            }
+        }
         t.putDouble("dirtyChance", Config.DIRTY_CAUGHT_CHANCE.get());
         t.putInt("ownedChunks", data.ownedCount(a.id));
         Network.CHANNEL.send(PacketDistributor.PLAYER.with(() -> p), new SyncPacket(t));
@@ -257,6 +278,33 @@ public class BankService {
             if (action == Actions.CASINO_PLAY && cc.canInteractWith(p)) CasinoService.play(p, cc, arg1, arg2);
             return;
         }
+        if (action >= Actions.PHONE_SYNC && action <= Actions.PHONE_SELL_BTC) {
+            phone(p, action, arg1, arg2);
+            return;
+        }
+        if (action == Actions.PRINTER_SET) {
+            if (p.openContainer instanceof com.baraaoi.reallife.container.PrinterContainer) {
+                com.baraaoi.reallife.container.PrinterContainer pc = (com.baraaoi.reallife.container.PrinterContainer) p.openContainer;
+                if (pc.canInteractWith(p)) pc.setDenom(p, arg1);
+            }
+            return;
+        }
+        if (p.openContainer instanceof com.baraaoi.reallife.container.BizContainer
+                || p.openContainer instanceof com.baraaoi.reallife.container.CryptoContainer) {
+            if (!p.openContainer.canInteractWith(p)) return;
+            MinecraftServer srv = p.getServer();
+            if (srv == null) return;
+            EconomyData d = EconomyData.get(srv);
+            Account acc = d.get(p);
+            if (p.openContainer instanceof com.baraaoi.reallife.container.BizContainer) {
+                LegalBiz.counterAction(p, acc, (com.baraaoi.reallife.container.BizContainer) p.openContainer, action);
+            } else if (action == Actions.CRYPTO_WITHDRAW) {
+                Crypto.withdrawRig(p, acc, (com.baraaoi.reallife.container.CryptoContainer) p.openContainer);
+            }
+            d.markDirty();
+            sync(p);
+            return;
+        }
         if (!(p.openContainer instanceof FinanceContainer)) return;
         FinanceContainer c = (FinanceContainer) p.openContainer;
         if (!c.canInteractWith(p)) return;
@@ -287,6 +335,37 @@ public class BankService {
                 case Actions.REISSUE_ORDER: reissueOrder(p, a); break;
                 default: break;
             }
+        }
+        data.markDirty();
+        sync(p);
+    }
+
+    /** Действия из приложения в телефоне (без окна банка, нужен телефон в инвентаре). */
+    static void phone(ServerPlayerEntity p, int action, int arg1, int arg2) {
+        if (!com.baraaoi.reallife.item.PhoneItem.has(p)) return;
+        MinecraftServer server = p.getServer();
+        if (server == null) return;
+        EconomyData data = EconomyData.get(server);
+        Account a = data.get(p);
+        long today = today(server);
+        if (action != Actions.PHONE_SYNC && a.captivity != Account.FREE) {
+            msg(p, "§cТелефон изъят на время заключения — связи нет.");
+            sync(p);
+            return;
+        }
+        switch (action) {
+            case Actions.PHONE_WITHDRAW:
+                for (int i = 0; i < Math.max(1, Math.min(64, arg2)); i++) {
+                    if (i > 0 && a.balance + 1e-6 < arg1) break;
+                    withdraw(p, a, arg1);
+                }
+                break;
+            case Actions.PHONE_LOAN: takeLoan(p, a, today, arg1, arg2); break;
+            case Actions.PHONE_REPAY: repayLoan(p, a, arg1); break;
+            case Actions.PHONE_WHOLESALE: Wholesale.buy(p, a, data, arg1); break;
+            case Actions.PHONE_BUY_BIZ: LegalBiz.buyPermit(p, a, arg1); break;
+            case Actions.PHONE_SELL_BTC: Crypto.sell(p, a, arg1); break;
+            default: break;
         }
         data.markDirty();
         sync(p);
@@ -519,35 +598,8 @@ public class BankService {
 
     /** Отмыв в аппарате своего ООО в подвале. */
     public static void launderAtMachine(ServerPlayerEntity p, net.minecraft.util.math.BlockPos pos) {
-        MinecraftServer server = p.getServer();
-        if (server == null) return;
-        EconomyData data = EconomyData.get(server);
-        Account a = data.get(p);
-        if (!a.hasLaundering || !pos.equals(a.launderPos)) {
-            msg(p, "§8[ООО «Отмыв денег»] §cЭто чужое ООО. Директор (чья-то бабушка) с вами разговаривать не будет.");
-            return;
-        }
-        double v = 0;
-        for (int i = 0; i < p.inventory.mainInventory.size(); i++) {
-            ItemStack st = p.inventory.mainInventory.get(i);
-            if (ItemValues.isDirty(st)) {
-                v += ItemValues.stackValue(st);
-                p.inventory.mainInventory.set(i, ItemStack.EMPTY);
-            }
-        }
-        if (v <= 0) { msg(p, "§8[ООО «Отмыв денег»] §fПринесите грязные деньги в карманах — аппарат отмоет всё сразу."); return; }
-        double fee = Config.LAUNDER_COMMISSION.get();
-        double clean = Math.floor(v * (1 - fee) / 10.0) * 10.0;
-        giveCash(p, clean);
-        a.balance += v * (1 - fee) - clean;
-        data.markDirty();
-        msg(p, "§8[ООО «Отмыв денег»] §fКонсалтинговые услуги оказаны: §2" + Finance.money(v) + "§f → §a"
-                + Finance.money(v * (1 - fee)) + "§f чистыми (комиссия " + Finance.percent(fee) + ").");
-    }
-
-    /** Положить грязные деньги в сундук цеха. Возвращает, сколько пачек влезло. */
-    public static int produceDirty(MinecraftServer server, Account a) {
-        return Business.produceDirty(server, a);
+        msg(p, "§8[ООО «Отмыв денег»] §cООО ликвидировано по решению налоговой. Отмывать теперь можно только через кассу "
+                + "легального заведения (телефон → Бизнес), а в крайнем случае — в МФО.");
     }
 
     public static void payMfo(PlayerEntity p, Account a, double amount, String note) {
@@ -632,16 +684,6 @@ public class BankService {
                 }
             }
 
-            // подпольный цех
-            if (a.hasBusiness) {
-                int made = produceDirty(server, a);
-                if (p != null) {
-                    if (made > 0) msg(p, MFO + "§8СМС: «Станки отработали смену. В сундуке +" + Finance.money(made * 100.0) + " грязными.»");
-                    else if (a.printerList.isEmpty()) msg(p, MFO + "§cСМС: «Ни один станок не подключён. Ставь их у себя дома или на своём участке.»");
-                    else msg(p, MFO + "§cСМС: «Цех стоит — сундук цеха не поставлен, сломан или полон.»");
-                }
-            }
-
             // МФО — сложные проценты
             if (a.hasMfo()) {
                 if (a.mfoDays > 0) {
@@ -661,6 +703,7 @@ public class BankService {
                 }
             }
         }
+        LegalBiz.processDay(server, data);
         data.markDirty();
     }
 }

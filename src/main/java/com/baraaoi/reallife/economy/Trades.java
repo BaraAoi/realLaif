@@ -42,7 +42,7 @@ public class Trades {
         if (variant == SELLER_CASINO) {
             net.minecraft.potion.Potion[] drinks = {net.minecraft.potion.Potions.SWIFTNESS, net.minecraft.potion.Potions.STRENGTH,
                     net.minecraft.potion.Potions.LEAPING, net.minecraft.potion.Potions.NIGHT_VISION, net.minecraft.potion.Potions.FIRE_RESISTANCE,
-                    net.minecraft.potion.Potions.REGENERATION, net.minecraft.potion.Potions.WATER_BREATHING};
+                    net.minecraft.potion.Potions.REGENERATION, net.minecraft.potion.Potions.WATER_BREATHING, net.minecraft.potion.Potions.LUCK};
             for (net.minecraft.potion.Potion pt : drinks) {
                 o.add(new MerchantOffer(rub(100), net.minecraft.potion.PotionUtils.addPotionToItemStack(new ItemStack(Items.POTION), pt), UNLIMITED, 0, 0.0F));
             }
@@ -78,6 +78,7 @@ public class Trades {
             sell(o, 100, Items.SHEARS, 1);
             sell(o, 1000, Items.DIAMOND_PICKAXE, 1);
             sell(o, 1000, Items.DIAMOND, 5);
+            sell(o, 500, ModItems.PHONE.get(), 1);
         }
         return o;
     }

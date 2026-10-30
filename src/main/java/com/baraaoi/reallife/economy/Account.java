@@ -112,6 +112,8 @@ public class Account {
     public BlockPos businessMin = BlockPos.ZERO;
     public BlockPos businessMax = BlockPos.ZERO;
     public boolean hasLaundering;
+    /** Криптокошелёк (BTC). */
+    public double crypto;
 
     // --- самострой ---
     public boolean landCase;
@@ -204,6 +206,7 @@ public class Account {
         t.putLong("businessMin", businessMin.toLong());
         t.putLong("businessMax", businessMax.toLong());
         t.putBoolean("hasLaundering", hasLaundering);
+        t.putDouble("crypto", crypto);
         t.putBoolean("landCase", landCase);
         t.putLong("landChunk", landChunk);
         t.putLong("landDeadline", landDeadline);
@@ -282,6 +285,7 @@ public class Account {
         a.businessMin = BlockPos.fromLong(t.getLong("businessMin"));
         a.businessMax = BlockPos.fromLong(t.getLong("businessMax"));
         a.hasLaundering = t.getBoolean("hasLaundering");
+        a.crypto = t.getDouble("crypto");
         a.landCase = t.getBoolean("landCase");
         a.landChunk = t.getLong("landChunk");
         a.landDeadline = t.getLong("landDeadline");

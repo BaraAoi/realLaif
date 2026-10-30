@@ -33,6 +33,7 @@ public class ModItems {
 
     public static final RegistryObject<Item> BANKNOTE_10 = ITEMS.register("banknote_10", () -> new BanknoteItem(10, props()));
     public static final RegistryObject<Item> BANKNOTE_100 = ITEMS.register("banknote_100", () -> new BanknoteItem(100, props()));
+    public static final RegistryObject<Item> BANKNOTE_500 = ITEMS.register("banknote_500", () -> new BanknoteItem(500, props()));
     public static final RegistryObject<Item> BANKNOTE_1000 = ITEMS.register("banknote_1000", () -> new BanknoteItem(1000, props()));
     public static final RegistryObject<Item> BANKNOTE_5000 = ITEMS.register("banknote_5000", () -> new BanknoteItem(5000, props().rarity(Rarity.UNCOMMON)));
 
@@ -84,4 +85,25 @@ public class ModItems {
             () -> new BlockItem(ModBlocks.ANARCHY_MACHINE.get(), props()));
     public static final RegistryObject<Item> ROULETTE_TABLE = ITEMS.register("roulette_table",
             () -> new BlockItem(ModBlocks.ROULETTE_TABLE.get(), props()));
+
+    public static final RegistryObject<Item> BIZ_PERMIT = ITEMS.register("biz_permit",
+            () -> new com.baraaoi.reallife.item.BizPermitItem(props().maxStackSize(1).rarity(Rarity.RARE)));
+    public static final RegistryObject<Item> BIZ_COUNTER = ITEMS.register("biz_counter",
+            () -> new BlockItem(ModBlocks.BIZ_COUNTER.get(), new Item.Properties()));
+    public static final RegistryObject<Item> CRYPTO_RIG = ITEMS.register("crypto_rig",
+            () -> new BlockItem(ModBlocks.CRYPTO_RIG.get(), props()));
+    public static final RegistryObject<Item> MOTHERBOARD = ITEMS.register("motherboard",
+            () -> new com.baraaoi.reallife.item.ComponentItem(com.baraaoi.reallife.item.ComponentItem.MOTHERBOARD, props().maxStackSize(16)));
+    public static final RegistryObject<Item> CPU = ITEMS.register("cpu",
+            () -> new com.baraaoi.reallife.item.ComponentItem(com.baraaoi.reallife.item.ComponentItem.CPU, props().maxStackSize(16)));
+    public static final RegistryObject<Item> RAM = ITEMS.register("ram",
+            () -> new com.baraaoi.reallife.item.ComponentItem(com.baraaoi.reallife.item.ComponentItem.RAM, props().maxStackSize(16)));
+    public static final RegistryObject<Item> PSU = ITEMS.register("psu",
+            () -> new com.baraaoi.reallife.item.ComponentItem(com.baraaoi.reallife.item.ComponentItem.PSU, props().maxStackSize(16)));
+    public static final RegistryObject<Item> COOLER = ITEMS.register("cooler",
+            () -> new com.baraaoi.reallife.item.ComponentItem(com.baraaoi.reallife.item.ComponentItem.COOLER, props().maxStackSize(16)));
+    public static final RegistryObject<Item> GPU = ITEMS.register("gpu",
+            () -> new com.baraaoi.reallife.item.ComponentItem(com.baraaoi.reallife.item.ComponentItem.GPU, props().maxStackSize(16).rarity(Rarity.UNCOMMON)));
+    public static final RegistryObject<Item> PHONE = ITEMS.register("phone",
+            () -> new com.baraaoi.reallife.item.PhoneItem(props().maxStackSize(1)));
 }

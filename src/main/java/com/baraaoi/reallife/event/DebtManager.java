@@ -157,7 +157,9 @@ public class DebtManager {
         }
 
         for (ServerPlayerEntity p : new ArrayList<>(server.getPlayerList().getPlayers())) {
-            if (p.openContainer instanceof FinanceContainer || p.openContainer instanceof com.baraaoi.reallife.container.CasinoContainer) BankService.sync(p);
+            if (p.openContainer instanceof FinanceContainer || p.openContainer instanceof com.baraaoi.reallife.container.CasinoContainer
+                    || p.openContainer instanceof com.baraaoi.reallife.container.BizContainer
+                    || p.openContainer instanceof com.baraaoi.reallife.container.CryptoContainer) BankService.sync(p);
             if ((now / 20 + p.getEntityId()) % 2 == 0) tickPlayer(server, data, p, now);
         }
     }
@@ -458,6 +460,18 @@ public class DebtManager {
             if (other != p) BankService.msg(other, "§9[Новости] §fИгрок §e" + p.getGameProfile().getName()
                     + "§f арестован за долги перед «Реал Банком».");
         }
+    }
+
+    /** Короткое СИЗО без конфискации (ОБЭП, налоговая): срок ticks, потом автоматически на свободу. */
+    public static void jailFor(MinecraftServer server, EconomyData data, ServerPlayerEntity p, Account a, int ticks, String reason) {
+        if (a.captivity != Account.FREE || ticks <= 0) return;
+        long now = EconomyData.overworld(server).getGameTime();
+        a.captivity = Account.JAIL;
+        a.jailUntil = now + ticks;
+        data.markDirty();
+        buildCell(server, data, a, p.getPosition());
+        sendToCaptivity(server, data, p, a);
+        BankService.msg(p, "§9§l[Полиция] §r§cВы помещены в СИЗО: " + reason + ". §7Срок: " + Math.max(1, ticks / 1200) + " мин.");
     }
 
     public static void kidnap(MinecraftServer server, EconomyData data, ServerPlayerEntity p, Account a) {

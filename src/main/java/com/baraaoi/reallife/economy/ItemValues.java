@@ -57,7 +57,7 @@ public class ItemValues {
     public static double valueOf(ItemStack stack) {
         if (stack.isEmpty()) return 0;
         if (stack.getItem() instanceof BanknoteItem) return ((BanknoteItem) stack.getItem()).getValue();
-        if (stack.getItem() instanceof DirtyMoneyItem) return DirtyMoneyItem.VALUE;
+        if (stack.getItem() instanceof DirtyMoneyItem) return DirtyMoneyItem.denom(stack);
         Double v = VALUES.get(stack.getItem());
         return v == null ? 0 : v;
     }

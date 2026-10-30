@@ -25,7 +25,11 @@ public enum VisitorKind {
     PHILOSOPHER("§8Коллектор-философ", false),
     BANK_SCAMMER("§9«Служба безопасности банка»", false),
     POSTMAN("§9Почтальон Почты России", false),
-    SOCIOLOGIST("§fСоциолог ВЦИОМ", false);
+    SOCIOLOGIST("§fСоциолог ВЦИОМ", false),
+    /** Ходит вокруг станков (приходит чаще, чем больше станков) — управляется {@link com.baraaoi.reallife.event.Raids}. */
+    SNOOP("§8Подозрительный тип", true),
+    /** Опер ОБЭП — приходит по наводке и копает к станку. */
+    OBEP("§9Оперативник ОБЭП", true);
 
     public final String display;
     /** Помощник — сам по себе не приходит, только вместе с главным гостем. */

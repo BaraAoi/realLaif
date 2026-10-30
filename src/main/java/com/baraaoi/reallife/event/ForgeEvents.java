@@ -32,7 +32,14 @@ public class ForgeEvents {
         if (server != null) {
             DebtManager.serverTick(server);
             Visitors.tick(server);
+            Raids.tick(server);
+            com.baraaoi.reallife.economy.Crypto.tick(server);
         }
+    }
+
+    @SubscribeEvent
+    public void onServerStopping(net.minecraftforge.fml.event.server.FMLServerStoppingEvent event) {
+        Raids.onStop(event.getServer());
     }
 
     @SubscribeEvent(priority = EventPriority.HIGH)
@@ -150,6 +157,11 @@ public class ForgeEvents {
         Entity t = event.getTarget();
         if (t instanceof com.baraaoi.reallife.entity.VisitorEntity && event.getHand() == net.minecraft.util.Hand.MAIN_HAND) {
             Visitors.onInteract((ServerPlayerEntity) event.getPlayer(), (com.baraaoi.reallife.entity.VisitorEntity) t);
+            event.setCanceled(true);
+            return;
+        }
+        if (t instanceof com.baraaoi.reallife.entity.WorkerEntity && event.getHand() == net.minecraft.util.Hand.MAIN_HAND) {
+            com.baraaoi.reallife.economy.LegalBiz.workerTalk((ServerPlayerEntity) event.getPlayer(), (com.baraaoi.reallife.entity.WorkerEntity) t);
             event.setCanceled(true);
             return;
         }

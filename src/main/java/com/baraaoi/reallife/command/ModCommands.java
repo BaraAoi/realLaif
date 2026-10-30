@@ -68,6 +68,11 @@ public class ModCommands {
     }
 
     private static int event(ServerPlayerEntity p, String kind) {
+        if (kind.equalsIgnoreCase("obep") || kind.equalsIgnoreCase("snoop")) {
+            String e = com.baraaoi.reallife.event.Raids.adminStart(p, kind.equalsIgnoreCase("obep"));
+            if (e != null) BankService.msg(p, "§cНе вышло: " + e);
+            return e == null ? 1 : 0;
+        }
         com.baraaoi.reallife.entity.VisitorKind k = com.baraaoi.reallife.entity.VisitorKind.byName(kind);
         if (k == null) {
             BankService.msg(p, "§cНет такого гостя. Есть: " + String.join(", ", com.baraaoi.reallife.event.Visitors.eventIds()));
