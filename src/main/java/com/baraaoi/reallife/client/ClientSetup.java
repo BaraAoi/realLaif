@@ -17,5 +17,7 @@ public class ClientSetup {
         RenderingRegistry.registerEntityRenderingHandler(ModEntities.POLICE.get(), m -> new NpcRenderer<>(m, "police"));
         RenderingRegistry.registerEntityRenderingHandler(ModEntities.VOVAN.get(), m -> new NpcRenderer<>(m, "vovan"));
         RenderingRegistry.registerEntityRenderingHandler(ModEntities.BRATOK.get(), m -> new NpcRenderer<>(m, "bratok"));
+        RenderingRegistry.registerEntityRenderingHandler(ModEntities.INSPECTOR.get(), m -> new NpcRenderer<>(m, "inspector"));
+        RenderingRegistry.registerEntityRenderingHandler(ModEntities.SELLER.get(), m -> new NpcRenderer<>(m, "seller"));
     }
 }

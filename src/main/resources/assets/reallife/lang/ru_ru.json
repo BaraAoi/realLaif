@@ -17,5 +17,13 @@
   "entity.reallife.vovan": "Коллектор Вован",
   "entity.reallife.bratok": "Браток",
   "container.reallife.bank": "Реал Банк",
-  "container.reallife.mfo": "Шайкин и Ко"
+  "container.reallife.mfo": "Шайкин и Ко",
+  "block.reallife.fridge": "Холодильник",
+  "block.reallife.atm": "Банкомат",
+  "block.reallife.vending_food": "Автомат «Перекус»",
+  "block.reallife.vending_resources": "Автомат «Всё для дома»",
+  "block.reallife.money_printer": "Печатный станок",
+  "item.reallife.dirty_money": "Грязные деньги",
+  "entity.reallife.inspector": "Инспектор по самострою",
+  "entity.reallife.seller": "Продавец"
 }

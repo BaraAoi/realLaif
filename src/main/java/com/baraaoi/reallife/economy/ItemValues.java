@@ -1,6 +1,7 @@
 package com.baraaoi.reallife.economy;
 
 import com.baraaoi.reallife.item.BanknoteItem;
+import com.baraaoi.reallife.item.DirtyMoneyItem;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
@@ -53,8 +54,18 @@ public class ItemValues {
     public static double valueOf(ItemStack stack) {
         if (stack.isEmpty()) return 0;
         if (stack.getItem() instanceof BanknoteItem) return ((BanknoteItem) stack.getItem()).getValue();
+        if (stack.getItem() instanceof DirtyMoneyItem) return DirtyMoneyItem.VALUE;
         Double v = VALUES.get(stack.getItem());
         return v == null ? 0 : v;
+    }
+
+    /** Наличные (купюры или грязные деньги) — МФО и братки берут по номиналу. */
+    public static boolean isCash(ItemStack stack) {
+        return stack.getItem() instanceof BanknoteItem || stack.getItem() instanceof DirtyMoneyItem;
+    }
+
+    public static boolean isDirty(ItemStack stack) {
+        return stack.getItem() instanceof DirtyMoneyItem;
     }
 
     public static double stackValue(ItemStack stack) {

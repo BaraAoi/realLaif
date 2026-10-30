@@ -87,7 +87,7 @@ public class BankService {
             for (int i = 0; i < p.inventory.mainInventory.size() && got < needed; i++) {
                 ItemStack st = p.inventory.mainInventory.get(i);
                 if (st.isEmpty()) continue;
-                boolean note = st.getItem() instanceof BanknoteItem;
+                boolean note = ItemValues.isCash(st);
                 if ((pass == 0) != note) continue;
                 double unit = ItemValues.valueOf(st) * (note ? 1.0 : factor);
                 if (unit <= 0) continue;
@@ -98,6 +98,32 @@ public class BankService {
             }
         }
         return got;
+    }
+
+    /** Сумма купюр в инвентаре. */
+    public static long cashInInventory(PlayerEntity p) {
+        long v = 0;
+        for (ItemStack st : p.inventory.mainInventory) {
+            if (st.getItem() instanceof BanknoteItem) v += (long) ((BanknoteItem) st.getItem()).getValue() * st.getCount();
+        }
+        return v;
+    }
+
+    /** Списать сумму: сначала со счёта, остаток — купюрами из инвентаря (со сдачей). */
+    public static boolean charge(PlayerEntity p, Account a, double amount) {
+        double fromBalance = Math.max(0, Math.min(a.balance, amount));
+        double fromCash = amount - fromBalance;
+        long cash = cashInInventory(p);
+        if (fromCash > cash + 1e-6) return false;
+        a.balance -= fromBalance;
+        if (fromCash > 1e-6) {
+            for (int i = 0; i < p.inventory.mainInventory.size(); i++) {
+                if (p.inventory.mainInventory.get(i).getItem() instanceof BanknoteItem) p.inventory.mainInventory.set(i, ItemStack.EMPTY);
+            }
+            double change = cash - fromCash;
+            if (change >= 10) giveCash(p, change);
+        }
+        return true;
     }
 
     /** Сумма всех ценностей в инвентаре. */
@@ -164,6 +190,15 @@ public class BankService {
         t.putDouble("mfoOverdueRate", Config.MFO_OVERDUE_RATE.get());
         t.putDouble("mfoCommission", Config.MFO_COMMISSION.get());
         t.putInt("mfoTerm", Config.MFO_TERM_DAYS.get());
+        t.putBoolean("hasHouse", a.hasHouse);
+        t.putBoolean("hasBusiness", a.hasBusiness);
+        t.putBoolean("hasLaundering", a.hasLaundering);
+        t.putInt("businessPrice", Config.BUSINESS_PRICE.get());
+        t.putInt("businessDaily", Config.BUSINESS_DAILY.get());
+        t.putInt("launderPrice", Config.LAUNDER_PRICE.get());
+        t.putDouble("launderCommission", Config.LAUNDER_COMMISSION.get());
+        t.putDouble("dirtyChance", Config.DIRTY_ACCEPT_CHANCE.get());
+        t.putInt("ownedChunks", data.ownedCount(a.id));
         Network.CHANNEL.send(PacketDistributor.PLAYER.with(() -> p), new SyncPacket(t));
     }
 
@@ -215,6 +250,9 @@ public class BankService {
                 case Actions.MFO_TAKE: mfoTake(p, a, arg1); break;
                 case Actions.MFO_PAY_SLOT: mfoPaySlot(p, a, c); break;
                 case Actions.MFO_PAY_BANK: mfoPayBank(p, a, arg1); break;
+                case Actions.MFO_BUY_BUSINESS: buyBusiness(p, a); break;
+                case Actions.MFO_BUY_LAUNDER: buyLaunder(p, a); break;
+                case Actions.MFO_LAUNDER: launder(p, a, c); break;
                 default: break;
             }
         } else {
@@ -238,6 +276,20 @@ public class BankService {
         if (st.isEmpty()) { msg(p, BANK + "Положите ресурсы или купюры в слот."); return; }
         double v = ItemValues.stackValue(st);
         if (v <= 0) { msg(p, BANK + "§cБанк не принимает этот предмет."); return; }
+        if (ItemValues.isDirty(st)) {
+            c.getInput().setInventorySlotContents(0, ItemStack.EMPTY);
+            if (RANDOM.nextDouble() < Config.DIRTY_ACCEPT_CHANCE.get()) {
+                a.balance += v;
+                a.lifetimeDeposited += v;
+                msg(p, BANK + "Зачислено §a+" + Finance.money(v) + "§f («выручка от предпринимательской деятельности»). Баланс: §e" + Finance.money(a.balance));
+                autoPayArrears(p, a);
+            } else {
+                a.ratingBonus -= 15;
+                msg(p, BANK + "§4Финмониторинг: происхождение средств не подтверждено. §c" + Finance.money(v)
+                        + " изъято по 115-ФЗ§4, сведения переданы куда следует. Рейтинг −15.");
+            }
+            return;
+        }
         boolean notes = st.getItem() instanceof BanknoteItem;
         c.getInput().setInventorySlotContents(0, ItemStack.EMPTY);
         a.balance += v;
@@ -398,7 +450,7 @@ public class BankService {
         if (st.isEmpty()) { msg(p, MFO + "Клади деньги или ценности в слот."); return; }
         double unit = ItemValues.valueOf(st);
         if (unit <= 0) { msg(p, MFO + "§cЭто барахло нам не нужно."); return; }
-        boolean note = st.getItem() instanceof BanknoteItem;
+        boolean note = ItemValues.isCash(st);
         double factor = note ? 1.0 : 0.6;
         double per = unit * factor;
         int need = (int) Math.min(st.getCount(), Math.ceil(a.mfoDebt / per - 1e-9));
@@ -416,6 +468,78 @@ public class BankService {
         if (take <= 0) { msg(p, MFO + "§cНа банковском счёте пусто."); return; }
         a.balance -= take;
         payMfo(p, a, take / 1.05, " (перевод из банка, комиссия 5%)");
+    }
+
+    // ---------------------------------------------------------------- подпольный бизнес
+
+    static void buyBusiness(ServerPlayerEntity p, Account a) {
+        if (!checkFree(p, a)) return;
+        if (a.hasBusiness) { msg(p, MFO + "У тебя уже есть цех, коммерсант."); return; }
+        if (!a.hasHouse) { msg(p, MFO + "§cЦех ставим только в подвал твоего дома. Сначала возьми ипотеку и построй дом."); return; }
+        int price = Config.BUSINESS_PRICE.get();
+        if (!charge(p, a, price)) { msg(p, MFO + "§cЦех стоит " + Finance.money(price) + ". Счёт + наличка — не хватает."); return; }
+        net.minecraft.world.server.ServerWorld ow = EconomyData.overworld(p.getServer());
+        com.baraaoi.reallife.structure.Buildings.Basement bm = com.baraaoi.reallife.structure.Buildings.buildBasement(ow, a.houseMin, a.houseMax);
+        if (bm == null) {
+            a.balance += price;
+            msg(p, MFO + "§cВ доме нет свободного места для люка (нужна клетка пола рядом с центром дома). Деньги вернули на счёт.");
+            return;
+        }
+        a.hasBusiness = true;
+        a.businessChest = bm.chest;
+        a.businessMin = bm.bp.min();
+        a.businessMax = bm.bp.max();
+        EconomyData.get(p.getServer()).markDirty();
+        msg(p, MFO + "§aЦех открыт! §fЛюк в полу дома (" + bm.hatch.getX() + ", " + bm.hatch.getY() + ", " + bm.hatch.getZ()
+                + "). Станки печатают §2" + Finance.money(Config.BUSINESS_DAILY.get()) + "§f грязными в день — забирай из сундука в подвале.");
+        msg(p, MFO + "§7Грязные деньги банк примет только с шансом " + Finance.percent(Config.DIRTY_ACCEPT_CHANCE.get())
+                + ". Надёжнее — наше ООО «Отмыв». Мы и братки берём по номиналу.");
+    }
+
+    static void buyLaunder(ServerPlayerEntity p, Account a) {
+        if (!checkFree(p, a)) return;
+        if (a.hasLaundering) { msg(p, MFO + "ООО уже на тебя оформлено."); return; }
+        int price = Config.LAUNDER_PRICE.get();
+        if (!charge(p, a, price)) { msg(p, MFO + "§cООО стоит " + Finance.money(price) + ". Не хватает."); return; }
+        a.hasLaundering = true;
+        EconomyData.get(p.getServer()).markDirty();
+        msg(p, MFO + "§aООО «Отмыв» зарегистрировано! §fДиректор — твоя бабушка. Клади грязные в слот и жми «Отмыть». Комиссия "
+                + Finance.percent(Config.LAUNDER_COMMISSION.get()) + ".");
+    }
+
+    static void launder(ServerPlayerEntity p, Account a, FinanceContainer c) {
+        if (!a.hasLaundering) { msg(p, MFO + "§cСначала купи ООО «Отмыв»."); return; }
+        ItemStack st = c.getInput().getStackInSlot(0);
+        if (st.isEmpty() || !ItemValues.isDirty(st)) { msg(p, MFO + "Клади в слот грязные деньги."); return; }
+        double v = ItemValues.stackValue(st);
+        double clean = Math.floor(v * (1 - Config.LAUNDER_COMMISSION.get()) / 10.0) * 10.0;
+        c.getInput().setInventorySlotContents(0, ItemStack.EMPTY);
+        giveCash(p, clean);
+        msg(p, MFO + "Отмыто: §2" + Finance.money(v) + "§f → §a" + Finance.money(clean) + "§f чистыми. Консалтинговые услуги, всё по закону.");
+    }
+
+    /** Положить грязные деньги в сундук цеха. Возвращает, сколько пачек влезло. */
+    public static int produceDirty(MinecraftServer server, Account a) {
+        int packs = Config.BUSINESS_DAILY.get() / com.baraaoi.reallife.item.DirtyMoneyItem.VALUE;
+        if (!a.hasBusiness || packs <= 0) return 0;
+        net.minecraft.tileentity.TileEntity te = EconomyData.overworld(server).getTileEntity(a.businessChest);
+        if (!(te instanceof net.minecraft.inventory.IInventory)) return 0;
+        net.minecraft.inventory.IInventory inv = (net.minecraft.inventory.IInventory) te;
+        int left = packs;
+        for (int i = 0; i < inv.getSizeInventory() && left > 0; i++) {
+            ItemStack cur = inv.getStackInSlot(i);
+            if (cur.isEmpty()) {
+                int n = Math.min(64, left);
+                inv.setInventorySlotContents(i, new ItemStack(ModItems.DIRTY_MONEY.get(), n));
+                left -= n;
+            } else if (cur.getItem() == ModItems.DIRTY_MONEY.get() && cur.getCount() < 64) {
+                int n = Math.min(64 - cur.getCount(), left);
+                cur.grow(n);
+                left -= n;
+            }
+        }
+        te.markDirty();
+        return packs - left;
     }
 
     public static void payMfo(PlayerEntity p, Account a, double amount, String note) {
@@ -497,6 +621,15 @@ public class BankService {
                     if (!hadArrears) a.onTimePayments++;
                     a.clearArrears();
                     if (p != null && due > 0) msg(p, BANK + "Списан ежедневный платёж: " + Finance.money(due) + ". Баланс: " + Finance.money(a.balance));
+                }
+            }
+
+            // подпольный цех
+            if (a.hasBusiness) {
+                int made = produceDirty(server, a);
+                if (p != null) {
+                    if (made > 0) msg(p, MFO + "§8СМС: «Станки отработали смену. В сундуке +" + Finance.money(made * 100.0) + " грязными.»");
+                    else msg(p, MFO + "§cСМС: «Цех стоит — сундук в подвале полон или сломан.»");
                 }
             }
 

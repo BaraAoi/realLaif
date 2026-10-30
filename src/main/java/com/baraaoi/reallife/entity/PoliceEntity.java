@@ -26,6 +26,7 @@ public class PoliceEntity extends DebtNpcEntity {
     @Override
     protected void registerGoals() {
         super.registerGoals();
+        this.goalSelector.addGoal(0, new PickupMoneyGoal(this, 1.3D));
         this.goalSelector.addGoal(1, new MeleeAttackGoal(this, 1.25D, true));
         this.goalSelector.addGoal(3, new FollowTargetGoal(this, 1.1D, 2.0D));
         this.targetSelector.addGoal(1, new HuntTargetGoal(this));
@@ -34,6 +35,16 @@ public class PoliceEntity extends DebtNpcEntity {
     @Override
     public boolean wantsToFight() {
         return true;
+    }
+
+    @Override
+    public boolean likesMoney() {
+        return true;
+    }
+
+    @Override
+    public void onMoneyPicked(double value) {
+        DebtManager.policeBribe(this, value);
     }
 
     @Override

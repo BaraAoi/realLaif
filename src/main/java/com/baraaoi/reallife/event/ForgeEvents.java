@@ -6,6 +6,7 @@ import com.baraaoi.reallife.economy.BankService;
 import com.baraaoi.reallife.economy.EconomyData;
 import com.baraaoi.reallife.economy.Finance;
 import com.baraaoi.reallife.entity.DebtNpcEntity;
+import com.baraaoi.reallife.entity.InspectorEntity;
 import com.baraaoi.reallife.entity.VovanEntity;
 import com.baraaoi.reallife.entity.ZhoraEntity;
 import net.minecraft.entity.Entity;
@@ -19,6 +20,7 @@ import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.event.world.BlockEvent;
 import net.minecraftforge.eventbus.api.EventPriority;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.fml.event.server.FMLServerStartedEvent;
 import net.minecraftforge.fml.server.ServerLifecycleHooks;
 
 public class ForgeEvents {
@@ -28,6 +30,17 @@ public class ForgeEvents {
         if (event.phase != TickEvent.Phase.END) return;
         MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
         if (server != null) DebtManager.serverTick(server);
+    }
+
+    @SubscribeEvent(priority = EventPriority.HIGH)
+    public void onServerStarted(FMLServerStartedEvent event) {
+        DebtManager.onServerStarted(event.getServer());
+    }
+
+    @SubscribeEvent
+    public void onPlace(BlockEvent.EntityPlaceEvent event) {
+        if (event.getWorld().isRemote() || !(event.getEntity() instanceof ServerPlayerEntity)) return;
+        DebtManager.onPlace((ServerPlayerEntity) event.getEntity(), event.getPos());
     }
 
     @SubscribeEvent
@@ -82,6 +95,7 @@ public class ForgeEvents {
         if (DebtManager.onBreak((ServerPlayerEntity) event.getPlayer(), event.getPos(), event.getState())) {
             event.setCanceled(true);
         }
+        if (!event.isCanceled()) DebtManager.onPlayerBreak((ServerPlayerEntity) event.getPlayer(), event.getPos());
     }
 
     /** ПКМ по Жоре / Вовану — заплатить прямо им из инвентаря. */
@@ -89,6 +103,21 @@ public class ForgeEvents {
     public void onInteract(PlayerInteractEvent.EntityInteract event) {
         if (event.getWorld().isRemote || !(event.getPlayer() instanceof ServerPlayerEntity)) return;
         Entity t = event.getTarget();
+        if (t instanceof InspectorEntity && event.getHand() == net.minecraft.util.Hand.MAIN_HAND) {
+            ServerPlayerEntity p = (ServerPlayerEntity) event.getPlayer();
+            InspectorEntity ins = (InspectorEntity) t;
+            if (!p.getUniqueID().equals(ins.getTargetId())) {
+                ins.say(p, "Я не к вам, гражданин.");
+            } else {
+                EconomyData data = EconomyData.get(p.getServer());
+                Account a = data.get(p);
+                if (a.landCase && DebtManager.buyLand(p, a, a.landChunk)) {
+                    ins.say(p, "§aВот, другое дело. Документы в порядке, участок ваш. Всего доброго!");
+                }
+            }
+            event.setCanceled(true);
+            return;
+        }
         if (!(t instanceof ZhoraEntity) && !(t instanceof VovanEntity)) return;
         if (event.getHand() != net.minecraft.util.Hand.MAIN_HAND) return;
         ServerPlayerEntity p = (ServerPlayerEntity) event.getPlayer();

@@ -249,4 +249,95 @@ def bratok_extra(im):
 
 
 skin('bratok', (220, 175, 140), (40, 30, 25), (20, 20, 20), (30, 30, 30), (10, 10, 10), extra=bratok_extra)
+
+# ================= версия 2: новые блоки, предметы, скины =================
+def metal(base, var=5):
+    im = img(); noise(im, base, var); return im
+
+
+# холодильник
+fs = metal((225, 228, 232), 4); outline(fs, 0, 0, 15, 15, (175, 178, 185)); fs.save(f'{R}/block/fridge_side.png')
+ft = metal((215, 218, 222), 4); outline(ft, 0, 0, 15, 15, (175, 178, 185)); ft.save(f'{R}/block/fridge_top.png')
+ff = metal((235, 237, 240), 3); outline(ff, 0, 0, 15, 15, (170, 172, 180))
+rect(ff, 1, 5, 14, 5, (165, 168, 175))              # щель между дверцами
+rect(ff, 12, 1, 12, 3, (120, 125, 135)); rect(ff, 12, 7, 12, 12, (120, 125, 135))  # ручки
+pix(ff, [(3, 2), (4, 2)], (90, 160, 220))           # индикатор
+ff.save(f'{R}/block/fridge_front.png')
+
+# банкомат
+asd = metal((70, 75, 85), 5); outline(asd, 0, 0, 15, 15, (45, 48, 55)); rect(asd, 0, 0, 15, 1, GOLD); asd.save(f'{R}/block/atm_side.png')
+atp = metal((60, 64, 72), 4); outline(atp, 0, 0, 15, 15, (45, 48, 55)); atp.save(f'{R}/block/atm_top.png')
+af = metal((75, 80, 92), 4); outline(af, 0, 0, 15, 15, (45, 48, 55)); rect(af, 0, 0, 15, 1, GOLD)
+rect(af, 3, 3, 12, 7, (30, 90, 60)); outline(af, 2, 2, 13, 8, (35, 35, 40))      # экран
+pix(af, [(4, 4), (5, 4), (6, 4), (8, 4), (9, 4), (4, 6), (5, 6), (6, 6), (7, 6)], (120, 240, 160))
+for yy in (10, 12):
+    for xx in (3, 5, 7):
+        pix(af, [(xx, yy)], (200, 200, 205))       # клавиши
+rect(af, 10, 10, 13, 10, (20, 20, 20))               # картоприёмник
+rect(af, 9, 13, 13, 13, (15, 15, 15))                # купюроприёмник
+af.save(f'{R}/block/atm_front.png')
+
+# торговые автоматы
+vs = metal((160, 30, 35), 6); outline(vs, 0, 0, 15, 15, (110, 20, 25)); vs.save(f'{R}/block/vending_side.png')
+vt = metal((140, 25, 30), 5); outline(vt, 0, 0, 15, 15, (110, 20, 25)); vt.save(f'{R}/block/vending_top.png')
+
+
+def vending(name, colors):
+    im = metal((165, 32, 38), 5); outline(im, 0, 0, 15, 15, (110, 20, 25))
+    rect(im, 1, 1, 10, 13, (190, 220, 235))          # витрина
+    for row in range(3):
+        rect(im, 1, 4 + row * 4, 10, 4 + row * 4, (120, 120, 130))
+        for k in range(3):
+            c = colors[(row * 3 + k) % len(colors)]
+            rect(im, 2 + k * 3, 2 + row * 4, 3 + k * 3, 3 + row * 4, c)
+    rect(im, 12, 2, 14, 4, (40, 40, 45)); pix(im, [(13, 3)], (120, 240, 160))   # табло
+    for yy in (6, 8, 10):
+        pix(im, [(12, yy), (14, yy)], (220, 220, 220))
+    rect(im, 2, 14, 9, 14, (20, 20, 20))              # лоток
+    im.save(f'{R}/block/{name}.png')
+
+
+vending('vending_food_front', [(220, 160, 60), (200, 60, 50), (240, 220, 120), (120, 70, 40), (90, 170, 60)])
+vending('vending_resources_front', [(130, 130, 130), (150, 110, 70), (220, 220, 230), (60, 60, 60), (200, 120, 60)])
+
+# печатный станок
+ps = metal((90, 95, 100), 6); outline(ps, 0, 0, 15, 15, (55, 58, 62)); rect(ps, 2, 6, 13, 9, (60, 62, 66)); ps.save(f'{R}/block/money_printer_side.png')
+pt = metal((80, 85, 90), 5); outline(pt, 0, 0, 15, 15, (55, 58, 62)); rect(pt, 3, 3, 12, 12, (130, 175, 120)); pt.save(f'{R}/block/money_printer_top.png')
+pf = metal((95, 100, 105), 5); outline(pf, 0, 0, 15, 15, (55, 58, 62))
+rect(pf, 2, 2, 13, 4, (40, 40, 45)); pix(pf, [(3, 3), (5, 3)], (240, 60, 60)); pix(pf, [(7, 3)], (60, 240, 90))
+rect(pf, 2, 8, 13, 11, (30, 30, 32)); rect(pf, 3, 9, 12, 10, (120, 170, 110))  # купюры выходят
+pix(pf, [(6, 9), (7, 9), (8, 10)], (70, 120, 70))
+rect(pf, 1, 13, 14, 14, (60, 62, 66))
+pf.save(f'{R}/block/money_printer_front.png')
+
+# грязные деньги — мятая пачка, перетянутая резинкой
+dm = img()
+rect(dm, 2, 4, 13, 11, (95, 125, 80)); outline(dm, 2, 4, 13, 11, (55, 75, 45))
+rect(dm, 3, 3, 14, 10, (110, 140, 90)); outline(dm, 3, 3, 14, 10, (60, 85, 50))
+rect(dm, 7, 3, 8, 10, (190, 60, 50))
+pix(dm, [(4, 5), (10, 8), (12, 4), (5, 9)], (70, 90, 55))
+pix(dm, [(11, 6), (12, 6), (11, 7)], (40, 55, 35))
+dm.save(f'{R}/item/dirty_money.png')
+
+
+def seller_extra(im):
+    rect(im, 20, 20, 27, 31, (245, 245, 245))     # фартук
+    rect(im, 20, 20, 27, 20, (30, 120, 60))
+    rect(im, 22, 23, 25, 24, (30, 120, 60))
+    rect(im, 11, 15, 12, 15, (170, 80, 80))
+
+
+skin('seller', SKIN, (150, 90, 40), (30, 120, 60), (50, 50, 60), (30, 25, 20), extra=seller_extra, hat=(30, 120, 60))
+
+
+def inspector_extra(im):
+    rect(im, 20, 20, 27, 31, (200, 200, 205))
+    rect(im, 23, 20, 24, 27, (30, 50, 90))        # галстук
+    rect(im, 20, 22, 21, 23, (240, 240, 120))     # бейдж
+    rect(im, 40, 0, 47, 7, (240, 200, 30))        # каска
+    rect(im, 9, 11, 14, 11, (60, 60, 60))
+    rect(im, 9, 12, 10, 12, (30, 30, 30)); rect(im, 13, 12, 14, 12, (30, 30, 30))  # очки
+
+
+skin('inspector', SKIN, (90, 90, 95), (90, 95, 110), (50, 55, 70), (20, 20, 20), extra=inspector_extra, hat=(240, 200, 30))
 print('ok')

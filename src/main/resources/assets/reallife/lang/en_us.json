@@ -17,5 +17,13 @@
   "entity.reallife.vovan": "Collector Vovan",
   "entity.reallife.bratok": "Thug",
   "container.reallife.bank": "Real Bank",
-  "container.reallife.mfo": "Shaikin & Co"
+  "container.reallife.mfo": "Shaikin & Co",
+  "block.reallife.fridge": "Fridge",
+  "block.reallife.atm": "ATM",
+  "block.reallife.vending_food": "Snack Vending Machine",
+  "block.reallife.vending_resources": "Hardware Vending Machine",
+  "block.reallife.money_printer": "Money Printer",
+  "item.reallife.dirty_money": "Dirty Money",
+  "entity.reallife.inspector": "Building Inspector",
+  "entity.reallife.seller": "Seller"
 }

@@ -1,5 +1,6 @@
 package com.baraaoi.reallife.entity;
 
+import com.baraaoi.reallife.Config;
 import com.baraaoi.reallife.economy.Account;
 import com.baraaoi.reallife.economy.BankService;
 import com.baraaoi.reallife.economy.EconomyData;
@@ -24,6 +25,7 @@ import net.minecraft.world.World;
 public class BratokEntity extends DebtNpcEntity {
     private int talk;
     private long calmUntil;
+    private double pocket;
 
     public BratokEntity(EntityType<? extends CreatureEntity> type, World world) {
         super(type, world);
@@ -34,9 +36,51 @@ public class BratokEntity extends DebtNpcEntity {
     @Override
     protected void registerGoals() {
         super.registerGoals();
+        this.goalSelector.addGoal(0, new PickupMoneyGoal(this, 1.3D));
         this.goalSelector.addGoal(1, new MeleeAttackGoal(this, 1.2D, true));
         this.goalSelector.addGoal(3, new FollowTargetGoal(this, 1.1D, 3.0D));
         this.targetSelector.addGoal(1, new HuntTargetGoal(this));
+    }
+
+    @Override
+    protected int moneyDrop() {
+        return 5;
+    }
+
+    @Override
+    public boolean likesMoney() {
+        return true;
+    }
+
+    @Override
+    public void onMoneyPicked(double value) {
+        pocket += value;
+        PlayerEntity p = getTargetPlayer();
+        int need = Config.BRATOK_BRIBE.get();
+        if (pocket >= need) {
+            if (p != null) say(p, "§aО, другое дело. Я своё взял — пацаны сами разберутся. Бывай, коммерсант.");
+            if (p != null && world.getServer() != null) {
+                EconomyData data = EconomyData.get(world.getServer());
+                Account a = data.get(p);
+                a.nextBratkiTick = Math.max(a.nextBratkiTick, world.getGameTime() + 6000);
+                data.markDirty();
+            }
+            this.remove();
+        } else if (p != null) {
+            say(p, "§eЗабираю " + Finance.money(value) + ". Ещё " + Finance.money(need - pocket) + " — и я тебя не видел.");
+        }
+    }
+
+    @Override
+    public void writeAdditional(net.minecraft.nbt.CompoundNBT nbt) {
+        super.writeAdditional(nbt);
+        nbt.putDouble("Pocket", pocket);
+    }
+
+    @Override
+    public void readAdditional(net.minecraft.nbt.CompoundNBT nbt) {
+        super.readAdditional(nbt);
+        pocket = nbt.getDouble("Pocket");
     }
 
     @Override

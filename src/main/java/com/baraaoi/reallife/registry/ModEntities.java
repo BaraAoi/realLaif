@@ -31,6 +31,13 @@ public class ModEntities {
             () -> EntityType.Builder.<BratokEntity>create(BratokEntity::new, EntityClassification.MISC)
                     .size(0.6F, 1.8F).build(RealLife.MODID + ":bratok"));
 
+    public static final RegistryObject<EntityType<InspectorEntity>> INSPECTOR = ENTITIES.register("inspector",
+            () -> EntityType.Builder.<InspectorEntity>create(InspectorEntity::new, EntityClassification.MISC)
+                    .size(0.6F, 1.8F).build(RealLife.MODID + ":inspector"));
+    public static final RegistryObject<EntityType<SellerEntity>> SELLER = ENTITIES.register("seller",
+            () -> EntityType.Builder.<SellerEntity>create(SellerEntity::new, EntityClassification.MISC)
+                    .size(0.6F, 1.95F).build(RealLife.MODID + ":seller"));
+
     private static AttributeModifierMap attrs(double health, double speed, double damage) {
         return MobEntity.func_233666_p_()
                 .createMutableAttribute(Attributes.MAX_HEALTH, health)
@@ -46,5 +53,11 @@ public class ModEntities {
         GlobalEntityTypeAttributes.put(POLICE.get(), attrs(30, 0.36, 5));
         GlobalEntityTypeAttributes.put(VOVAN.get(), attrs(24, 0.34, 2));
         GlobalEntityTypeAttributes.put(BRATOK.get(), attrs(34, 0.35, 5));
+        GlobalEntityTypeAttributes.put(INSPECTOR.get(), attrs(20, 0.34, 1));
+        GlobalEntityTypeAttributes.put(SELLER.get(), MobEntity.func_233666_p_()
+                .createMutableAttribute(Attributes.MAX_HEALTH, 20)
+                .createMutableAttribute(Attributes.MOVEMENT_SPEED, 0.0D)
+                .createMutableAttribute(Attributes.FOLLOW_RANGE, 16.0D)
+                .create());
     }
 }

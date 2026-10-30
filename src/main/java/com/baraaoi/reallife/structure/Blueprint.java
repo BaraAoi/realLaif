@@ -8,6 +8,11 @@ import net.minecraft.block.StairsBlock;
 import net.minecraft.block.WallSignBlock;
 import net.minecraft.state.properties.BedPart;
 import net.minecraft.state.properties.DoubleBlockHalf;
+import net.minecraft.inventory.IInventory;
+import net.minecraft.nbt.CompoundNBT;
+import net.minecraft.nbt.INBT;
+import net.minecraft.nbt.ListNBT;
+import net.minecraft.nbt.NBTUtil;
 import net.minecraft.tileentity.SignTileEntity;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.Direction;
@@ -15,6 +20,11 @@ import net.minecraft.util.Rotation;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.text.StringTextComponent;
 import net.minecraft.world.World;
+
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
 /**
  * Помощник для программной стройки с поворотом.
@@ -33,6 +43,9 @@ public class Blueprint {
     private final Rotation rotation;
     private int minX = Integer.MAX_VALUE, minY = Integer.MAX_VALUE, minZ = Integer.MAX_VALUE;
     private int maxX = Integer.MIN_VALUE, maxY = Integer.MIN_VALUE, maxZ = Integer.MIN_VALUE;
+    /** Снимок исходных блоков (для временных построек), null — не записывать. */
+    private ListNBT snapshot;
+    private final Set<Long> seen = new HashSet<>();
 
     public Blueprint(World world, BlockPos origin, Direction forward) {
         this.world = world;
@@ -47,6 +60,57 @@ public class Blueprint {
         }
     }
 
+    /** Включить запись исходных блоков перед перезаписью. */
+    public Blueprint recordSnapshot() {
+        this.snapshot = new ListNBT();
+        return this;
+    }
+
+    public ListNBT snapshot() {
+        return snapshot == null ? new ListNBT() : snapshot;
+    }
+
+    public World world() {
+        return world;
+    }
+
+    private void remember(BlockPos p) {
+        if (snapshot == null || !seen.add(p.toLong())) return;
+        CompoundNBT t = new CompoundNBT();
+        t.putLong("p", p.toLong());
+        t.put("s", NBTUtil.writeBlockState(world.getBlockState(p)));
+        TileEntity te = world.getTileEntity(p);
+        if (te != null) {
+            t.put("t", te.write(new CompoundNBT()));
+        }
+        snapshot.add(t);
+    }
+
+    /** Вернуть всё, как было до постройки. */
+    public static void restore(World world, ListNBT snap) {
+        List<CompoundNBT> list = new ArrayList<>();
+        for (INBT n : snap) list.add((CompoundNBT) n);
+        // сначала убрать временную постройку (без выпадения вещей)
+        for (CompoundNBT t : list) {
+            BlockPos p = BlockPos.fromLong(t.getLong("p"));
+            TileEntity te = world.getTileEntity(p);
+            if (te instanceof IInventory) ((IInventory) te).clear();
+            world.setBlockState(p, Blocks.AIR.getDefaultState(), FLAGS);
+        }
+        for (CompoundNBT t : list) {
+            BlockPos p = BlockPos.fromLong(t.getLong("p"));
+            BlockState st = NBTUtil.readBlockState(t.getCompound("s"));
+            world.setBlockState(p, st, FLAGS);
+            if (t.contains("t")) {
+                TileEntity te = world.getTileEntity(p);
+                if (te != null) {
+                    te.read(st, t.getCompound("t"));
+                    te.markDirty();
+                }
+            }
+        }
+    }
+
     public BlockPos pos(int x, int y, int z) {
         return origin.offset(left, x).offset(forward, z).up(y);
     }
@@ -57,6 +121,7 @@ public class Blueprint {
 
     public void set(int x, int y, int z, BlockState state) {
         BlockPos p = pos(x, y, z);
+        remember(p);
         world.setBlockState(p, state.rotate(rotation), FLAGS);
         track(p);
     }

@@ -23,10 +23,16 @@ import net.minecraftforge.fml.network.NetworkHooks;
  */
 public class FinanceBlock extends HorizontalBlock {
     private final boolean mfo;
+    private final String title;
 
     public FinanceBlock(Properties props, boolean mfo) {
+        this(props, mfo, mfo ? "МФО «Шайкин и Ко»" : "«Реал Банк»");
+    }
+
+    public FinanceBlock(Properties props, boolean mfo, String title) {
         super(props);
         this.mfo = mfo;
+        this.title = title;
         this.setDefaultState(this.stateContainer.getBaseState().with(HORIZONTAL_FACING, net.minecraft.util.Direction.NORTH));
     }
 
@@ -45,7 +51,6 @@ public class FinanceBlock extends HorizontalBlock {
     public ActionResultType onBlockActivated(BlockState state, World world, BlockPos pos, PlayerEntity player, Hand hand, BlockRayTraceResult hit) {
         if (!world.isRemote && player instanceof ServerPlayerEntity) {
             ServerPlayerEntity sp = (ServerPlayerEntity) player;
-            String title = mfo ? "МФО «Шайкин и Ко»" : "«Реал Банк»";
             NetworkHooks.openGui(sp, new SimpleNamedContainerProvider(
                     (id, inv, p) -> new FinanceContainer(id, inv, pos, mfo),
                     new StringTextComponent(title)), pos);

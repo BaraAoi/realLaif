@@ -27,9 +27,18 @@ public class ModCommands {
     public static void register(CommandDispatcher<CommandSource> d) {
         d.register(Commands.literal("reallife")
                 .then(Commands.literal("info").executes(c -> info(c.getSource().asPlayer())))
+                .then(Commands.literal("land").executes(c -> land(c.getSource().asPlayer()))
+                        .then(Commands.literal("buy").executes(c -> landBuy(c.getSource().asPlayer()))))
                 .then(Commands.literal("admin").requires(s -> s.hasPermissionLevel(2))
                         .then(Commands.literal("money").then(Commands.argument("amount", IntegerArgumentType.integer())
                                 .executes(c -> money(c.getSource().asPlayer(), IntegerArgumentType.getInteger(c, "amount")))))
+                        .then(Commands.literal("rating").then(Commands.argument("value", IntegerArgumentType.integer(300, 850))
+                                .executes(c -> rating(c.getSource(), c.getSource().asPlayer(), IntegerArgumentType.getInteger(c, "value")))
+                                .then(Commands.argument("player", EntityArgument.player())
+                                        .executes(c -> rating(c.getSource(), EntityArgument.getPlayer(c, "player"), IntegerArgumentType.getInteger(c, "value"))))))
+                        .then(Commands.literal("land").then(Commands.literal("reset").executes(c -> landReset(c.getSource().asPlayer()))
+                                .then(Commands.argument("player", EntityArgument.player())
+                                        .executes(c -> landReset(EntityArgument.getPlayer(c, "player"))))))
                         .then(Commands.literal("nextday").executes(c -> nextDay(c.getSource())))
                         .then(Commands.literal("overdue").then(Commands.argument("days", IntegerArgumentType.integer(0, 100))
                                 .executes(c -> overdue(c.getSource().asPlayer(), IntegerArgumentType.getInteger(c, "days")))))
@@ -60,7 +69,72 @@ public class ModCommands {
         if (a.hasLoan()) BankService.msg(p, "Кредит: " + Finance.money(a.loanPrincipal) + ", платёж " + Finance.money(a.loanPayment()) + "/день, осталось " + a.loanDays + " дн.");
         if (a.hasMortgage()) BankService.msg(p, "Ипотека: " + Finance.money(a.mortPrincipal) + ", платёж " + Finance.money(a.mortPayment()) + "/день, осталось " + a.mortDays + " дн.");
         if (a.arrears > 0.01) BankService.msg(p, "§cПросрочка: " + Finance.money(a.arrears) + " (" + a.overdueDays + " дн.)");
+        if (a.hasBusiness) BankService.msg(p, "§2Подпольный цех: §fработает" + (a.hasLaundering ? ", ООО «Отмыв» оформлено" : ""));
+        int land = EconomyData.get(p.getServer()).ownedCount(p.getUniqueID());
+        if (land > 0) BankService.msg(p, "§3Участков в собственности: §f" + land);
+        if (a.landCase) BankService.msg(p, "§cОткрыто дело о самострое! §7/reallife land");
         if (a.hasMfo()) BankService.msg(p, "§2МФО: §cдолг " + Finance.money(a.mfoDebt) + (a.mfoDays > 0 ? ", срок " + a.mfoDays + " дн." : ", просрочка " + a.mfoOverdueDays + " дн."));
+        return 1;
+    }
+
+    private static int rating(CommandSource src, ServerPlayerEntity p, int value) {
+        EconomyData data = EconomyData.get(p.getServer());
+        Account a = data.get(p);
+        long today = BankService.today(p.getServer());
+        a.ratingBonus = CreditRating.bonusFor(a, today, value);
+        data.markDirty();
+        int now = CreditRating.score(a, today);
+        src.sendFeedback(new StringTextComponent("§aРейтинг " + p.getGameProfile().getName() + ": §b" + now + " " + CreditRating.category(now)
+                + " §7(поправка " + (a.ratingBonus >= 0 ? "+" : "") + a.ratingBonus + ")"), true);
+        if (src.getEntity() != p) BankService.msg(p, BankService.BANK + "Ваш кредитный рейтинг пересмотрен: §b" + now);
+        return 1;
+    }
+
+    private static int land(ServerPlayerEntity p) {
+        EconomyData data = EconomyData.get(p.getServer());
+        Account a = data.get(p);
+        long chunk = EconomyData.chunkKey(p.getPosition());
+        java.util.UUID owner = data.owner(chunk);
+        net.minecraft.util.math.ChunkPos cp = new net.minecraft.util.math.ChunkPos(chunk);
+        String who;
+        if (owner == null) who = "§7ничей (можно купить: §f/reallife land buy§7, " + Finance.money(com.baraaoi.reallife.Config.LAND_PRICE.get()) + ")";
+        else if (owner.equals(p.getUniqueID())) who = "§aваш";
+        else if (owner.equals(Buildings.CITY)) who = "§6городской (банк/МФО)";
+        else {
+            Account o = data.get(owner);
+            who = "§cчужой" + (o != null && o.name != null && !o.name.isEmpty() ? " (" + o.name + ")" : "");
+        }
+        BankService.msg(p, "§3===== Участок " + cp.x + ", " + cp.z + " (X " + cp.getXStart() + ".." + cp.getXEnd() + ", Z " + cp.getZStart() + ".." + cp.getZEnd() + ") =====");
+        BankService.msg(p, "Владелец: " + who);
+        if (!p.getUniqueID().equals(owner)) {
+            BankService.msg(p, "Ваших блоков здесь: §e" + data.placedCount(chunk, p.getUniqueID()) + "§f из §e"
+                    + com.baraaoi.reallife.Config.LAND_THRESHOLD.get() + "§f до визита инспектора.");
+        }
+        BankService.msg(p, "Ваших участков всего: §e" + data.ownedCount(p.getUniqueID()));
+        if (a.landCase) {
+            net.minecraft.util.math.ChunkPos lc = new net.minecraft.util.math.ChunkPos(a.landChunk);
+            long left = Math.max(0, a.landDeadline - p.world.getGameTime()) / 20;
+            BankService.msg(p, String.format("§cОткрыто дело о самострое: чанк %d, %d. До сноса %d:%02d.", lc.x, lc.z, left / 60, left % 60));
+        }
+        return 1;
+    }
+
+    private static int landBuy(ServerPlayerEntity p) {
+        if (p.world.getDimensionKey() != net.minecraft.world.World.OVERWORLD) {
+            BankService.msg(p, "§cУчастки продаются только в обычном мире.");
+            return 0;
+        }
+        EconomyData data = EconomyData.get(p.getServer());
+        return DebtManager.buyLand(p, data.get(p), EconomyData.chunkKey(p.getPosition())) ? 1 : 0;
+    }
+
+    private static int landReset(ServerPlayerEntity p) {
+        EconomyData data = EconomyData.get(p.getServer());
+        Account a = data.get(p);
+        a.landCase = false;
+        for (java.util.Map<java.util.UUID, java.util.Set<Long>> m : data.placed.values()) m.remove(p.getUniqueID());
+        data.markDirty();
+        BankService.msg(p, "§aДела о самострое и счётчики блоков сброшены.");
         return 1;
     }
 

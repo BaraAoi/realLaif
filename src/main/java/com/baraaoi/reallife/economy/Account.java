@@ -1,6 +1,7 @@
 package com.baraaoi.reallife.economy;
 
 import net.minecraft.nbt.CompoundNBT;
+import net.minecraft.nbt.ListNBT;
 import net.minecraft.util.math.BlockPos;
 
 import java.util.UUID;
@@ -68,6 +69,29 @@ public class Account {
     public int captivity = FREE;
     public long jailUntil;
     public int pitBlocksLeft;
+    /** Временная камера (СИЗО в небе / подвал под МФО) и снимок блоков, которые она заменила. */
+    public boolean cellActive;
+    public BlockPos cellCenter = BlockPos.ZERO;
+    public ListNBT cellSnapshot = new ListNBT();
+
+    // --- рейтинг (ручная поправка админом / финмониторинг) ---
+    public int ratingBonus;
+
+    // --- взятки ---
+    public double policeBribe;
+
+    // --- подпольный бизнес ---
+    public boolean hasBusiness;
+    public BlockPos businessChest = BlockPos.ZERO;
+    public BlockPos businessMin = BlockPos.ZERO;
+    public BlockPos businessMax = BlockPos.ZERO;
+    public boolean hasLaundering;
+
+    // --- самострой ---
+    public boolean landCase;
+    public long landChunk;
+    public long landDeadline;
+    public long landNextWarn;
 
     public Account(UUID id) {
         this.id = id;
@@ -129,6 +153,19 @@ public class Account {
         t.putInt("captivity", captivity);
         t.putLong("jailUntil", jailUntil);
         t.putInt("pitBlocksLeft", pitBlocksLeft);
+        t.putBoolean("cellActive", cellActive);
+        t.putLong("cellCenter", cellCenter.toLong());
+        t.put("cellSnapshot", cellSnapshot);
+        t.putInt("ratingBonus", ratingBonus);
+        t.putDouble("policeBribe", policeBribe);
+        t.putBoolean("hasBusiness", hasBusiness);
+        t.putLong("businessChest", businessChest.toLong());
+        t.putLong("businessMin", businessMin.toLong());
+        t.putLong("businessMax", businessMax.toLong());
+        t.putBoolean("hasLaundering", hasLaundering);
+        t.putBoolean("landCase", landCase);
+        t.putLong("landChunk", landChunk);
+        t.putLong("landDeadline", landDeadline);
         return t;
     }
 
@@ -174,6 +211,19 @@ public class Account {
         a.captivity = t.getInt("captivity");
         a.jailUntil = t.getLong("jailUntil");
         a.pitBlocksLeft = t.getInt("pitBlocksLeft");
+        a.cellActive = t.getBoolean("cellActive");
+        a.cellCenter = BlockPos.fromLong(t.getLong("cellCenter"));
+        a.cellSnapshot = t.getList("cellSnapshot", 10);
+        a.ratingBonus = t.getInt("ratingBonus");
+        a.policeBribe = t.getDouble("policeBribe");
+        a.hasBusiness = t.getBoolean("hasBusiness");
+        a.businessChest = BlockPos.fromLong(t.getLong("businessChest"));
+        a.businessMin = BlockPos.fromLong(t.getLong("businessMin"));
+        a.businessMax = BlockPos.fromLong(t.getLong("businessMax"));
+        a.hasLaundering = t.getBoolean("hasLaundering");
+        a.landCase = t.getBoolean("landCase");
+        a.landChunk = t.getLong("landChunk");
+        a.landDeadline = t.getLong("landDeadline");
         return a;
     }
 }

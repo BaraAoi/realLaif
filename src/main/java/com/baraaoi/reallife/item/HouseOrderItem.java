@@ -74,8 +74,12 @@ public class HouseOrderItem extends Item {
         a.houseMin = bp.min();
         a.houseMax = bp.max();
         a.houseBuilt = true;
+        int claimed = Buildings.claimArea(data, player.getUniqueID(), bp.min().add(-8, 0, -8), bp.max().add(8, 0, 8), true);
+        if (a.landCase && player.getUniqueID().equals(data.owner(a.landChunk))) a.landCase = false;
         data.markDirty();
         stack.shrink(1);
+        if (claimed > 0) player.sendStatusMessage(new StringTextComponent("§3[Администрация] §fЗемля под домом и вокруг оформлена на вас: §e"
+                + claimed + "§f участк(а/ов). Стройте спокойно."), false);
         player.sendStatusMessage(new StringTextComponent("§6[Реал Банк] §fБригада построила вам: §e" + type.title
                 + "§f. Не забывайте платить по ипотеке — иначе дом изымут."), false);
         return ActionResultType.SUCCESS;

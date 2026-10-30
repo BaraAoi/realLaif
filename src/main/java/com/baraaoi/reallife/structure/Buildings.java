@@ -2,7 +2,23 @@ package com.baraaoi.reallife.structure;
 
 import com.baraaoi.reallife.block.FinanceBlock;
 import com.baraaoi.reallife.economy.HouseType;
+import com.baraaoi.reallife.economy.EconomyData;
+import com.baraaoi.reallife.economy.Trades;
+import com.baraaoi.reallife.entity.SellerEntity;
 import com.baraaoi.reallife.registry.ModBlocks;
+import com.baraaoi.reallife.registry.ModEntities;
+import com.baraaoi.reallife.tile.FridgeTileEntity;
+import net.minecraft.block.CauldronBlock;
+import net.minecraft.block.TrapDoorBlock;
+import net.minecraft.inventory.IInventory;
+import net.minecraft.item.Item;
+import net.minecraft.item.ItemStack;
+import net.minecraft.item.Items;
+import net.minecraft.state.properties.Half;
+import net.minecraft.tileentity.TileEntity;
+import net.minecraft.util.math.AxisAlignedBB;
+import net.minecraft.world.server.ServerWorld;
+import java.util.UUID;
 import net.minecraft.block.AbstractFurnaceBlock;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
@@ -118,10 +134,23 @@ public class Buildings {
         // зал ожидания
         for (int x = -5; x <= -3; x++) b.set(x, 1, 1, b.stairs(s(Blocks.DARK_OAK_STAIRS), Direction.NORTH));
         for (int x = 3; x <= 5; x++) b.set(x, 1, 1, b.stairs(s(Blocks.DARK_OAK_STAIRS), Direction.NORTH));
-        b.set(-5, 1, 3, s(Blocks.POTTED_FERN));
-        b.set(5, 1, 3, s(Blocks.POTTED_FERN));
-        b.set(-5, 1, 4, s(Blocks.LECTERN));
-        b.set(5, 1, 4, s(Blocks.CARTOGRAPHY_TABLE));
+        // торговые автоматы и банкомат
+        b.set(-5, 1, 3, counter(ModBlocks.VENDING_FOOD.get(), Direction.EAST));
+        b.set(5, 1, 3, counter(ModBlocks.VENDING_RESOURCES.get(), Direction.WEST));
+        b.set(-2, 1, 1, counter(ModBlocks.ATM.get(), Direction.SOUTH));
+        b.set(2, 1, 1, s(Blocks.POTTED_FERN));
+        // окна продавцов (по краям стойки)
+        for (int x : new int[]{-5, 5}) {
+            b.set(x, 1, 5, topSlab(Blocks.SMOOTH_QUARTZ_SLAB).with(SlabBlock.TYPE, SlabType.BOTTOM));
+            b.set(x, 2, 5, s(Blocks.AIR));
+            b.set(x, 1, 6, s(Blocks.AIR));
+            b.set(x, 2, 6, s(Blocks.AIR));
+        }
+        b.set(-4, 1, 6, s(Blocks.BARREL));
+        b.set(4, 1, 6, s(Blocks.BARREL));
+        spawnSeller(w, b.pos(-5, 1, 6), Trades.SELLER_FOOD);
+        spawnSeller(w, b.pos(5, 1, 6), Trades.SELLER_GOODS);
+        claimCity(w, b);
         return b;
     }
 
@@ -175,6 +204,18 @@ public class Buildings {
         b.set(2, 3, 1, s(Blocks.COBWEB));
         b.set(-2, 1, 1, s(Blocks.BARREL));
         b.set(2, 1, 2, chest(Direction.WEST));
+        b.set(-1, 1, 1, counter(ModBlocks.MONEY_PRINTER.get(), Direction.SOUTH));
+        claimCity(w, b);
+        if (w instanceof ServerWorld && w.getServer() != null && w.getDimensionKey() == World.OVERWORLD) {
+            EconomyData data = EconomyData.get(w.getServer());
+            BlockPos c = b.pos(0, 0, 3);
+            boolean known = false;
+            for (BlockPos m : data.mfoCenters) if (m.distanceSq(c) < 9) known = true;
+            if (!known) {
+                data.mfoCenters.add(c);
+                data.markDirty();
+            }
+        }
         return b;
     }
 
@@ -182,14 +223,17 @@ public class Buildings {
     //  ДОМА ПО ИПОТЕКЕ
     // =====================================================================================
     public static Blueprint buildHouse(World w, BlockPos origin, Direction facing, HouseType type) {
+        Blueprint b;
         switch (type) {
-            case DIRT_HUT: return dirtHut(w, origin, facing);
-            case WOODEN_HUT: return woodenHut(w, origin, facing);
-            case STONE_HOUSE: return stoneHouse(w, origin, facing);
-            case BRICK_COTTAGE: return brickCottage(w, origin, facing);
-            case MANSION: return mansion(w, origin, facing);
-            default: return penthouse(w, origin, facing);
+            case DIRT_HUT: b = dirtHut(w, origin, facing); break;
+            case WOODEN_HUT: b = woodenHut(w, origin, facing); break;
+            case STONE_HOUSE: b = stoneHouse(w, origin, facing); break;
+            case BRICK_COTTAGE: b = brickCottage(w, origin, facing); break;
+            case MANSION: b = mansion(w, origin, facing); break;
+            default: b = penthouse(w, origin, facing); break;
         }
+        furnish(b, type.ordinal(), new Random(origin.toLong() ^ 0x5EEDL));
+        return b;
     }
 
     /** Землянка из грязи 5×5. */
@@ -207,6 +251,7 @@ public class Buildings {
         b.set(1, 0, 3, s(Blocks.HAY_BLOCK));
         b.set(1, 0, 1, s(Blocks.TORCH));
         b.set(2, 1, 2, s(Blocks.DIRT));
+        b.set(0, 0, 3, chest(Direction.NORTH));
         return b;
     }
 
@@ -232,6 +277,8 @@ public class Buildings {
         b.set(-2, 0, 1, s(Blocks.TORCH));
         b.set(2, 0, 1, s(Blocks.TORCH));
         b.set(0, 0, 3, s(Blocks.BROWN_CARPET));
+        b.set(-2, 0, 2, counter(ModBlocks.FRIDGE.get(), Direction.EAST));
+        b.set(-2, 0, 3, chest(Direction.EAST));
         return b;
     }
 
@@ -264,8 +311,14 @@ public class Buildings {
         b.set(-1, 0, 4, b.stairs(s(Blocks.OAK_STAIRS), Direction.WEST));
         b.set(1, 0, 4, b.stairs(s(Blocks.OAK_STAIRS), Direction.EAST));
         for (int x = -1; x <= 1; x++) b.set(x, 0, 2, s(Blocks.RED_CARPET));
-        b.set(-3, 0, 6, s(Blocks.LANTERN));
+        // тумбочка с лампой у изголовья (раньше лампа стояла прямо в кровати)
+        b.set(-2, 0, 6, s(Blocks.SPRUCE_PLANKS));
+        b.set(-2, 1, 6, s(Blocks.LANTERN));
         b.set(3, 0, 1, s(Blocks.LANTERN));
+        b.set(2, 0, 6, counter(ModBlocks.FRIDGE.get(), Direction.NORTH));
+        b.set(2, 1, 6, counter(ModBlocks.FRIDGE.get(), Direction.NORTH));
+        b.set(1, 0, 6, chest(Direction.NORTH));
+        b.set(-3, 0, 2, s(Blocks.BARREL));
         return b;
     }
 
@@ -321,6 +374,22 @@ public class Buildings {
         for (int x = -2; x <= 2; x++) for (int z = 2; z <= 4; z++) b.set(x, 5, z, s(Blocks.LIGHT_GRAY_CARPET));
         b.set(-4, 5, 1, s(Blocks.LANTERN));
         b.set(4, 5, 1, s(Blocks.LANTERN));
+        // кухня: холодильник и ещё сундук
+        b.set(4, 0, 5, counter(ModBlocks.FRIDGE.get(), Direction.WEST));
+        b.set(4, 1, 5, counter(ModBlocks.FRIDGE.get(), Direction.WEST));
+        b.set(-2, 0, 8, chest(Direction.NORTH));
+        // 2 этаж: гардероб, ванная, кабинет, растения
+        b.set(-4, 5, 3, s(Blocks.BARREL)); b.set(-4, 6, 3, s(Blocks.BARREL));
+        b.set(-4, 5, 4, s(Blocks.BARREL)); b.set(-4, 6, 4, s(Blocks.BARREL));
+        b.set(3, 5, 6, s(Blocks.CAULDRON).with(CauldronBlock.LEVEL, 3));
+        b.set(3, 5, 5, s(Blocks.QUARTZ_SLAB));
+        b.set(2, 5, 6, s(Blocks.WHITE_CARPET));
+        b.set(4, 5, 2, s(Blocks.LECTERN));
+        b.set(3, 5, 2, b.stairs(s(Blocks.SPRUCE_STAIRS), Direction.WEST));
+        b.set(4, 5, 3, s(Blocks.BOOKSHELF));
+        b.set(-1, 5, 1, s(Blocks.POTTED_FERN));
+        b.set(1, 5, 1, s(Blocks.POTTED_CACTUS));
+        b.set(0, 5, 8, chest(Direction.NORTH));
         return b;
     }
 
@@ -398,6 +467,31 @@ public class Buildings {
         b.set(-6, 6, 1, s(Blocks.LANTERN));
         b.set(6, 6, 1, s(Blocks.LANTERN));
         b.set(-1, 6, 11, s(Blocks.JUKEBOX));
+        // 1 этаж: банкомат, холодильник, ещё сундуки
+        b.set(-6, 0, 1, counter(ModBlocks.ATM.get(), Direction.EAST));
+        b.set(6, 0, 5, counter(ModBlocks.FRIDGE.get(), Direction.WEST));
+        b.set(6, 1, 5, counter(ModBlocks.FRIDGE.get(), Direction.WEST));
+        b.set(3, 0, 11, chest(Direction.NORTH));
+        // 2 этаж (передняя часть): бильярдная, гардероб, ванная, зимний сад
+        for (int x = -1; x <= 1; x++) for (int z = 2; z <= 3; z++) {
+            b.set(x, 6, z, s(Blocks.DARK_OAK_FENCE));
+            b.set(x, 7, z, s(Blocks.GREEN_CARPET));
+        }
+        b.set(-3, 6, 2, s(Blocks.DARK_OAK_FENCE));
+        b.set(-6, 6, 3, s(Blocks.BARREL)); b.set(-6, 7, 3, s(Blocks.BARREL));
+        b.set(-6, 6, 4, s(Blocks.BARREL)); b.set(-6, 7, 4, s(Blocks.BARREL));
+        b.set(-6, 6, 5, chest(Direction.EAST));
+        b.set(4, 6, 1, s(Blocks.CAULDRON).with(CauldronBlock.LEVEL, 3));
+        b.set(5, 6, 1, s(Blocks.CAULDRON).with(CauldronBlock.LEVEL, 3));
+        for (int x = 3; x <= 5; x++) b.set(x, 6, 2, s(Blocks.WHITE_CARPET));
+        b.set(5, 6, 3, s(Blocks.POTTED_BAMBOO));
+        b.set(3, 6, 4, s(Blocks.POTTED_ORANGE_TULIP));
+        b.set(-5, 6, 1, s(Blocks.POTTED_FERN));
+        // кабинет
+        b.set(-2, 6, 7, s(Blocks.LECTERN));
+        b.set(-3, 6, 7, b.stairs(s(Blocks.DARK_OAK_STAIRS), Direction.EAST));
+        b.set(-6, 6, 7, s(Blocks.BOOKSHELF)); b.set(-6, 7, 7, s(Blocks.BOOKSHELF));
+        b.set(-6, 6, 8, s(Blocks.BOOKSHELF)); b.set(-6, 7, 8, s(Blocks.BOOKSHELF));
         return b;
     }
 
@@ -501,27 +595,153 @@ public class Buildings {
         }
         b.set(-5, 15, 5, s(Blocks.POTTED_OAK_SAPLING));
         b.set(5, 15, 5, s(Blocks.POTTED_OAK_SAPLING));
+        // лобби: банкомат и автомат
+        b.set(5, 0, 5, counter(ModBlocks.ATM.get(), Direction.WEST));
+        b.set(5, 0, 6, counter(ModBlocks.VENDING_FOOD.get(), Direction.WEST));
+        // 2 этаж: холодильник, домашний кинотеатр
+        b.set(5, 5, 4, counter(ModBlocks.FRIDGE.get(), Direction.WEST));
+        b.set(5, 6, 4, counter(ModBlocks.FRIDGE.get(), Direction.WEST));
+        for (int x = 0; x <= 3; x++) for (int y = 6; y <= 7; y++) b.set(x, y, 11, s(Blocks.BLACK_CONCRETE));
+        for (int x = 0; x <= 3; x++) b.set(x, 5, 8, b.stairs(s(Blocks.DARK_OAK_STAIRS), Direction.NORTH));
+        b.set(-5, 5, 3, chest(Direction.EAST));
+        b.set(-1, 5, 11, s(Blocks.POTTED_BAMBOO));
+        // 3 этаж: бильярд, гардероб, растения
+        for (int x = -1; x <= 1; x++) for (int z = 2; z <= 3; z++) {
+            b.set(x, 10, z, s(Blocks.DARK_OAK_FENCE));
+            b.set(x, 11, z, s(Blocks.GREEN_CARPET));
+        }
+        b.set(-5, 10, 1, s(Blocks.BARREL)); b.set(-5, 11, 1, s(Blocks.BARREL));
+        b.set(-5, 10, 2, s(Blocks.BARREL)); b.set(-5, 11, 2, s(Blocks.BARREL));
+        b.set(5, 10, 1, s(Blocks.POTTED_BAMBOO));
+        b.set(-5, 10, 11, chest(Direction.EAST));
+        // пентхаус: холодильник, ванна
+        b.set(4, 15, 8, counter(ModBlocks.FRIDGE.get(), Direction.WEST));
+        b.set(4, 16, 8, counter(ModBlocks.FRIDGE.get(), Direction.WEST));
+        b.set(5, 15, 10, s(Blocks.CAULDRON).with(CauldronBlock.LEVEL, 3));
         return b;
     }
 
     // =====================================================================================
-    //  ТЮРЬМА и ПОДВАЛ
+    //  ПРОДАВЦЫ, ЗЕМЛЯ, НАПОЛНЕНИЕ ДОМОВ
     // =====================================================================================
-    public static void buildJail(World w, BlockPos center) {
-        Blueprint b = new Blueprint(w, center, Direction.SOUTH);
+
+    public static final UUID CITY = new UUID(0L, 0L);
+
+    static void spawnSeller(World w, BlockPos pos, int variant) {
+        if (!(w instanceof ServerWorld)) return;
+        for (SellerEntity old : w.getEntitiesWithinAABB(SellerEntity.class, new AxisAlignedBB(pos).grow(1.5D))) old.remove();
+        SellerEntity e = ModEntities.SELLER.get().create(w);
+        if (e == null) return;
+        e.setVariant(variant);
+        e.setLocationAndAngles(pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5, 0F, 0F);
+        w.addEntity(e);
+    }
+
+    /** Земля под банком / МФО — городская, строить на ней нельзя. */
+    static void claimCity(World w, Blueprint b) {
+        if (!(w instanceof ServerWorld) || w.getServer() == null || w.getDimensionKey() != World.OVERWORLD) return;
+        EconomyData data = EconomyData.get(w.getServer());
+        claimArea(data, CITY, b.min().add(-2, 0, -2), b.max().add(2, 0, 2), false);
+    }
+
+    /** Закрепить за владельцем все ничейные чанки в прямоугольнике. */
+    public static int claimArea(EconomyData data, UUID owner, BlockPos a, BlockPos b, boolean onlyFree) {
+        int n = 0;
+        for (int cx = Math.min(a.getX(), b.getX()) >> 4; cx <= Math.max(a.getX(), b.getX()) >> 4; cx++)
+            for (int cz = Math.min(a.getZ(), b.getZ()) >> 4; cz <= Math.max(a.getZ(), b.getZ()) >> 4; cz++) {
+                long key = net.minecraft.util.math.ChunkPos.asLong(cx, cz);
+                UUID cur = data.owner(key);
+                if (cur == null || (!onlyFree && !cur.equals(owner) && owner.equals(CITY))) {
+                    data.claim(owner, key);
+                    n++;
+                }
+            }
+        return n;
+    }
+
+    private static ItemStack it(Item i, int n) {
+        return new ItemStack(i, n);
+    }
+
+    private static final Item[] FOOD = {Items.BREAD, Items.APPLE, Items.COOKED_BEEF, Items.CARROT, Items.BAKED_POTATO,
+            Items.COOKIE, Items.MELON_SLICE, Items.PUMPKIN_PIE, Items.COOKED_CHICKEN, Items.COOKED_COD, Items.SWEET_BERRIES};
+    private static final Item[] HOUSEHOLD = {Items.TORCH, Items.OAK_PLANKS, Items.STRING, Items.PAPER, Items.BOOK,
+            Items.WHEAT_SEEDS, Items.BONE_MEAL, Items.STICK, Items.COBBLESTONE, Items.GLASS_PANE, Items.WHITE_WOOL, Items.LADDER};
+    private static final Item[] RICH = {Items.IRON_INGOT, Items.GOLD_NUGGET, Items.COAL, Items.REDSTONE, Items.LAPIS_LAZULI,
+            Items.LEATHER, Items.FEATHER, Items.EXPERIENCE_BOTTLE, Items.NAME_TAG, Items.EMERALD};
+
+    private static void put(IInventory inv, Random r, ItemStack st) {
+        for (int tries = 0; tries < 10; tries++) {
+            int slot = r.nextInt(inv.getSizeInventory());
+            if (inv.getStackInSlot(slot).isEmpty()) {
+                inv.setInventorySlotContents(slot, st);
+                return;
+            }
+        }
+    }
+
+    /** Заполнить все пустые сундуки, бочки и холодильники дома. tier 0..5 — чем дороже дом, тем богаче. */
+    public static void furnish(Blueprint b, int tier, Random r) {
+        World w = b.world();
+        BlockPos min = b.min(), max = b.max();
+        for (BlockPos pos : BlockPos.getAllInBoxMutable(min, max)) {
+            TileEntity te = w.getTileEntity(pos);
+            if (!(te instanceof IInventory)) continue;
+            IInventory inv = (IInventory) te;
+            if (!inv.isEmpty()) continue;
+            if (te instanceof FridgeTileEntity) {
+                int n = 4 + r.nextInt(3) + tier;
+                for (int i = 0; i < n; i++) put(inv, r, it(FOOD[r.nextInt(FOOD.length)], 2 + r.nextInt(6)));
+                put(inv, r, it(Items.MILK_BUCKET, 1));
+                if (tier >= 3) put(inv, r, it(Items.CAKE, 1));
+                if (tier >= 4) put(inv, r, it(Items.GOLDEN_CARROT, 2 + r.nextInt(4)));
+            } else {
+                int n = 3 + r.nextInt(3) + tier / 2;
+                for (int i = 0; i < n; i++) put(inv, r, it(HOUSEHOLD[r.nextInt(HOUSEHOLD.length)], 1 + r.nextInt(12)));
+                put(inv, r, it(FOOD[r.nextInt(FOOD.length)], 2 + r.nextInt(4)));
+                for (int i = 0; i < tier; i++) {
+                    if (r.nextInt(3) == 0) put(inv, r, it(RICH[r.nextInt(RICH.length)], 1 + r.nextInt(3)));
+                }
+                if (tier >= 4 && r.nextInt(3) == 0) put(inv, r, it(Items.DIAMOND, 1));
+            }
+            te.markDirty();
+        }
+    }
+
+    // =====================================================================================
+    //  СИЗО (в небе) и ПОДВАЛ (под МФО) — временные, со снимком исходных блоков
+    // =====================================================================================
+
+    /** Габарит камеры относительно центра: x/z −4..4, y 0..5. */
+    public static boolean cellFits(World w, BlockPos c, int margin) {
+        for (int x = -4 - margin; x <= 4 + margin; x++)
+            for (int z = -4 - margin; z <= 4 + margin; z++)
+                for (int y = -margin; y <= 5 + margin; y++) {
+                    BlockPos p = c.add(x, y, z);
+                    if (!w.isAirBlock(p)) return false;
+                }
+        return true;
+    }
+
+    public static Blueprint buildJail(World w, BlockPos center) {
+        Blueprint b = new Blueprint(w, center, Direction.SOUTH).recordSnapshot();
         BlockState wall = s(ModBlocks.JAIL_WALL.get());
         b.fill(-4, 0, -4, 4, 5, 4, wall);
         b.clear(-3, 1, -3, 3, 4, 3);
         b.set(0, 5, 0, s(Blocks.GLOWSTONE));
         b.set(-2, 5, 2, s(Blocks.GLOWSTONE));
         b.set(2, 5, -2, s(Blocks.GLOWSTONE));
+        // окна в небо
+        b.set(-4, 2, 0, s(Blocks.IRON_BARS));
+        b.set(4, 2, 0, s(Blocks.IRON_BARS));
         for (int z = 1; z <= 3; z++) b.set(-3, 1, z, topSlab(Blocks.SPRUCE_SLAB));
         b.set(3, 1, 3, s(Blocks.CAULDRON));
         b.sign(0, 2, -3, s(Blocks.SPRUCE_WALL_SIGN), Direction.SOUTH, "§lСИЗО №1", "Для должников", "«Реал Банка»", "§8ждите срок");
+        return b;
     }
 
-    public static void buildPit(World w, BlockPos center) {
-        Blueprint b = new Blueprint(w, center, Direction.SOUTH);
+    public static Blueprint buildPit(World w, BlockPos center) {
+        Blueprint b = new Blueprint(w, center, Direction.SOUTH).recordSnapshot();
         BlockState wall = s(ModBlocks.JAIL_WALL.get());
         b.fill(-4, 0, -4, 4, 5, 4, wall);
         b.clear(-3, 1, -3, 3, 4, 3);
@@ -534,6 +754,108 @@ public class Buildings {
                     b.set(x, y, z, pitBlock(r));
         b.sign(-3, 2, 3, s(Blocks.OAK_WALL_SIGN), Direction.EAST, "§4ПОДВАЛ", "Шайкина", "Копай, пока", "не отработаешь");
         b.set(3, 1, 3, s(Blocks.CAULDRON));
+        b.set(2, 1, 3, s(Blocks.CHAIN));
+        return b;
+    }
+
+    // =====================================================================================
+    //  ПОДПОЛЬНЫЙ ЦЕХ (подвал под домом)
+    // =====================================================================================
+
+    public static class Basement {
+        public final Blueprint bp;
+        public final BlockPos chest;
+        public final BlockPos hatch;
+
+        Basement(Blueprint bp, BlockPos chest, BlockPos hatch) {
+            this.bp = bp;
+            this.chest = chest;
+            this.hatch = hatch;
+        }
+    }
+
+    /**
+     * Построить подвал под домом. houseMin.y — уровень фундамента (пол дома = houseMin.y + 1).
+     * Люк ставится в свободное место пола не дальше 3 блоков от центра дома.
+     */
+    public static Basement buildBasement(World w, BlockPos houseMin, BlockPos houseMax) {
+        int floorY = houseMin.getY() + 1;
+        int cx = (houseMin.getX() + houseMax.getX()) / 2;
+        int cz = (houseMin.getZ() + houseMax.getZ()) / 2;
+        BlockPos hatch = null;
+        double best = Double.MAX_VALUE;
+        for (int dx = -3; dx <= 2; dx++)
+            for (int dz = -3; dz <= 3; dz++) {
+                BlockPos p = new BlockPos(cx + dx, floorY, cz + dz);
+                if (!w.isAirBlock(p) || !w.isAirBlock(p.up())) continue;
+                if (!w.getBlockState(p.down()).isSolid()) continue;
+                if (!w.isAirBlock(p.east()) && !w.getBlockState(p.east()).isSolid()) continue;
+                boolean roofed = false;
+                for (int y = 2; y <= 8; y++) if (!w.isAirBlock(p.up(y))) { roofed = true; break; }
+                if (!roofed) continue;
+                double d = dx * dx + dz * dz + (dx == 0 && dz == 0 ? 0.5 : 0);
+                if (d < best) { best = d; hatch = p; }
+            }
+        if (hatch == null) return null;
+        int by = floorY - 7; // пол подвала
+        Blueprint b = new Blueprint(w, new BlockPos(cx, by, cz), Direction.SOUTH);
+        BlockState brick = s(Blocks.STONE_BRICKS);
+        // комната 7x4x7 (внутри), стены из камня
+        b.fill(-4, 0, -4, 4, 5, 4, brick);
+        b.clear(-3, 1, -3, 3, 4, 3);
+        b.fill(-3, 0, -3, 3, 0, 3, s(Blocks.POLISHED_ANDESITE));
+        for (int[] c : new int[][]{{-2, -2}, {2, -2}, {-2, 2}, {2, 2}}) b.set(c[0], 5, c[1], s(Blocks.SEA_LANTERN));
+        // шахта с лестницей к люку (локальные координаты = мировые смещения)
+        int hx = hatch.getX() - cx, hz = hatch.getZ() - cz;
+        for (int y = 1; y <= floorY - 2 - by; y++) {
+            if (y >= 5) {
+                b.set(hx - 1, y, hz, brick);
+                b.set(hx, y, hz - 1, brick);
+                b.set(hx, y, hz + 1, brick);
+            }
+            b.set(hx + 1, y, hz, brick);
+            b.set(hx, y, hz, ladder(Direction.WEST));
+        }
+        b.set(hx, floorY - 1 - by, hz, s(Blocks.SPRUCE_TRAPDOOR).with(TrapDoorBlock.HALF, Half.TOP)
+                .with(TrapDoorBlock.HORIZONTAL_FACING, Direction.WEST));
+        // станки и стол
+        int[][] printers = {{-3, -3}, {-2, -3}, {-1, -3}, {1, -3}, {2, -3}};
+        for (int[] pr : printers) if (!(pr[0] == hx && pr[1] == hz) && !(pr[0] == hx + 1 && pr[1] == hz)) b.set(pr[0], 1, pr[1], counter(ModBlocks.MONEY_PRINTER.get(), Direction.SOUTH));
+        BlockPos chest = null;
+        int[][] chestSpots = {{-3, 3}, {3, 3}, {-3, 0}, {3, 0}, {0, 3}};
+        for (int[] cs : chestSpots) {
+            if (Math.abs(cs[0] - hx) <= 1 && Math.abs(cs[1] - hz) <= 1) continue;
+            b.set(cs[0], 1, cs[1], chest(Direction.NORTH));
+            chest = b.pos(cs[0], 1, cs[1]);
+            break;
+        }
+        if (chest == null) {
+            b.set(-3, 1, 1, chest(Direction.EAST));
+            chest = b.pos(-3, 1, 1);
+        }
+        if (!(Math.abs(hx) <= 1 && Math.abs(hz) <= 1)) {
+            b.set(0, 1, 0, s(Blocks.DARK_OAK_FENCE));
+            b.set(0, 2, 0, s(Blocks.DARK_OAK_PRESSURE_PLATE));
+        }
+        if (!(Math.abs(hx - 3) <= 1 && Math.abs(hz + 1) <= 1)) {
+            b.set(3, 1, -1, s(Blocks.CRAFTING_TABLE));
+            b.set(3, 2, -1, s(Blocks.LANTERN));
+        }
+        if (!(Math.abs(hx + 3) <= 1 && Math.abs(hz - 1) <= 1) && !chest.equals(b.pos(-3, 1, 1))) {
+            b.set(-3, 1, 1, s(Blocks.BARREL));
+        }
+        return new Basement(b, chest, hatch);
+    }
+
+    /** Засыпать подвал (при изъятии дома). */
+    public static void fillBasement(World w, BlockPos min, BlockPos max) {
+        long volume = (long) (max.getX() - min.getX() + 1) * (max.getY() - min.getY() + 1) * (max.getZ() - min.getZ() + 1);
+        if (volume <= 0 || volume > 4000) return;
+        for (BlockPos p : BlockPos.getAllInBoxMutable(min, max)) {
+            TileEntity te = w.getTileEntity(p);
+            if (te instanceof IInventory) ((IInventory) te).clear();
+            w.setBlockState(p.toImmutable(), s(Blocks.STONE), Blueprint.FLAGS);
+        }
     }
 
     public static BlockState pitBlock(Random r) {

@@ -4,6 +4,7 @@ import com.baraaoi.reallife.RealLife;
 import com.baraaoi.reallife.item.BanknoteItem;
 import com.baraaoi.reallife.item.BuildPermitItem;
 import com.baraaoi.reallife.item.DebtorPickaxeItem;
+import com.baraaoi.reallife.item.DirtyMoneyItem;
 import com.baraaoi.reallife.item.HouseOrderItem;
 import net.minecraft.item.BlockItem;
 import net.minecraft.item.Item;
@@ -48,4 +49,18 @@ public class ModItems {
             () -> new BlockItem(ModBlocks.MFO_COUNTER.get(), props()));
     public static final RegistryObject<Item> JAIL_WALL = ITEMS.register("jail_wall",
             () -> new BlockItem(ModBlocks.JAIL_WALL.get(), props()));
+
+    public static final RegistryObject<Item> DIRTY_MONEY = ITEMS.register("dirty_money",
+            () -> new DirtyMoneyItem(props()));
+
+    public static final RegistryObject<Item> FRIDGE = ITEMS.register("fridge",
+            () -> new BlockItem(ModBlocks.FRIDGE.get(), props()));
+    public static final RegistryObject<Item> ATM = ITEMS.register("atm",
+            () -> new BlockItem(ModBlocks.ATM.get(), props()));
+    public static final RegistryObject<Item> VENDING_FOOD = ITEMS.register("vending_food",
+            () -> new BlockItem(ModBlocks.VENDING_FOOD.get(), props()));
+    public static final RegistryObject<Item> VENDING_RESOURCES = ITEMS.register("vending_resources",
+            () -> new BlockItem(ModBlocks.VENDING_RESOURCES.get(), props()));
+    public static final RegistryObject<Item> MONEY_PRINTER = ITEMS.register("money_printer",
+            () -> new BlockItem(ModBlocks.MONEY_PRINTER.get(), props()));
 }

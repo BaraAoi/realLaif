@@ -10,6 +10,7 @@ import com.baraaoi.reallife.economy.HouseType;
 import com.baraaoi.reallife.entity.*;
 import com.baraaoi.reallife.registry.ModEntities;
 import com.baraaoi.reallife.registry.ModItems;
+import com.baraaoi.reallife.structure.Blueprint;
 import com.baraaoi.reallife.structure.Buildings;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
@@ -32,6 +33,8 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Random;
+import java.util.Set;
+import java.util.UUID;
 
 /**
  * «Терпение банка» и «методы» МФО: стадии взыскания, NPC, арест, тюрьма, подвал.
@@ -50,6 +53,45 @@ public class DebtManager {
             this.state = state;
             this.due = due;
         }
+    }
+
+    /** Снос участка: 8 слоёв за тик сверху вниз (коренная порода остаётся). */
+    private static class Eviction {
+        final int cx, cz;
+        int y;
+
+        Eviction(int cx, int cz, int y) {
+            this.cx = cx;
+            this.cz = cz;
+            this.y = y;
+        }
+    }
+
+    private static final List<Eviction> EVICTIONS = new ArrayList<>();
+
+    /** Стереть слои [yTo..yFrom] чанка (без выпадения вещей, бедрок не трогаем). */
+    public static void wipeLayers(ServerWorld w, int cx, int cz, int yFrom, int yTo) {
+        BlockState air = Blocks.AIR.getDefaultState();
+        BlockPos.Mutable m = new BlockPos.Mutable();
+        for (int y = yFrom; y >= yTo; y--)
+            for (int x = 0; x < 16; x++)
+                for (int z = 0; z < 16; z++) {
+                    m.setPos((cx << 4) + x, y, (cz << 4) + z);
+                    BlockState st = w.getBlockState(m);
+                    if (st.isAir(w, m) || st.getBlock() == Blocks.BEDROCK) continue;
+                    net.minecraft.tileentity.TileEntity te = w.getTileEntity(m);
+                    if (te instanceof net.minecraft.inventory.IInventory) ((net.minecraft.inventory.IInventory) te).clear();
+                    w.setBlockState(m, air, 2 | 16);
+                }
+    }
+
+    private static void tickEvictions(ServerWorld ow) {
+        if (EVICTIONS.isEmpty()) return;
+        Eviction e = EVICTIONS.get(0);
+        int to = Math.max(0, e.y - 7);
+        wipeLayers(ow, e.cx, e.cz, e.y, to);
+        e.y = to - 1;
+        if (e.y < 0) EVICTIONS.remove(0);
     }
 
     // ================================================================== стадии
@@ -93,7 +135,11 @@ public class DebtManager {
             }
         }
 
+        tickEvictions(ow);
+
         if (now % 20 != 0) return;
+
+        tickLand(server, data, ow, now);
 
         // смена игрового дня
         long day = ow.getDayTime() / 24000L;
@@ -122,6 +168,11 @@ public class DebtManager {
         if (p.isSpectator() || !p.isAlive()) return;
         ServerWorld w = p.getServerWorld();
         List<DebtNpcEntity> mine = findNpcs(w, p);
+
+        // ---------------- самострой
+        if (a.landCase && count(mine, InspectorEntity.class) == 0 && w.getDimensionKey() == World.OVERWORLD) {
+            spawn(ModEntities.INSPECTOR.get(), w, p, 5, 9);
+        }
 
         // ---------------- банк
         int bs = bankStage(a);
@@ -152,7 +203,7 @@ public class DebtManager {
             p.addPotionEffect(new EffectInstance(Effects.GLOWING, 60, 0, false, false));
             int cops = count(mine, PoliceEntity.class);
             if (cops == 0) {
-                if (a.policeWave == 0 || (a.nextPoliceTick > 0 && now >= a.nextPoliceTick)) {
+                if ((a.policeWave == 0 && a.nextPoliceTick == 0) || (a.nextPoliceTick > 0 && now >= a.nextPoliceTick)) {
                     int n = Math.min(16, Config.POLICE_COUNT.get() + 2 * a.policeWave);
                     for (int i = 0; i < n; i++) spawn(ModEntities.POLICE.get(), w, p, 10, 18);
                     a.policeWave++;
@@ -271,7 +322,7 @@ public class DebtManager {
         ServerWorld ow = EconomyData.overworld(server);
         long now = ow.getGameTime();
         if (a.captivity == Account.PIT) {
-            if (p.world == ow && Buildings.inPitMine(data.pitPos, pos) && !state.isAir(ow, pos)) {
+            if (p.world == ow && a.cellActive && Buildings.inPitMine(a.cellCenter, pos) && !state.isAir(ow, pos)) {
                 ow.setBlockState(pos, Blocks.AIR.getDefaultState(), 3);
                 REGEN.add(new Regen(pos.toImmutable(), Buildings.pitBlock(RANDOM), now + 100));
                 a.pitBlocksLeft--;
@@ -377,11 +428,16 @@ public class DebtManager {
         a.defaults++;
         a.captivity = Account.JAIL;
         a.jailUntil = now + Config.JAIL_TICKS.get();
+        a.policeBribe = 0;
+        a.landCase = false;
+        int land = data.ownedCount(a.id);
+        data.landOwners.values().removeIf(a.id::equals);
         data.markDirty();
         removeNpcs(server, p, true);
+        buildCell(server, data, a, p.getPosition());
         BankService.msg(p, "§9§l[Полиция] §r§cВы арестованы за злостное уклонение от уплаты долга.");
         BankService.msg(p, "§7Конфисковано: всё имущество (≈" + Finance.money(seizedItems) + "), счёт " + Finance.money(seizedCash)
-                + (house != null ? ", дом «" + house + "»" : "") + ". Долг " + Finance.money(debt) + " закрыт за счёт конфискации.");
+                + (house != null ? ", дом «" + house + "»" : "") + (land > 0 ? ", участков: " + land : "") + ". Долг " + Finance.money(debt) + " закрыт за счёт конфискации.");
         BankService.msg(p, "§7Срок: " + (Config.JAIL_TICKS.get() / 1200) + " мин. Кредитная история испорчена.");
         for (ServerPlayerEntity other : server.getPlayerList().getPlayers()) {
             if (other != p) BankService.msg(other, "§9[Новости] §fИгрок §e" + p.getGameProfile().getName()
@@ -400,6 +456,7 @@ public class DebtManager {
         a.captivity = Account.PIT;
         data.markDirty();
         removeNpcs(server, p, false);
+        buildCell(server, data, a, p.getPosition());
         BankService.msg(p, BankService.MFO + "§4Очнулся? Ты в подвале у Шайкина. Вещи твои теперь наши, со счёта ты «добровольно» перевёл "
                 + Finance.money(taken) + ", а дом... ну, бывает, горит.");
         BankService.msg(p, BankService.MFO + "§cКопай. Выкопаешь §4" + a.pitBlocksLeft + "§c блоков — отпустим. Долг " + Finance.money(debt) + " будет закрыт.");
@@ -436,6 +493,10 @@ public class DebtManager {
         }
         a.hasHouse = false;
         a.houseType = -1;
+        if (a.hasBusiness) {
+            Buildings.fillBasement(ow, a.businessMin, a.businessMax);
+            a.hasBusiness = false;
+        }
     }
 
     /** Поджог от братков. full=true — сжечь дом по-настоящему. */
@@ -466,6 +527,10 @@ public class DebtManager {
                             if (te instanceof net.minecraft.inventory.IInventory) ((net.minecraft.inventory.IInventory) te).clear();
                         }
             }
+            if (full && a.hasBusiness) {
+                net.minecraft.tileentity.TileEntity te = ow.getTileEntity(a.businessChest);
+                if (te instanceof net.minecraft.inventory.IInventory) ((net.minecraft.inventory.IInventory) te).clear();
+            }
             if (p != null) BankService.msg(p, BankService.MFO + (full ? "§4Твой дом горит. Ничего личного." : "§cУ тебя дома что-то загорелось. Случайность, конечно."));
         } else if (p != null && p.world instanceof ServerWorld && !full) {
             ServerWorld w = (ServerWorld) p.world;
@@ -484,42 +549,89 @@ public class DebtManager {
 
     // ================================================================== неволя
 
-    public static void ensureFacilities(MinecraftServer server, EconomyData data) {
-        ServerWorld ow = EconomyData.overworld(server);
-        IWorldInfo info = ow.getWorldInfo();
-        if (!data.jailBuilt) {
-            data.jailPos = new BlockPos(info.getSpawnX() + 1000, 12, info.getSpawnZ() + 1000);
-            Buildings.buildJail(ow, data.jailPos);
-            data.jailBuilt = true;
-            data.markDirty();
+    private static boolean overlapsOtherCell(EconomyData data, Account self, BlockPos c) {
+        for (Account o : data.all()) {
+            if (o == self || !o.cellActive) continue;
+            BlockPos oc = o.cellCenter;
+            if (Math.abs(oc.getX() - c.getX()) < 14 && Math.abs(oc.getZ() - c.getZ()) < 14 && Math.abs(oc.getY() - c.getY()) < 10) return true;
         }
-        if (!data.pitBuilt) {
-            data.pitPos = new BlockPos(info.getSpawnX() - 1000, 12, info.getSpawnZ() - 1000);
-            Buildings.buildPit(ow, data.pitPos);
-            data.pitBuilt = true;
-            data.markDirty();
-        }
+        return false;
     }
 
-    private static double[] cell(EconomyData data, Account a) {
-        BlockPos c = a.captivity == Account.JAIL ? data.jailPos : data.pitPos;
+    /** Построить персональную камеру (СИЗО в небе или подвал под МФО) со снимком исходных блоков. */
+    public static void buildCell(MinecraftServer server, EconomyData data, Account a, BlockPos near) {
+        if (a.cellActive || a.captivity == Account.FREE) return;
+        ServerWorld ow = EconomyData.overworld(server);
+        IWorldInfo info = ow.getWorldInfo();
+        int sx = info.getSpawnX(), sz = info.getSpawnZ();
+        BlockPos center = null;
+        if (a.captivity == Account.JAIL) {
+            int y = Math.min(228, ow.getHeight() - 12);
+            for (int k = 0; k < 64 && center == null; k++) {
+                BlockPos c = new BlockPos(sx + (k % 8) * 16, y, sz - 32 - (k / 8) * 16);
+                if (!overlapsOtherCell(data, a, c) && Buildings.cellFits(ow, c, 3)) center = c;
+            }
+            if (center == null) center = new BlockPos(sx, y, sz - 32);
+            Blueprint b = Buildings.buildJail(ow, center);
+            a.cellSnapshot = b.snapshot();
+        } else {
+            BlockPos mfo = null;
+            double best = Double.MAX_VALUE;
+            BlockPos ref = near != null ? near : new BlockPos(sx, 64, sz);
+            for (BlockPos m : data.mfoCenters) {
+                double d = m.distanceSq(ref);
+                if (d < best) { best = d; mfo = m; }
+            }
+            int floor = mfo != null ? mfo.getY() : ow.getHeight(Heightmap.Type.MOTION_BLOCKING_NO_LEAVES, sx, sz);
+            int mx = mfo != null ? mfo.getX() : sx, mz = mfo != null ? mfo.getZ() : sz;
+            int y = floor - 10;
+            BlockPos c = new BlockPos(mx, y, mz);
+            for (int k = 0; k < 40 && overlapsOtherCell(data, a, c); k++) {
+                y -= 8;
+                if (y < 6) { mx += 12; y = floor - 10; }
+                c = new BlockPos(mx, Math.max(6, y), mz);
+            }
+            center = c;
+            Blueprint b = Buildings.buildPit(ow, center);
+            a.cellSnapshot = b.snapshot();
+        }
+        a.cellCenter = center;
+        a.cellActive = true;
+        data.markDirty();
+    }
+
+    /** Убрать камеру и вернуть мир как было. */
+    public static void restoreCell(MinecraftServer server, EconomyData data, Account a) {
+        if (!a.cellActive) return;
+        ServerWorld ow = EconomyData.overworld(server);
+        BlockPos c = a.cellCenter;
+        REGEN.removeIf(r -> Math.abs(r.pos.getX() - c.getX()) <= 5 && Math.abs(r.pos.getZ() - c.getZ()) <= 5
+                && r.pos.getY() >= c.getY() - 1 && r.pos.getY() <= c.getY() + 6);
+        Blueprint.restore(ow, a.cellSnapshot);
+        a.cellSnapshot = new net.minecraft.nbt.ListNBT();
+        a.cellActive = false;
+        data.markDirty();
+    }
+
+    private static double[] cell(Account a) {
+        BlockPos c = a.cellCenter;
         double dz = a.captivity == Account.JAIL ? 0.5 : 2.5;
         return new double[]{c.getX() + 0.5, c.getY() + 1, c.getZ() + dz};
     }
 
     public static void sendToCaptivity(MinecraftServer server, EconomyData data, ServerPlayerEntity p, Account a) {
         if (a.captivity == Account.FREE) return;
-        ensureFacilities(server, data);
+        if (!a.cellActive) buildCell(server, data, a, p.getPosition());
         ServerWorld ow = EconomyData.overworld(server);
-        double[] c = cell(data, a);
+        double[] c = cell(a);
         p.teleport(ow, c[0], c[1], c[2], p.rotationYaw, p.rotationPitch);
     }
 
     private static void tickCaptivity(MinecraftServer server, EconomyData data, ServerPlayerEntity p, Account a, long now) {
         if (!p.isAlive()) return;
-        ensureFacilities(server, data);
+        if (!a.cellActive) buildCell(server, data, a, p.getPosition());
         ServerWorld ow = EconomyData.overworld(server);
-        double[] c = cell(data, a);
+        double[] c = cell(a);
         if (p.world != ow || p.getDistanceSq(c[0], c[1], c[2]) > 30) {
             p.teleport(ow, c[0], c[1], c[2], p.rotationYaw, p.rotationPitch);
         }
@@ -551,11 +663,216 @@ public class DebtManager {
         IWorldInfo info = ow.getWorldInfo();
         int x = info.getSpawnX(), z = info.getSpawnZ();
         int y = ow.getHeight(Heightmap.Type.MOTION_BLOCKING_NO_LEAVES, x, z);
+        // сначала увозим на спавн, потом разбираем камеру
         p.teleport(ow, x + 0.5, y, z + 0.5, p.rotationYaw, p.rotationPitch);
+        restoreCell(server, data, a);
         if (was == Account.JAIL) {
             BankService.msg(p, "§9[Полиция] §fВы освобождены. Начните жизнь с чистого листа. И больше не берите кредитов, которые не можете вернуть.");
         } else {
             BankService.msg(p, BankService.MFO + "§fЛадно, отработал. Вали отсюда. И помни — мы всегда рядом. Нужны деньги — заходи!");
+        }
+    }
+
+    // ================================================================== взятки
+
+    /** Полицейский подобрал деньги: копится «взятка», при достижении порога наряд уезжает на сутки. */
+    public static void policeBribe(PoliceEntity cop, double value) {
+        MinecraftServer server = cop.world.getServer();
+        if (server == null || cop.getTargetId() == null) return;
+        EconomyData data = EconomyData.get(server);
+        Account a = data.get(cop.getTargetId());
+        if (a == null) return;
+        PlayerEntity p = server.getPlayerList().getPlayerByUUID(a.id);
+        a.policeBribe += value;
+        int need = Config.POLICE_BRIBE.get();
+        long now = cop.world.getGameTime();
+        if (a.policeBribe >= need) {
+            a.policeBribe = 0;
+            a.policeWave = Math.max(1, a.policeWave);
+            a.nextPoliceTick = now + 24000;
+            if (p != null) {
+                for (ServerWorld w : server.getWorlds()) {
+                    for (PoliceEntity e : w.getEntitiesWithinAABB(PoliceEntity.class, p.getBoundingBox().grow(160.0D),
+                            e -> a.id.equals(e.getTargetId()))) e.remove();
+                }
+                BankService.msg(p, "§9§l[Полиция] §r§7Сержант пересчитал купюры: «Так... гражданин, мы вас не видели. Сутки.» "
+                        + "§8Наряд уехал. Розыск никто не отменял.");
+            } else {
+                cop.remove();
+            }
+        } else if (p != null) {
+            cop.say(p, "§eЭто что, взятка?.. Мало. §7(собрано " + Finance.money(a.policeBribe) + " из " + Finance.money(need) + ")");
+        }
+        data.markDirty();
+    }
+
+    // ================================================================== земля и самострой
+
+    private static boolean landTracked(ServerPlayerEntity p) {
+        return Config.LAND_CONTROL.get() && !p.isCreative() && !p.isSpectator() && p.world.getDimensionKey() == World.OVERWORLD;
+    }
+
+    public static void onPlace(ServerPlayerEntity p, BlockPos pos) {
+        if (!landTracked(p)) return;
+        MinecraftServer server = p.getServer();
+        if (server == null) return;
+        EconomyData data = EconomyData.get(server);
+        Account a = data.get(p);
+        if (a.captivity != Account.FREE) return;
+        long chunk = EconomyData.chunkKey(pos);
+        UUID owner = data.owner(chunk);
+        if (p.getUniqueID().equals(owner)) return;
+        int n = data.addPlaced(chunk, p.getUniqueID(), pos);
+        int limit = Config.LAND_THRESHOLD.get();
+        if (n == Math.max(1, limit - 10) && !a.landCase) {
+            BankService.msg(p, "§3[Администрация] §7Вы строите на " + (owner == null ? "ничейной" : "чужой") + " земле. "
+                    + "Купите участок (§f/reallife land buy§7, " + Finance.money(Config.LAND_PRICE.get()) + "), иначе придёт инспектор.");
+        }
+        if (n >= limit && !a.landCase) openLandCase(server, data, p, a, chunk, owner);
+    }
+
+    public static void onPlayerBreak(ServerPlayerEntity p, BlockPos pos) {
+        if (p.world.getDimensionKey() != World.OVERWORLD || p.getServer() == null) return;
+        EconomyData data = EconomyData.get(p.getServer());
+        data.removePlaced(EconomyData.chunkKey(pos), p.getUniqueID(), pos);
+    }
+
+    private static void openLandCase(MinecraftServer server, EconomyData data, ServerPlayerEntity p, Account a, long chunk, UUID owner) {
+        long now = EconomyData.overworld(server).getGameTime();
+        double fine = Config.LAND_FINE.get();
+        double take = Math.max(0, Math.min(a.balance, fine));
+        a.balance -= take;
+        if (fine - take > 0.01) a.arrears += fine - take;
+        a.landCase = true;
+        a.landChunk = chunk;
+        a.landDeadline = now + Config.LAND_DEADLINE.get();
+        data.markDirty();
+        int min = Config.LAND_DEADLINE.get() / 1200;
+        BankService.msg(p, "§3§l[Администрация] §r§cСамовольное строительство! §fШтраф " + Finance.money(fine)
+                + (fine - take > 0.01 ? " (не хватило — §c" + Finance.money(fine - take) + "§f записано в долг банку)" : " списан со счёта") + ".");
+        BankService.msg(p, "§3[Администрация] §fВ течение §c" + min + " мин.§f снесите постройку или купите участок за §e"
+                + Finance.money(Config.LAND_PRICE.get()) + "§f (ПКМ по инспектору или §7/reallife land buy§f). Иначе — выселение и снос всего чанка.");
+        if (owner != null && !owner.equals(Buildings.CITY)) {
+            BankService.msg(p, "§3[Администрация] §7Участок принадлежит другому игроку — при сносе уберут только ваши блоки.");
+        }
+        if (p.getServerWorld().getDimensionKey() == World.OVERWORLD) spawn(ModEntities.INSPECTOR.get(), p.getServerWorld(), p, 5, 9);
+    }
+
+    /** Купить участок: со счёта, если не хватает — наличными. */
+    public static boolean buyLand(ServerPlayerEntity p, Account a, long chunk) {
+        MinecraftServer server = p.getServer();
+        if (server == null) return false;
+        EconomyData data = EconomyData.get(server);
+        UUID owner = data.owner(chunk);
+        if (p.getUniqueID().equals(owner)) {
+            BankService.msg(p, "§3[Администрация] §fЭтот участок уже ваш.");
+            return false;
+        }
+        if (owner != null) {
+            BankService.msg(p, "§3[Администрация] §cУчасток " + (owner.equals(Buildings.CITY) ? "городской" : "принадлежит другому игроку") + " и не продаётся.");
+            return false;
+        }
+        int price = Config.LAND_PRICE.get();
+        if (!BankService.charge(p, a, price)) {
+            BankService.msg(p, "§3[Администрация] §cНе хватает денег: участок стоит " + Finance.money(price) + " (счёт + наличные).");
+            return false;
+        }
+        data.claim(p.getUniqueID(), chunk);
+        if (a.landCase && a.landChunk == chunk) a.landCase = false;
+        data.markDirty();
+        net.minecraft.util.math.ChunkPos cp = new net.minecraft.util.math.ChunkPos(chunk);
+        BankService.msg(p, "§3[Администрация] §aУчасток оформлен в собственность §f(чанк " + cp.x + ", " + cp.z
+                + ", блоки X " + cp.getXStart() + ".." + cp.getXEnd() + ", Z " + cp.getZStart() + ".." + cp.getZEnd() + "). Стройте на здоровье!");
+        return true;
+    }
+
+    private static void tickLand(MinecraftServer server, EconomyData data, ServerWorld ow, long now) {
+        int limit = Config.LAND_THRESHOLD.get();
+        for (Account a : new ArrayList<>(data.all())) {
+            if (!a.landCase) continue;
+            ServerPlayerEntity p = server.getPlayerList().getPlayerByUUID(a.id);
+            UUID owner = data.owner(a.landChunk);
+            if (a.id.equals(owner)) {
+                a.landCase = false;
+                data.markDirty();
+                continue;
+            }
+            if (data.placedCount(a.landChunk, a.id) <= limit / 3) {
+                a.landCase = false;
+                data.markDirty();
+                if (p != null) BankService.msg(p, "§3[Администрация] §aСамострой снесён. Дело закрыто.");
+                continue;
+            }
+            if (p != null && a.landDeadline - now <= 1200 && a.landDeadline - now > 1180) {
+                BankService.msg(p, "§3[Администрация] §cДо сноса осталась 1 минута!");
+            }
+            if (now >= a.landDeadline) evict(server, data, ow, a, p, owner);
+        }
+    }
+
+    private static void evict(MinecraftServer server, EconomyData data, ServerWorld ow, Account a, ServerPlayerEntity p, UUID owner) {
+        long chunk = a.landChunk;
+        net.minecraft.util.math.ChunkPos cp = new net.minecraft.util.math.ChunkPos(chunk);
+        a.landCase = false;
+        if (owner == null) {
+            EVICTIONS.add(new Eviction(cp.x, cp.z, ow.getHeight() - 1));
+        } else {
+            // чужой/городской участок — убираем только блоки нарушителя
+            java.util.Map<UUID, Set<Long>> m = data.placed.get(chunk);
+            if (m != null && m.get(a.id) != null) {
+                for (long l : m.get(a.id)) {
+                    BlockPos pos = BlockPos.fromLong(l);
+                    net.minecraft.tileentity.TileEntity te = ow.getTileEntity(pos);
+                    if (te instanceof net.minecraft.inventory.IInventory) ((net.minecraft.inventory.IInventory) te).clear();
+                    ow.setBlockState(pos, Blocks.AIR.getDefaultState(), 3);
+                }
+                m.remove(a.id);
+            }
+        }
+        if (owner == null) data.clearPlaced(chunk);
+        data.markDirty();
+        String where = "чанк " + cp.x + ", " + cp.z + " (X " + cp.getXStart() + ".." + cp.getXEnd() + ", Z " + cp.getZStart() + ".." + cp.getZEnd() + ")";
+        if (p != null) {
+            BankService.msg(p, "§3§l[Администрация] §r§4Выселение! §cСамострой сносится: " + where
+                    + (owner == null ? " — до коренной породы." : " — убраны ваши блоки."));
+        }
+        for (ServerPlayerEntity other : server.getPlayerList().getPlayers()) {
+            if (other != p) BankService.msg(other, "§9[Новости] §fУ игрока §e" + a.name + "§f снесли самострой: " + where + ".");
+        }
+    }
+
+    // ================================================================== запуск мира
+
+    public static void onServerStarted(MinecraftServer server) {
+        ServerWorld ow = EconomyData.overworld(server);
+        EconomyData data = EconomyData.get(server);
+        // старые постоянные тюрьма/подвал (версия 1.0) — засыпаем
+        if (data.jailBuilt) {
+            fillBox(ow, data.jailPos);
+            data.jailBuilt = false;
+        }
+        if (data.pitBuilt) {
+            fillBox(ow, data.pitPos);
+            data.pitBuilt = false;
+        }
+        if (Config.SPAWN_BUILDINGS.get() && !data.spawnBuilt) {
+            IWorldInfo info = ow.getWorldInfo();
+            int sx = info.getSpawnX(), sz = info.getSpawnZ();
+            int by = ow.getHeight(Heightmap.Type.MOTION_BLOCKING_NO_LEAVES, sx, sz + 6);
+            Buildings.buildBank(ow, new BlockPos(sx, by, sz + 6), net.minecraft.util.Direction.SOUTH);
+            int my = ow.getHeight(Heightmap.Type.MOTION_BLOCKING_NO_LEAVES, sx - 18, sz + 6);
+            Buildings.buildMfo(ow, new BlockPos(sx - 18, my, sz + 6), net.minecraft.util.Direction.SOUTH);
+            data.spawnBuilt = true;
+            com.baraaoi.reallife.RealLife.LOG.info("Real Life: bank and MFO built at world spawn " + sx + ", " + sz);
+        }
+        data.markDirty();
+    }
+
+    private static void fillBox(ServerWorld w, BlockPos c) {
+        for (BlockPos p : BlockPos.getAllInBoxMutable(c.add(-4, 0, -4), c.add(4, 5, 4))) {
+            net.minecraft.tileentity.TileEntity te = w.getTileEntity(p);
+            if (te instanceof net.minecraft.inventory.IInventory) ((net.minecraft.inventory.IInventory) te).clear();
+            w.setBlockState(p.toImmutable(), Blocks.STONE.getDefaultState(), 2 | 16);
         }
     }
 }

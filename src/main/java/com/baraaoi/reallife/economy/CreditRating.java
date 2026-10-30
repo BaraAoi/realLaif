@@ -12,7 +12,8 @@ package com.baraaoi.reallife.economy;
  */
 public class CreditRating {
 
-    public static int score(Account a, long today) {
+    /** Рейтинг без ручной поправки и без ограничения 300..850. */
+    private static double base(Account a, long today) {
         double s = 500;
         s += Math.min(150, a.onTimePayments * 5);
         s -= Math.min(300, a.lateDaysTotal * 15);
@@ -22,7 +23,16 @@ public class CreditRating {
         s += Math.min(50, accountAge(a, today) * 2);
         if (a.hasMfo()) s -= 40;
         if (a.arrears > 0.01) s -= 60;
-        return (int) Math.max(300, Math.min(850, Math.round(s)));
+        return s;
+    }
+
+    public static int score(Account a, long today) {
+        return (int) Math.max(300, Math.min(850, Math.round(base(a, today) + a.ratingBonus)));
+    }
+
+    /** Какая поправка нужна, чтобы рейтинг стал равен target. */
+    public static int bonusFor(Account a, long today, int target) {
+        return (int) Math.round(target - base(a, today));
     }
 
     public static long accountAge(Account a, long today) {
