@@ -141,7 +141,7 @@ public final class Crypto {
         if (now % STEP_TICKS != 0) return;
         for (Coin c : Coin.values()) {
             double old = rate(data, c);
-            double nv = step(old, c.base(), c.vol, 0.99, R);
+            double nv = step(old, c.base(), c.vol, 0.97, R);
             // редкие новости: резкий скачок
             if (R.nextDouble() < 0.012) {
                 boolean up = R.nextBoolean();

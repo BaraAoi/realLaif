@@ -738,7 +738,7 @@ public class SelfTest {
             double r = coin.base(), mn = r, mx = r;
             java.util.Random cr2 = new java.util.Random(coin.ordinal() + 11);
             for (int i = 0; i < 5000; i++) {
-                r = com.baraaoi.reallife.economy.Crypto.step(r, coin.base(), coin.vol, 0.99, cr2);
+                r = com.baraaoi.reallife.economy.Crypto.step(r, coin.base(), coin.vol, 0.97, cr2);
                 mn = Math.min(mn, r);
                 mx = Math.max(mx, r);
             }
