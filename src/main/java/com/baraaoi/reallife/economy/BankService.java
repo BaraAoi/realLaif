@@ -7,15 +7,14 @@ import com.baraaoi.reallife.item.HouseOrderItem;
 import com.baraaoi.reallife.network.Network;
 import com.baraaoi.reallife.network.SyncPacket;
 import com.baraaoi.reallife.registry.ModItems;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.entity.player.ServerPlayerEntity;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.nbt.CompoundNBT;
-import net.minecraft.nbt.ListNBT;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.util.text.StringTextComponent;
-import net.minecraftforge.fml.network.PacketDistributor;
+import net.minecraft.network.chat.Component;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -33,16 +32,16 @@ public class BankService {
 
     // ---------------------------------------------------------------- utils
 
-    public static void msg(PlayerEntity p, String text) {
-        p.sendStatusMessage(new StringTextComponent(text), false);
+    public static void msg(Player p, String text) {
+        p.sendSystemMessage(Component.literal(text));
     }
 
-    public static void actionBar(PlayerEntity p, String text) {
-        p.sendStatusMessage(new StringTextComponent(text), true);
+    public static void actionBar(Player p, String text) {
+        p.sendOverlayMessage(Component.literal(text));
     }
 
     public static long today(MinecraftServer server) {
-        return EconomyData.overworld(server).getDayTime() / 24000L;
+        return EconomyData.overworld(server).getOverworldClockTime() / 24000L;
     }
 
     public static Item noteItem(int value) {
@@ -56,7 +55,7 @@ public class BankService {
     }
 
     /** Выдать наличные купюрами. Возвращает фактически выданную сумму (кратно 10). */
-    public static double giveCash(PlayerEntity p, double amount) {
+    public static double giveCash(Player p, double amount) {
         long left = (long) Math.floor(amount / 10.0) * 10L;
         long given = left;
         for (int note : NOTES) {
@@ -71,10 +70,10 @@ public class BankService {
         return given;
     }
 
-    public static void give(PlayerEntity p, ItemStack stack) {
+    public static void give(Player p, ItemStack stack) {
         int max = Math.max(1, stack.getMaxStackSize());
         while (stack.getCount() > max) give(p, stack.split(max)); // нестакающиеся (коробки сырья) — по одной
-        if (!p.inventory.addItemStackToInventory(stack) && !stack.isEmpty()) {
+        if (!p.getInventory().add(stack) && !stack.isEmpty()) {
             p.dropItem(stack, false);
         }
     }
@@ -84,11 +83,11 @@ public class BankService {
      * factor — по какой цене принимают предметы (купюры всегда по номиналу).
      * Возвращает зачтённую сумму.
      */
-    public static double takeValuables(PlayerEntity p, double needed, double factor) {
+    public static double takeValuables(Player p, double needed, double factor) {
         double got = 0;
         for (int pass = 0; pass < 2 && got < needed; pass++) {
-            for (int i = 0; i < p.inventory.mainInventory.size() && got < needed; i++) {
-                ItemStack st = p.inventory.mainInventory.get(i);
+            for (int i = 0; i < p.getInventory().getNonEquipmentItems().size() && got < needed; i++) {
+                ItemStack st = p.getInventory().getNonEquipmentItems().get(i);
                 if (st.isEmpty()) continue;
                 boolean note = ItemValues.isCash(st);
                 if ((pass == 0) != note) continue;
@@ -104,24 +103,24 @@ public class BankService {
     }
 
     /** Сумма купюр в инвентаре. */
-    public static long cashInInventory(PlayerEntity p) {
+    public static long cashInInventory(Player p) {
         long v = 0;
-        for (ItemStack st : p.inventory.mainInventory) {
+        for (ItemStack st : p.getInventory().getNonEquipmentItems()) {
             if (st.getItem() instanceof BanknoteItem) v += (long) ((BanknoteItem) st.getItem()).getValue() * st.getCount();
         }
         return v;
     }
 
     /** Списать сумму: сначала со счёта, остаток — купюрами из инвентаря (со сдачей). */
-    public static boolean charge(PlayerEntity p, Account a, double amount) {
+    public static boolean charge(Player p, Account a, double amount) {
         double fromBalance = Math.max(0, Math.min(a.balance, amount));
         double fromCash = amount - fromBalance;
         long cash = cashInInventory(p);
         if (fromCash > cash + 1e-6) return false;
         a.balance -= fromBalance;
         if (fromCash > 1e-6) {
-            for (int i = 0; i < p.inventory.mainInventory.size(); i++) {
-                if (p.inventory.mainInventory.get(i).getItem() instanceof BanknoteItem) p.inventory.mainInventory.set(i, ItemStack.EMPTY);
+            for (int i = 0; i < p.getInventory().getNonEquipmentItems().size(); i++) {
+                if (p.getInventory().getNonEquipmentItems().get(i).getItem() instanceof BanknoteItem) p.getInventory().getNonEquipmentItems().set(i, ItemStack.EMPTY);
             }
             double change = cash - fromCash;
             if (change >= 10) giveCash(p, change);
@@ -130,22 +129,22 @@ public class BankService {
     }
 
     /** Сумма всех ценностей в инвентаре. */
-    public static double inventoryValue(PlayerEntity p) {
+    public static double inventoryValue(Player p) {
         double v = 0;
-        for (ItemStack st : p.inventory.mainInventory) v += ItemValues.stackValue(st);
+        for (ItemStack st : p.getInventory().getNonEquipmentItems()) v += ItemValues.stackValue(st);
         return v;
     }
 
     // ---------------------------------------------------------------- sync
 
-    public static void sync(ServerPlayerEntity p) {
-        MinecraftServer server = p.getServer();
+    public static void sync(ServerPlayer p) {
+        MinecraftServer server = p.level().getServer();
         if (server == null) return;
         EconomyData data = EconomyData.get(server);
         Account a = data.get(p);
         long today = today(server);
         int score = CreditRating.score(a, today);
-        CompoundNBT t = new CompoundNBT();
+        CompoundTag t = new CompoundTag();
         t.putDouble("balance", a.balance);
         t.putInt("score", score);
         t.putString("category", CreditRating.category(score));
@@ -172,9 +171,9 @@ public class BankService {
         t.putBoolean("wanted", a.wanted);
         t.putInt("laborLeft", a.laborBlocksLeft);
         t.putDouble("downPct", Config.MORTGAGE_DOWN_PAYMENT.get());
-        ListNBT houses = new ListNBT();
+        ListTag houses = new ListTag();
         for (HouseType h : HouseType.values()) {
-            CompoundNBT ht = new CompoundNBT();
+            CompoundTag ht = new CompoundTag();
             double down = h.price * Config.MORTGAGE_DOWN_PAYMENT.get();
             double rate = CreditRating.mortgageRate(score);
             double pay = Finance.annuity(h.price - down, rate, h.termDays);
@@ -200,15 +199,15 @@ public class BankService {
         t.putInt("businessPrice", Config.BUSINESS_PRICE.get());
         t.putInt("printers", a.printers);
         t.putInt("printersOn", a.printerList.size());
-        t.putBoolean("chestLinked", !a.businessChest.equals(net.minecraft.util.math.BlockPos.ZERO));
-        t.putBoolean("launderPlaced", !a.launderPos.equals(net.minecraft.util.math.BlockPos.ZERO));
+        t.putBoolean("chestLinked", !a.businessChest.equals(net.minecraft.core.BlockPos.ZERO));
+        t.putBoolean("launderPlaced", !a.launderPos.equals(net.minecraft.core.BlockPos.ZERO));
         t.putInt("printerPrice", Config.PRINTER_COST.get());
         t.putDouble("mfoLaunderCommission", Config.MFO_LAUNDER_COMMISSION.get());
         long gt = EconomyData.overworld(server).getGameTime();
         t.putInt("casinoMaxBet", Config.CASINO_MAX_BET.get());
         t.putDouble("casinoProfit", a.casinoDay == today ? a.casinoProfit : 0);
         t.putLong("cash", cashInInventory(p));
-        t.put("casino", CasinoService.last(p.getUniqueID()));
+        t.put("casino", CasinoService.last(p.getUUID()));
         t.putLong("today", today);
         t.put("bizList", LegalBiz.infoList(data, a.id, today));
         t.putBoolean("ownsBiz", data.ownsBusiness(a.id));
@@ -223,13 +222,13 @@ public class BankService {
         t.putDouble("cryptoValue", Crypto.portfolio(data, a));
         if (p.openContainer instanceof com.baraaoi.reallife.container.BizContainer) {
             LegalBusiness ob = LegalBiz.bizForCounter(data, ((com.baraaoi.reallife.container.BizContainer) p.openContainer).getPos());
-            if (ob != null) t.put("openBiz", LegalBiz.info(p.world, ob, today, true));
+            if (ob != null) t.put("openBiz", LegalBiz.info(p.level(), ob, today, true));
         }
         if (p.openContainer instanceof com.baraaoi.reallife.container.CryptoContainer) {
-            net.minecraft.tileentity.TileEntity te = p.world.getTileEntity(((com.baraaoi.reallife.container.CryptoContainer) p.openContainer).getPos());
+            net.minecraft.world.level.block.entity.BlockEntity te = p.level().getBlockEntity(((com.baraaoi.reallife.container.CryptoContainer) p.openContainer).getPos());
             if (te instanceof com.baraaoi.reallife.tile.CryptoRigTileEntity) {
                 com.baraaoi.reallife.tile.CryptoRigTileEntity rig = (com.baraaoi.reallife.tile.CryptoRigTileEntity) te;
-                CompoundNBT r = new CompoundNBT();
+                CompoundTag r = new CompoundTag();
                 r.putDouble("mined", rig.getMined());
                 r.putBoolean("complete", rig.complete());
                 r.putString("missing", String.join(", ", rig.missing()));
@@ -240,7 +239,7 @@ public class BankService {
         }
         t.putDouble("dirtyChance", Config.DIRTY_CAUGHT_CHANCE.get());
         t.putInt("ownedChunks", data.ownedCount(a.id));
-        Network.CHANNEL.send(PacketDistributor.PLAYER.with(() -> p), new SyncPacket(t));
+        Network.toPlayer(p, new SyncPacket(t));
     }
 
     // ---------------------------------------------------------------- проверки
@@ -268,7 +267,7 @@ public class BankService {
         return "";
     }
 
-    static boolean checkFree(ServerPlayerEntity p, Account a) {
+    static boolean checkFree(ServerPlayer p, Account a) {
         if (a.captivity != Account.FREE) {
             msg(p, "§cВы сейчас не можете пользоваться услугами.");
             return false;
@@ -278,10 +277,10 @@ public class BankService {
 
     // ---------------------------------------------------------------- действия банка
 
-    public static void handle(ServerPlayerEntity p, int action, int arg1, int arg2) {
+    public static void handle(ServerPlayer p, int action, int arg1, int arg2) {
         if (p.openContainer instanceof com.baraaoi.reallife.container.CasinoContainer) {
             com.baraaoi.reallife.container.CasinoContainer cc = (com.baraaoi.reallife.container.CasinoContainer) p.openContainer;
-            if (action == Actions.CASINO_PLAY && cc.canInteractWith(p)) CasinoService.play(p, cc, arg1, arg2);
+            if (action == Actions.CASINO_PLAY && cc.stillValid(p)) CasinoService.play(p, cc, arg1, arg2);
             return;
         }
         if (action >= Actions.PHONE_SYNC && action <= Actions.PHONE_LAST) {
@@ -291,14 +290,14 @@ public class BankService {
         if (action == Actions.PRINTER_SET) {
             if (p.openContainer instanceof com.baraaoi.reallife.container.PrinterContainer) {
                 com.baraaoi.reallife.container.PrinterContainer pc = (com.baraaoi.reallife.container.PrinterContainer) p.openContainer;
-                if (pc.canInteractWith(p)) pc.setDenom(p, arg1);
+                if (pc.stillValid(p)) pc.setDenom(p, arg1);
             }
             return;
         }
         if (p.openContainer instanceof com.baraaoi.reallife.container.BizContainer
                 || p.openContainer instanceof com.baraaoi.reallife.container.CryptoContainer) {
-            if (!p.openContainer.canInteractWith(p)) return;
-            MinecraftServer srv = p.getServer();
+            if (!p.openContainer.stillValid(p)) return;
+            MinecraftServer srv = p.level().getServer();
             if (srv == null) return;
             EconomyData d = EconomyData.get(srv);
             Account acc = d.get(p);
@@ -307,14 +306,14 @@ public class BankService {
             } else if (action == Actions.CRYPTO_WITHDRAW) {
                 Crypto.withdrawRig(p, acc, (com.baraaoi.reallife.container.CryptoContainer) p.openContainer);
             }
-            d.markDirty();
+            d.setDirty();
             sync(p);
             return;
         }
         if (!(p.openContainer instanceof FinanceContainer)) return;
         FinanceContainer c = (FinanceContainer) p.openContainer;
-        if (!c.canInteractWith(p)) return;
-        MinecraftServer server = p.getServer();
+        if (!c.stillValid(p)) return;
+        MinecraftServer server = p.level().getServer();
         if (server == null) return;
         EconomyData data = EconomyData.get(server);
         Account a = data.get(p);
@@ -343,14 +342,14 @@ public class BankService {
                 default: break;
             }
         }
-        data.markDirty();
+        data.setDirty();
         sync(p);
     }
 
     /** Действия из приложения в телефоне (без окна банка, нужен телефон в инвентаре). */
-    static void phone(ServerPlayerEntity p, int action, int arg1, int arg2) {
+    static void phone(ServerPlayer p, int action, int arg1, int arg2) {
         if (!com.baraaoi.reallife.item.PhoneItem.has(p)) return;
-        MinecraftServer server = p.getServer();
+        MinecraftServer server = p.level().getServer();
         if (server == null) return;
         EconomyData data = EconomyData.get(server);
         Account a = data.get(p);
@@ -378,17 +377,17 @@ public class BankService {
             case Actions.PHONE_BUY_MALL: BizBuild.buyMallPermit(p, a); break;
             default: break;
         }
-        data.markDirty();
+        data.setDirty();
         sync(p);
     }
 
-    static void deposit(ServerPlayerEntity p, Account a, FinanceContainer c) {
-        ItemStack st = c.getInput().getStackInSlot(0);
+    static void deposit(ServerPlayer p, Account a, FinanceContainer c) {
+        ItemStack st = c.getInput().getItem(0);
         if (st.isEmpty()) { msg(p, BANK + "Положите ресурсы или купюры в слот."); return; }
         double v = ItemValues.stackValue(st);
         if (v <= 0) { msg(p, BANK + "§cБанк не принимает этот предмет."); return; }
         if (ItemValues.isDirty(st)) {
-            c.getInput().setInventorySlotContents(0, ItemStack.EMPTY);
+            c.getInput().setItem(0, ItemStack.EMPTY);
             if (RANDOM.nextDouble() >= Config.DIRTY_CAUGHT_CHANCE.get()) {
                 a.balance += v;
                 a.lifetimeDeposited += v;
@@ -402,7 +401,7 @@ public class BankService {
             return;
         }
         boolean notes = st.getItem() instanceof BanknoteItem;
-        c.getInput().setInventorySlotContents(0, ItemStack.EMPTY);
+        c.getInput().setItem(0, ItemStack.EMPTY);
         a.balance += v;
         if (!notes) a.lifetimeDeposited += v;
         msg(p, BANK + "Зачислено §a+" + Finance.money(v) + "§f. Баланс: §e" + Finance.money(a.balance));
@@ -420,7 +419,7 @@ public class BankService {
      * на нужную сумму в пределах лимита {@link CreditRating#autoCreditLimit}. Чего не хватило — остаётся долгом,
      * и тогда как обычно: Жора, Александр, полиция.
      */
-    public static void autoCredit(@javax.annotation.Nullable PlayerEntity p, Account a, long today) {
+    public static void autoCredit(Player p, Account a, long today) {
         if (!Config.AUTO_CREDIT.get() || autoCreditPaused || a.captivity != Account.FREE) return;
         autoPayArrears(p, a);
         double need = Math.max(0, a.arrears) + Math.max(0, -a.balance);
@@ -457,7 +456,7 @@ public class BankService {
         }
     }
 
-    public static void autoPayArrears(PlayerEntity p, Account a) {
+    public static void autoPayArrears(Player p, Account a) {
         if (a.arrears > 0.01 && a.balance > 0) {
             double pay = Math.min(a.balance, a.arrears);
             a.balance -= pay;
@@ -470,7 +469,7 @@ public class BankService {
         }
     }
 
-    static void withdraw(ServerPlayerEntity p, Account a, int note) {
+    static void withdraw(ServerPlayer p, Account a, int note) {
         boolean ok = false;
         for (int n : NOTES) if (n == note) ok = true;
         if (!ok) return;
@@ -479,7 +478,7 @@ public class BankService {
         give(p, new ItemStack(noteItem(note)));
     }
 
-    static void takeLoan(ServerPlayerEntity p, Account a, long today, int amount, int termIdx) {
+    static void takeLoan(ServerPlayer p, Account a, long today, int amount, int termIdx) {
         if (!checkFree(p, a)) return;
         if (a.hasLoan()) { msg(p, BANK + "§cУ вас уже есть кредит. Сначала погасите его."); return; }
         if (termIdx < 0 || termIdx >= LOAN_TERMS.length) return;
@@ -508,7 +507,7 @@ public class BankService {
         msg(p, BANK + "§7Платёж списывается со счёта автоматически каждое утро. Держите деньги на счёте!");
     }
 
-    static void repayLoan(ServerPlayerEntity p, Account a, int amount) {
+    static void repayLoan(ServerPlayer p, Account a, int amount) {
         if (!a.hasLoan()) { msg(p, BANK + "У вас нет кредита."); return; }
         double pay = amount <= 0 ? a.loanPrincipal : Math.min(amount, a.loanPrincipal);
         if (a.balance + 1e-6 < pay) { msg(p, BANK + "§cНедостаточно средств на счёте (" + Finance.money(pay) + ")."); return; }
@@ -524,7 +523,7 @@ public class BankService {
         }
     }
 
-    static void takeMortgage(ServerPlayerEntity p, Account a, long today, int houseIdx) {
+    static void takeMortgage(ServerPlayer p, Account a, long today, int houseIdx) {
         if (!checkFree(p, a)) return;
         HouseType h = HouseType.byId(houseIdx);
         if (h == null) return;
@@ -540,7 +539,7 @@ public class BankService {
         a.houseOrderId = RANDOM.nextLong();
         a.houseBuilt = false;
         a.pendingHouse = h.ordinal();
-        give(p, HouseOrderItem.create(ModItems.HOUSE_ORDER.get(), p.getUniqueID(), h.ordinal(), a.houseOrderId));
+        give(p, HouseOrderItem.create(ModItems.HOUSE_ORDER.get(), p.getUUID(), h.ordinal(), a.houseOrderId));
         msg(p, BANK + "§aИпотека одобрена: §e" + h.title + "§f! Взнос " + Finance.money(down) + " списан.");
         msg(p, BANK + "Платёж §e" + Finance.money(a.mortPayment()) + "§f/день, " + h.termDays + " дн. "
                 + "Используйте §dОрдер на строительство§f — бригада построит дом бесплатно.");
@@ -562,7 +561,7 @@ public class BankService {
     }
 
     /** v1.10: купить дом за полную цену — без ипотеки, без рейтинга и проверки дохода. */
-    static void buyHouse(ServerPlayerEntity p, Account a, int houseIdx) {
+    static void buyHouse(ServerPlayer p, Account a, int houseIdx) {
         if (!checkFree(p, a)) return;
         HouseType h = HouseType.byId(houseIdx);
         if (h == null) return;
@@ -573,12 +572,12 @@ public class BankService {
             return;
         }
         long order = registerBoughtHouse(a, h);
-        give(p, HouseOrderItem.create(ModItems.HOUSE_ORDER.get(), p.getUniqueID(), h.ordinal(), order, true));
+        give(p, HouseOrderItem.create(ModItems.HOUSE_ORDER.get(), p.getUUID(), h.ordinal(), order, true));
         msg(p, BANK + "§a§lПокупка оформлена: §r§e" + h.title + "§f за §c" + Finance.money(h.price) + "§f. Без ипотеки — дом сразу ваш, банк ни при чём.");
         msg(p, BANK + "Используйте §dОрдер на строительство§f — бригада построит дом бесплатно там, где кликнете.");
     }
 
-    static void repayMortgage(ServerPlayerEntity p, Account a, int amount) {
+    static void repayMortgage(ServerPlayer p, Account a, int amount) {
         if (!a.hasMortgage()) { msg(p, BANK + "У вас нет ипотеки."); return; }
         double pay = amount <= 0 ? a.mortPrincipal : Math.min(amount, a.mortPrincipal);
         if (a.balance + 1e-6 < pay) { msg(p, BANK + "§cНедостаточно средств на счёте (" + Finance.money(pay) + ")."); return; }
@@ -592,7 +591,7 @@ public class BankService {
         }
     }
 
-    static void finishMortgage(PlayerEntity p, Account a) {
+    static void finishMortgage(Player p, Account a) {
         HouseType h = HouseType.byId(a.mortHouse);
         boolean built = a.pendingHouse < 0;
         a.clearMortgage();
@@ -603,16 +602,16 @@ public class BankService {
         }
     }
 
-    static void reissueOrder(ServerPlayerEntity p, Account a) {
+    static void reissueOrder(ServerPlayer p, Account a) {
         if (a.pendingHouse < 0) { msg(p, BANK + "Нет оплаченного, но не построенного дома."); return; }
         a.houseOrderId = RANDOM.nextLong();
-        give(p, HouseOrderItem.create(ModItems.HOUSE_ORDER.get(), p.getUniqueID(), a.pendingHouse, a.houseOrderId));
+        give(p, HouseOrderItem.create(ModItems.HOUSE_ORDER.get(), p.getUUID(), a.pendingHouse, a.houseOrderId));
         msg(p, BANK + "Выдан новый ордер. Старые ордера аннулированы.");
     }
 
     // ---------------------------------------------------------------- действия МФО
 
-    static void mfoTake(ServerPlayerEntity p, Account a, int amount) {
+    static void mfoTake(ServerPlayer p, Account a, int amount) {
         if (!checkFree(p, a)) return;
         if (a.hasMfo()) { msg(p, MFO + "§cСначала верни старый должок, дорогой."); return; }
         int max = Config.MFO_MAX_LOAN.get();
@@ -636,9 +635,9 @@ public class BankService {
         msg(p, MFO + "§8Не вернёшь — к тебе приедут. Мы знаем, где ты живёшь.");
     }
 
-    static void mfoPaySlot(ServerPlayerEntity p, Account a, FinanceContainer c) {
+    static void mfoPaySlot(ServerPlayer p, Account a, FinanceContainer c) {
         if (!a.hasMfo()) { msg(p, MFO + "Ты нам ничего не должен. Пока."); return; }
-        ItemStack st = c.getInput().getStackInSlot(0);
+        ItemStack st = c.getInput().getItem(0);
         if (st.isEmpty()) { msg(p, MFO + "Клади деньги или ценности в слот."); return; }
         double unit = ItemValues.valueOf(st);
         if (unit <= 0) { msg(p, MFO + "§cЭто барахло нам не нужно."); return; }
@@ -649,11 +648,11 @@ public class BankService {
         need = Math.max(1, need);
         double paid = need * per;
         st.shrink(need);
-        c.getInput().setInventorySlotContents(0, st);
+        c.getInput().setItem(0, st);
         payMfo(p, a, paid, note ? "" : " (оценщик принял по 60% стоимости)");
     }
 
-    static void mfoPayBank(ServerPlayerEntity p, Account a, int amount) {
+    static void mfoPayBank(ServerPlayer p, Account a, int amount) {
         if (!a.hasMfo()) { msg(p, MFO + "Ты нам ничего не должен. Пока."); return; }
         double want = amount <= 0 ? a.mfoDebt * 1.05 : amount;
         double take = Math.min(want, a.balance);
@@ -664,36 +663,36 @@ public class BankService {
 
     // ---------------------------------------------------------------- подпольный бизнес
 
-    static void buyPrinter(ServerPlayerEntity p, Account a) {
+    static void buyPrinter(ServerPlayer p, Account a) {
         if (!checkFree(p, a)) return;
         Business.buyPrinter(p, a, true);
     }
 
-    static void buyLaunder(ServerPlayerEntity p, Account a) {
+    static void buyLaunder(ServerPlayer p, Account a) {
         if (!checkFree(p, a)) return;
         Business.buyLaunder(p, a);
     }
 
     /** Отмыв в конторе МФО — доступен всем, но дорого. */
-    static void launder(ServerPlayerEntity p, Account a, FinanceContainer c) {
-        ItemStack st = c.getInput().getStackInSlot(0);
+    static void launder(ServerPlayer p, Account a, FinanceContainer c) {
+        ItemStack st = c.getInput().getItem(0);
         if (st.isEmpty() || !ItemValues.isDirty(st)) { msg(p, MFO + "Клади в слот грязные деньги."); return; }
         double v = ItemValues.stackValue(st);
         double fee = Config.MFO_LAUNDER_COMMISSION.get();
         double clean = Math.floor(v * (1 - fee) / 10.0) * 10.0;
-        c.getInput().setInventorySlotContents(0, ItemStack.EMPTY);
+        c.getInput().setItem(0, ItemStack.EMPTY);
         giveCash(p, clean);
         msg(p, MFO + "Отмыто: §2" + Finance.money(v) + "§f → §a" + Finance.money(clean) + "§f чистыми (наша доля "
                 + Finance.percent(fee) + "). Своё ООО берёт меньше.");
     }
 
     /** Отмыв в аппарате своего ООО в подвале. */
-    public static void launderAtMachine(ServerPlayerEntity p, net.minecraft.util.math.BlockPos pos) {
+    public static void launderAtMachine(ServerPlayer p, net.minecraft.core.BlockPos pos) {
         msg(p, "§8[ООО «Отмыв денег»] §cООО ликвидировано по решению налоговой. Отмывать теперь можно только через кассу "
                 + "легального заведения (телефон → Бизнес), а в крайнем случае — в МФО.");
     }
 
-    public static void payMfo(PlayerEntity p, Account a, double amount, String note) {
+    public static void payMfo(Player p, Account a, double amount, String note) {
         double before = a.mfoDebt;
         a.mfoDebt -= amount;
         if (a.mfoDebt <= 0.5) {
@@ -716,7 +715,7 @@ public class BankService {
         long today = today(server);
         for (Account a : list) {
             if (a.captivity != Account.FREE) continue;
-            ServerPlayerEntity p = server.getPlayerList().getPlayerByUUID(a.id);
+            ServerPlayer p = server.getPlayerList().getPlayer(a.id);
             a.peakBalance = Math.max(a.peakBalance, a.balance);
 
             // проценты по вкладу
@@ -800,6 +799,6 @@ public class BankService {
         Rivals.processDay(server, data);
         LegalBiz.processDay(server, data);
         Malls.processDay(server, data);
-        data.markDirty();
+        data.setDirty();
     }
 }

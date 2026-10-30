@@ -1,9 +1,10 @@
 package com.baraaoi.reallife.economy;
 
-import net.minecraft.nbt.CompoundNBT;
-import net.minecraft.nbt.ListNBT;
-import net.minecraft.util.Direction;
-import net.minecraft.util.math.BlockPos;
+import com.baraaoi.reallife.util.Nbt;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.core.Direction;
+import net.minecraft.core.BlockPos;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -74,7 +75,6 @@ public class Mall {
         public BlockPos sign = BlockPos.ZERO;
         public int width, depth;
         public int price, rent;
-        @javax.annotation.Nullable
         public UUID tenant;
         public String tenantName = "";
         /** Помещение занял бот-конкурент (id), 0 — нет. */
@@ -99,19 +99,19 @@ public class Mall {
                     && p.getZ() >= min.getZ() && p.getZ() <= max.getZ();
         }
 
-        CompoundNBT write() {
-            CompoundNBT t = new CompoundNBT();
+        CompoundTag write() {
+            CompoundTag t = new CompoundTag();
             t.putInt("i", idx);
-            t.putLong("min", min.toLong());
-            t.putLong("max", max.toLong());
-            t.putLong("door", entrance.toLong());
-            t.putInt("f", facing.getHorizontalIndex());
-            t.putLong("sign", sign.toLong());
+            t.putLong("min", min.asLong());
+            t.putLong("max", max.asLong());
+            t.putLong("door", entrance.asLong());
+            t.putInt("f", facing.get2DDataValue());
+            t.putLong("sign", sign.asLong());
             t.putInt("w", width);
             t.putInt("d", depth);
             t.putInt("price", price);
             t.putInt("rent", rent);
-            if (tenant != null) t.putUniqueId("tenant", tenant);
+            if (tenant != null) Nbt.putUUID(t, "tenant", tenant);
             t.putString("tenantName", tenantName);
             t.putInt("rival", rival);
             t.putInt("unpaid", unpaid);
@@ -119,23 +119,23 @@ public class Mall {
             return t;
         }
 
-        static Unit read(CompoundNBT t) {
+        static Unit read(CompoundTag t) {
             Unit u = new Unit();
-            u.idx = t.getInt("i");
-            u.min = BlockPos.fromLong(t.getLong("min"));
-            u.max = BlockPos.fromLong(t.getLong("max"));
-            u.entrance = BlockPos.fromLong(t.getLong("door"));
-            u.facing = Direction.byHorizontalIndex(t.getInt("f"));
-            u.sign = BlockPos.fromLong(t.getLong("sign"));
-            u.width = t.getInt("w");
-            u.depth = t.getInt("d");
-            u.price = t.getInt("price");
-            u.rent = t.getInt("rent");
-            u.tenant = t.hasUniqueId("tenant") ? t.getUniqueId("tenant") : null;
-            u.tenantName = t.getString("tenantName");
-            u.rival = t.getInt("rival");
-            u.unpaid = t.getInt("unpaid");
-            u.since = t.getLong("since");
+            u.idx = t.getIntOr("i", 0);
+            u.min = BlockPos.of(t.getLongOr("min", 0L));
+            u.max = BlockPos.of(t.getLongOr("max", 0L));
+            u.entrance = BlockPos.of(t.getLongOr("door", 0L));
+            u.facing = Direction.from2DDataValue(t.getIntOr("f", 0));
+            u.sign = BlockPos.of(t.getLongOr("sign", 0L));
+            u.width = t.getIntOr("w", 0);
+            u.depth = t.getIntOr("d", 0);
+            u.price = t.getIntOr("price", 0);
+            u.rent = t.getIntOr("rent", 0);
+            u.tenant = Nbt.hasUUID(t, "tenant") ? Nbt.getUUID(t, "tenant") : null;
+            u.tenantName = t.getStringOr("tenantName", "");
+            u.rival = t.getIntOr("rival", 0);
+            u.unpaid = t.getIntOr("unpaid", 0);
+            u.since = t.getLongOr("since", 0L);
             return u;
         }
     }
@@ -156,19 +156,16 @@ public class Mall {
         return new BlockPos((min.getX() + max.getX()) / 2, min.getY(), (min.getZ() + max.getZ()) / 2);
     }
 
-    @javax.annotation.Nullable
     public Unit unitAt(BlockPos p) {
         for (Unit u : units) if (u.contains(p)) return u;
         return null;
     }
 
-    @javax.annotation.Nullable
     public Unit unit(int idx) {
         return idx >= 0 && idx < units.size() ? units.get(idx) : null;
     }
 
     /** Заведение внутри помещения (или null). */
-    @javax.annotation.Nullable
     public LegalBusiness business(EconomyData data, Unit u) {
         for (LegalBusiness b : data.businesses) if (b.mallId == id && u.contains(b.counter)) return b;
         return null;
@@ -180,38 +177,38 @@ public class Mall {
         return n;
     }
 
-    public CompoundNBT write() {
-        CompoundNBT t = new CompoundNBT();
+    public CompoundTag write() {
+        CompoundTag t = new CompoundTag();
         t.putInt("id", id);
-        if (owner != null) t.putUniqueId("owner", owner);
+        if (owner != null) Nbt.putUUID(t, "owner", owner);
         t.putString("ownerName", ownerName);
-        t.putLong("min", min.toLong());
-        t.putLong("max", max.toLong());
-        ListNBT l = new ListNBT();
+        t.putLong("min", min.asLong());
+        t.putLong("max", max.asLong());
+        ListTag l = new ListTag();
         for (Unit u : units) l.add(u.write());
         t.put("units", l);
         return t;
     }
 
-    public static Mall read(CompoundNBT t) {
+    public static Mall read(CompoundTag t) {
         Mall m = new Mall();
-        m.id = t.getInt("id");
-        m.owner = t.hasUniqueId("owner") ? t.getUniqueId("owner") : null;
-        m.ownerName = t.getString("ownerName");
-        m.min = BlockPos.fromLong(t.getLong("min"));
-        m.max = BlockPos.fromLong(t.getLong("max"));
+        m.id = t.getIntOr("id", 0);
+        m.owner = Nbt.hasUUID(t, "owner") ? Nbt.getUUID(t, "owner") : null;
+        m.ownerName = t.getStringOr("ownerName", "");
+        m.min = BlockPos.of(t.getLongOr("min", 0L));
+        m.max = BlockPos.of(t.getLongOr("max", 0L));
         if (t.contains("units")) {
-            ListNBT l = t.getList("units", 10);
-            for (int i = 0; i < l.size(); i++) m.units.add(Unit.read(l.getCompound(i)));
+            ListTag l = t.getListOrEmpty("units");
+            for (int i = 0; i < l.size(); i++) m.units.add(Unit.read(l.getCompoundOrEmpty(i)));
         } else {
             // ТЦ из v1.10: площадки 15×15 вокруг размеченных мест — становятся помещениями владельца
-            ListNBT l = t.getList("slots", 10);
+            ListTag l = t.getListOrEmpty("slots");
             for (int i = 0; i < l.size(); i++) {
-                BlockPos c = BlockPos.fromLong(l.getCompound(i).getLong("p"));
+                BlockPos c = BlockPos.of(l.getCompoundOrEmpty(i).getLongOr("p", 0L));
                 Unit u = new Unit();
                 u.idx = i;
-                u.min = c.add(-7, -1, -7);
-                u.max = c.add(7, 8, 7);
+                u.min = c.offset(-7, -1, -7);
+                u.max = c.offset(7, 8, 7);
                 u.entrance = c;
                 u.width = 15;
                 u.depth = 15;

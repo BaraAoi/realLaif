@@ -1,65 +1,42 @@
 package com.baraaoi.reallife.block;
 
 import com.baraaoi.reallife.tile.FridgeTileEntity;
-import net.minecraft.block.BlockState;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.inventory.IInventory;
-import net.minecraft.inventory.InventoryHelper;
-import net.minecraft.inventory.container.INamedContainerProvider;
-import net.minecraft.tileentity.TileEntity;
-import net.minecraft.util.ActionResultType;
-import net.minecraft.util.Hand;
-import net.minecraft.util.SoundCategory;
-import net.minecraft.util.SoundEvents;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.BlockRayTraceResult;
-import net.minecraft.world.IBlockReader;
-import net.minecraft.world.World;
-
-import javax.annotation.Nullable;
+import net.minecraft.core.BlockPos;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.sounds.SoundSource;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.MenuProvider;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.EntityBlock;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.BlockHitResult;
+import org.jspecify.annotations.Nullable;
 
 /** Холодильник (и «Сундук цеха»): хранилище на 27 слотов. */
-public class FridgeBlock extends DecorBlock {
+public class FridgeBlock extends DecorBlock implements EntityBlock {
     public FridgeBlock(Properties props) {
         super(props);
     }
 
     @Override
-    public boolean hasTileEntity(BlockState state) {
-        return true;
-    }
-
-    @Nullable
-    @Override
-    public TileEntity createTileEntity(BlockState state, IBlockReader world) {
-        return new FridgeTileEntity();
+    public @Nullable BlockEntity newBlockEntity(BlockPos pos, BlockState state) {
+        return new FridgeTileEntity(pos, state);
     }
 
     @Override
-    @SuppressWarnings("deprecation")
-    public ActionResultType onBlockActivated(BlockState state, World world, BlockPos pos, PlayerEntity player, Hand hand, BlockRayTraceResult hit) {
-        if (world.isRemote) return ActionResultType.SUCCESS;
-        TileEntity te = world.getTileEntity(pos);
-        if (te instanceof INamedContainerProvider) {
-            player.openContainer((INamedContainerProvider) te);
+    protected InteractionResult useWithoutItem(BlockState state, Level world, BlockPos pos, Player player, BlockHitResult hit) {
+        if (world.isClientSide()) return InteractionResult.SUCCESS;
+        BlockEntity te = world.getBlockEntity(pos);
+        if (te instanceof MenuProvider mp) {
+            player.openMenu(mp);
             if (this == com.baraaoi.reallife.registry.ModBlocks.BUSINESS_CHEST.get()) {
-                world.playSound(null, pos, SoundEvents.BLOCK_CHEST_OPEN, SoundCategory.BLOCKS, 0.6F, 0.9F);
+                world.playSound(null, pos, SoundEvents.CHEST_OPEN, SoundSource.BLOCKS, 0.6F, 0.9F);
             } else {
-                world.playSound(null, pos, SoundEvents.BLOCK_IRON_DOOR_OPEN, SoundCategory.BLOCKS, 0.5F, 1.4F);
+                world.playSound(null, pos, SoundEvents.IRON_DOOR_OPEN, SoundSource.BLOCKS, 0.5F, 1.4F);
             }
         }
-        return ActionResultType.CONSUME;
-    }
-
-    @Override
-    @SuppressWarnings("deprecation")
-    public void onReplaced(BlockState state, World world, BlockPos pos, BlockState newState, boolean isMoving) {
-        if (!state.isIn(newState.getBlock())) {
-            TileEntity te = world.getTileEntity(pos);
-            if (te instanceof IInventory) {
-                InventoryHelper.dropInventoryItems(world, pos, (IInventory) te);
-            }
-            super.onReplaced(state, world, pos, newState, isMoving);
-        }
+        return InteractionResult.CONSUME;
     }
 }

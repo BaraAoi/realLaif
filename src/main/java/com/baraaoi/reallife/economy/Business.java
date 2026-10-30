@@ -4,17 +4,17 @@ import com.baraaoi.reallife.Config;
 import com.baraaoi.reallife.tile.PrinterTileEntity;
 import com.baraaoi.reallife.registry.ModBlocks;
 import com.baraaoi.reallife.registry.ModItems;
-import net.minecraft.block.Block;
-import net.minecraft.block.BlockState;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.entity.player.ServerPlayerEntity;
-import net.minecraft.inventory.IInventory;
-import net.minecraft.item.ItemStack;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.Container;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.tileentity.TileEntity;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.world.World;
-import net.minecraft.world.server.ServerWorld;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.Level;
+import net.minecraft.server.level.ServerLevel;
 
 import java.util.Iterator;
 
@@ -49,21 +49,21 @@ public final class Business {
 
     /** Зарегистрировать станок за игроком. */
     public static int registerPrinter(EconomyData data, Account a, BlockPos pos) {
-        BlockPos ip = pos.toImmutable();
+        BlockPos ip = pos.immutable();
         if (a.printerList.contains(ip)) return ALREADY;
         if (!inOwnProperty(data, a, ip)) return NOT_OWNER;
         a.printerList.add(ip);
-        data.markDirty();
+        data.setDirty();
         return OK;
     }
 
     /** Сколько зарегистрированных станков реально стоит на месте (лишние записи вычищаются). */
-    public static int workingPrinters(ServerWorld ow, Account a) {
+    public static int workingPrinters(ServerLevel ow, Account a) {
         Iterator<BlockPos> it = a.printerList.iterator();
         int n = 0;
         while (it.hasNext()) {
             BlockPos p = it.next();
-            if (!ow.isBlockLoaded(p)) { n++; continue; } // не загружен — считаем, что стоит
+            if (!ow.isLoaded(p)) { n++; continue; } // не загружен — считаем, что стоит
             if (ow.getBlockState(p).getBlock() != ModBlocks.MONEY_PRINTER.get()) it.remove();
             else n++;
         }
@@ -71,31 +71,31 @@ public final class Business {
     }
 
     /** Старый мир: станки из подвала цеха перенести в список. */
-    public static void migrateLegacy(ServerWorld ow, Account a) {
+    public static void migrateLegacy(ServerLevel ow, Account a) {
         if (a.businessMin.equals(BlockPos.ZERO) || a.businessMax.equals(BlockPos.ZERO)) return;
         long volume = (long) (a.businessMax.getX() - a.businessMin.getX() + 1) * (a.businessMax.getY() - a.businessMin.getY() + 1)
                 * (a.businessMax.getZ() - a.businessMin.getZ() + 1);
         if (volume <= 0 || volume > 4000) return;
-        for (BlockPos p : BlockPos.getAllInBoxMutable(a.businessMin, a.businessMax)) {
+        for (BlockPos p : BlockPos.betweenClosed(a.businessMin, a.businessMax)) {
             if (ow.getBlockState(p).getBlock() == ModBlocks.MONEY_PRINTER.get() && !a.printerList.contains(p)) {
-                BlockPos ip = p.toImmutable();
+                BlockPos ip = p.immutable();
                 a.printerList.add(ip);
-                TileEntity te = ow.getTileEntity(ip);
+                BlockEntity te = ow.getBlockEntity(ip);
                 if (te instanceof PrinterTileEntity && ((PrinterTileEntity) te).getOwner() == null) ((PrinterTileEntity) te).setOwner(a.id);
             }
         }
     }
 
-    static void give(PlayerEntity p, ItemStack st) {
-        if (!p.inventory.addItemStackToInventory(st)) p.dropItem(st, false);
+    static void give(Player p, ItemStack st) {
+        if (!p.getInventory().add(st)) p.drop(st, false);
     }
 
     // ------------------------------------------------------------------ события блоков
 
     /** Игрок поставил блок (вызывается после всех проверок). */
-    public static void onPlaced(ServerPlayerEntity p, BlockPos pos, Block block) {
-        MinecraftServer server = p.getServer();
-        if (server == null || p.world.getDimensionKey() != World.OVERWORLD) return;
+    public static void onPlaced(ServerPlayer p, BlockPos pos, Block block) {
+        MinecraftServer server = p.level().getServer();
+        if (server == null || p.level().dimension() != Level.OVERWORLD) return;
         EconomyData data = EconomyData.get(server);
         Account a = data.get(p);
         if (block == ModBlocks.MONEY_PRINTER.get()) {
@@ -105,7 +105,7 @@ public final class Business {
             }
             int r = registerPrinter(data, a, pos);
             if (r == OK || r == ALREADY) {
-                TileEntity te = p.world.getTileEntity(pos);
+                BlockEntity te = p.level().getBlockEntity(pos);
                 if (te instanceof PrinterTileEntity) ((PrinterTileEntity) te).setOwner(a.id);
             }
             if (r == OK) {
@@ -119,8 +119,8 @@ public final class Business {
             }
         } else if (block == ModBlocks.BUSINESS_CHEST.get()) {
             if (!a.hasBusiness) return;
-            a.businessChest = pos.toImmutable();
-            data.markDirty();
+            a.businessChest = pos.immutable();
+            data.setDirty();
             BankService.msg(p, BankService.MFO + "§aСундук цеха привязан (" + xyz(pos) + "). §fВсе твои станки будут складывать сюда грязные. "
                     + "Станков подключено: §e" + a.printerList.size());
         } else if (block == ModBlocks.LAUNDER_MACHINE.get()) {
@@ -139,8 +139,8 @@ public final class Business {
             if (b == ModBlocks.BUSINESS_CHEST.get() && pos.equals(a.businessChest)) { a.businessChest = BlockPos.ZERO; changed = true; }
             if (b == ModBlocks.LAUNDER_MACHINE.get() && pos.equals(a.launderPos)) { a.launderPos = BlockPos.ZERO; changed = true; }
             if (changed) {
-                data.markDirty();
-                PlayerEntity owner = server.getPlayerList().getPlayerByUUID(a.id);
+                data.setDirty();
+                Player owner = server.getPlayerList().getPlayer(a.id);
                 if (owner != null) {
                     String what = b == ModBlocks.MONEY_PRINTER.get() ? "Станок снят (осталось " + a.printerList.size() + "). Поставь его снова у себя — подключится."
                             : b == ModBlocks.BUSINESS_CHEST.get() ? "Сундук цеха снят — станки встанут, пока не поставишь его снова."
@@ -153,7 +153,7 @@ public final class Business {
 
     // ------------------------------------------------------------------ покупки в МФО
 
-    static void buyPrinter(ServerPlayerEntity p, Account a, boolean checkFree) {
+    static void buyPrinter(ServerPlayer p, Account a, boolean checkFree) {
         int price = Config.PRINTER_COST.get();
         if (!BankService.charge(p, a, price)) { BankService.msg(p, BankService.MFO + "§cСтанок стоит " + Finance.money(price) + ". Счёт + наличка — не хватает."); return; }
         boolean first = !a.hasBusiness;
@@ -164,7 +164,7 @@ public final class Business {
             a.chestGiven = true;
             give(p, new ItemStack(ModItems.BUSINESS_CHEST.get()));
         }
-        EconomyData.get(p.getServer()).markDirty();
+        EconomyData.get(p.level().getServer()).setDirty();
         BankService.msg(p, BankService.MFO + "§aДержи станок" + (first ? " и «Сундук цеха» (выдаём один раз — не потеряй!)" : "") + ". "
                 + "§fСтавь у себя дома или на своём участке. Номинал выбираешь сам: 10₽ за 5 с … 5000₽ за 50 мин. Куплено станков: §e" + a.printers);
         BankService.msg(p, BankService.MFO + "§7Чем больше станков — тем чаще к тебе заглядывают подозрительные личности и проверки. Не свети станки.");
@@ -173,7 +173,7 @@ public final class Business {
                 + ") или через кассу своего легального заведения.");
     }
 
-    static void buyLaunder(ServerPlayerEntity p, Account a) {
+    static void buyLaunder(ServerPlayer p, Account a) {
         BankService.msg(p, BankService.MFO + "§cООО «Отмыв» больше не регистрируем — налоговая всех накрыла. "
                 + "Купи легальное заведение (телефон → Бизнес) и проводи грязные через его кассу.");
     }

@@ -4,22 +4,22 @@ import com.baraaoi.reallife.Config;
 import com.baraaoi.reallife.container.CryptoContainer;
 import com.baraaoi.reallife.item.ComponentItem;
 import com.baraaoi.reallife.registry.ModTileEntities;
-import net.minecraft.block.BlockState;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.entity.player.PlayerInventory;
-import net.minecraft.inventory.IInventory;
-import net.minecraft.inventory.ItemStackHelper;
-import net.minecraft.inventory.container.Container;
-import net.minecraft.inventory.container.INamedContainerProvider;
-import net.minecraft.item.ItemStack;
-import net.minecraft.nbt.CompoundNBT;
-import net.minecraft.tileentity.ITickableTileEntity;
-import net.minecraft.tileentity.TileEntity;
-import net.minecraft.util.NonNullList;
-import net.minecraft.util.text.ITextComponent;
-import net.minecraft.util.text.StringTextComponent;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.Container;
+import net.minecraft.world.ContainerHelper;
+import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.MenuProvider;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.core.NonNullList;
+import net.minecraft.network.chat.Component;
 
-import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -27,7 +27,7 @@ import java.util.List;
  * Майнинг-ферма: 0 — материнская плата, 1 — процессор, 2 — память, 3 — блок питания, 4 — кулер,
  * 5..8 — видеокарты (нужна хотя бы одна). Добытое копится внутри, кнопка в окне переводит в кошелёк.
  */
-public class CryptoRigTileEntity extends TileEntity implements ITickableTileEntity, IInventory, INamedContainerProvider {
+public class CryptoRigTileEntity extends BlockEntity implements Container, MenuProvider {
     public static final int SIZE = 9;
     public static final int FIRST_GPU = 5;
 
@@ -35,8 +35,8 @@ public class CryptoRigTileEntity extends TileEntity implements ITickableTileEnti
     private double mined;
     private int timer;
 
-    public CryptoRigTileEntity() {
-        super(ModTileEntities.CRYPTO_RIG.get());
+    public CryptoRigTileEntity(BlockPos pos, BlockState state) {
+        super(ModTileEntities.CRYPTO_RIG.get(), pos, state);
     }
 
     /** Какой вид комплектующей подходит в слот. */
@@ -73,7 +73,7 @@ public class CryptoRigTileEntity extends TileEntity implements ITickableTileEnti
     public double takeMined() {
         double m = mined;
         mined = 0;
-        markDirty();
+        setChanged();
         return m;
     }
 
@@ -87,12 +87,11 @@ public class CryptoRigTileEntity extends TileEntity implements ITickableTileEnti
         double r = ratePerSecond();
         if (r <= 0) return;
         mined += r * seconds;
-        markDirty();
+        setChanged();
     }
 
-    @Override
     public void tick() {
-        if (world == null || world.isRemote) return;
+        if (level == null || level.isClientSide()) return;
         if (++timer >= 20) {
             timer = 0;
             work(1);
@@ -100,23 +99,22 @@ public class CryptoRigTileEntity extends TileEntity implements ITickableTileEnti
     }
 
     @Override
-    public void read(BlockState state, CompoundNBT nbt) {
-        super.read(state, nbt);
+    protected void loadAdditional(ValueInput in) {
+        super.loadAdditional(in);
         items = NonNullList.withSize(SIZE, ItemStack.EMPTY);
-        ItemStackHelper.loadAllItems(nbt, items);
-        mined = nbt.getDouble("Mined");
+        ContainerHelper.loadAllItems(in, items);
+        mined = in.getDoubleOr("Mined", 0.0);
     }
 
     @Override
-    public CompoundNBT write(CompoundNBT nbt) {
-        super.write(nbt);
-        ItemStackHelper.saveAllItems(nbt, items);
-        nbt.putDouble("Mined", mined);
-        return nbt;
+    protected void saveAdditional(ValueOutput out) {
+        super.saveAdditional(out);
+        ContainerHelper.saveAllItems(out, items);
+        out.putDouble("Mined", mined);
     }
 
     @Override
-    public int getSizeInventory() {
+    public int getContainerSize() {
         return SIZE;
     }
 
@@ -127,58 +125,57 @@ public class CryptoRigTileEntity extends TileEntity implements ITickableTileEnti
     }
 
     @Override
-    public ItemStack getStackInSlot(int index) {
+    public ItemStack getItem(int index) {
         return items.get(index);
     }
 
     @Override
-    public ItemStack decrStackSize(int index, int count) {
-        ItemStack r = ItemStackHelper.getAndSplit(items, index, count);
-        if (!r.isEmpty()) markDirty();
+    public ItemStack removeItem(int index, int count) {
+        ItemStack r = ContainerHelper.removeItem(items, index, count);
+        if (!r.isEmpty()) setChanged();
         return r;
     }
 
     @Override
-    public ItemStack removeStackFromSlot(int index) {
-        return ItemStackHelper.getAndRemove(items, index);
+    public ItemStack removeItemNoUpdate(int index) {
+        return ContainerHelper.takeItem(items, index);
     }
 
     @Override
-    public void setInventorySlotContents(int index, ItemStack stack) {
+    public void setItem(int index, ItemStack stack) {
         items.set(index, stack);
-        markDirty();
+        setChanged();
     }
 
     @Override
-    public int getInventoryStackLimit() {
+    public int getMaxStackSize() {
         return 1;
     }
 
     @Override
-    public boolean isUsableByPlayer(PlayerEntity player) {
-        return world != null && world.getTileEntity(pos) == this
-                && player.getDistanceSq(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5) <= 64.0;
+    public boolean stillValid(Player player) {
+        return Container.stillValidBlockEntity(this, player);
     }
 
     @Override
-    public boolean isItemValidForSlot(int index, ItemStack stack) {
+    public boolean canPlaceItem(int index, ItemStack stack) {
         return fits(index, stack);
     }
 
     @Override
-    public void clear() {
+    public void clearContent() {
         items.clear();
-        markDirty();
+        setChanged();
     }
 
     @Override
-    public ITextComponent getDisplayName() {
-        return new StringTextComponent("Майнинг-ферма");
+    public Component getDisplayName() {
+        return Component.literal("Майнинг-ферма");
     }
 
-    @Nullable
+    
     @Override
-    public Container createMenu(int id, PlayerInventory inv, PlayerEntity player) {
-        return new CryptoContainer(id, inv, this, pos);
+    public AbstractContainerMenu createMenu(int id, Inventory inv, Player player) {
+        return new CryptoContainer(id, inv, this, worldPosition);
     }
 }

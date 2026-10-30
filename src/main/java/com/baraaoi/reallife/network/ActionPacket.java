@@ -1,13 +1,11 @@
 package com.baraaoi.reallife.network;
 
 import com.baraaoi.reallife.economy.BankService;
-import net.minecraft.entity.player.ServerPlayerEntity;
-import net.minecraft.network.PacketBuffer;
-import net.minecraftforge.fml.network.NetworkEvent;
+import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraftforge.event.network.CustomPayloadEvent;
 
-import java.util.function.Supplier;
-
-/** Клиент -> сервер: нажата кнопка в банке / МФО. */
+/** Клиент → сервер: действие в интерфейсе (код действия + 2 аргумента). */
 public class ActionPacket {
     private final int action, arg1, arg2;
 
@@ -17,21 +15,19 @@ public class ActionPacket {
         this.arg2 = arg2;
     }
 
-    public static void encode(ActionPacket m, PacketBuffer buf) {
+    public static void encode(ActionPacket m, FriendlyByteBuf buf) {
         buf.writeVarInt(m.action);
         buf.writeInt(m.arg1);
         buf.writeInt(m.arg2);
     }
 
-    public static ActionPacket decode(PacketBuffer buf) {
+    public static ActionPacket decode(FriendlyByteBuf buf) {
         return new ActionPacket(buf.readVarInt(), buf.readInt(), buf.readInt());
     }
 
-    public static void handle(ActionPacket m, Supplier<NetworkEvent.Context> ctx) {
-        ctx.get().enqueueWork(() -> {
-            ServerPlayerEntity p = ctx.get().getSender();
-            if (p != null) BankService.handle(p, m.action, m.arg1, m.arg2);
-        });
-        ctx.get().setPacketHandled(true);
+    public static void handle(ActionPacket m, CustomPayloadEvent.Context ctx) {
+        ServerPlayer p = ctx.getSender();
+        if (p != null) BankService.handle(p, m.action, m.arg1, m.arg2);
+        ctx.setPacketHandled(true);
     }
 }

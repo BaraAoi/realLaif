@@ -1,14 +1,12 @@
 package com.baraaoi.reallife.item;
 
 import com.baraaoi.reallife.economy.Finance;
-import net.minecraft.client.util.ITooltipFlag;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.util.text.ITextComponent;
-import net.minecraft.util.text.StringTextComponent;
-import net.minecraft.world.World;
+import net.minecraft.world.item.TooltipFlag;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.level.Level;
 
-import javax.annotation.Nullable;
 import java.util.List;
 
 public class BanknoteItem extends Item {
@@ -24,11 +22,11 @@ public class BanknoteItem extends Item {
     }
 
     @Override
-    public void addInformation(ItemStack stack, @Nullable World world, List<ITextComponent> tooltip, ITooltipFlag flag) {
-        tooltip.add(new StringTextComponent("§7Номинал: §a" + Finance.money(value)));
+    public void appendHoverText(ItemStack stack, Item.TooltipContext context, net.minecraft.world.item.component.TooltipDisplay display, java.util.function.Consumer<Component> tooltip, TooltipFlag flag) {
+        tooltip.accept(Component.literal("§7Номинал: §a" + Finance.money(value)));
         if (stack.getCount() > 1) {
-            tooltip.add(new StringTextComponent("§7В пачке: §a" + Finance.money((double) value * stack.getCount())));
+            tooltip.accept(Component.literal("§7В пачке: §a" + Finance.money((double) value * stack.getCount())));
         }
-        tooltip.add(new StringTextComponent("§8Билет Банка «Реал Банк»"));
+        tooltip.accept(Component.literal("§8Билет Банка «Реал Банк»"));
     }
 }

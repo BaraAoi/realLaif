@@ -5,25 +5,25 @@ import com.baraaoi.reallife.economy.Account;
 import com.baraaoi.reallife.economy.EconomyData;
 import com.baraaoi.reallife.item.DirtyMoneyItem;
 import com.baraaoi.reallife.registry.ModTileEntities;
-import net.minecraft.block.BlockState;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.entity.player.PlayerInventory;
-import net.minecraft.inventory.IInventory;
-import net.minecraft.inventory.ItemStackHelper;
-import net.minecraft.inventory.container.Container;
-import net.minecraft.inventory.container.INamedContainerProvider;
-import net.minecraft.item.ItemStack;
-import net.minecraft.nbt.CompoundNBT;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.Container;
+import net.minecraft.world.ContainerHelper;
+import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.MenuProvider;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.tileentity.ITickableTileEntity;
-import net.minecraft.tileentity.TileEntity;
-import net.minecraft.util.IIntArray;
-import net.minecraft.util.NonNullList;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.text.ITextComponent;
-import net.minecraft.util.text.StringTextComponent;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
+import net.minecraft.core.UUIDUtil;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.inventory.ContainerData;
+import net.minecraft.core.NonNullList;
+import net.minecraft.core.BlockPos;
+import net.minecraft.network.chat.Component;
 
-import javax.annotation.Nullable;
 import java.util.UUID;
 
 /**
@@ -31,7 +31,7 @@ import java.util.UUID;
  * Готовые пачки уходят в «Сундук цеха» хозяина, а если он не стоит/полон — во встроенный лоток на 9 слотов.
  * Работает, только если станок подключён (зарегистрирован в собственности хозяина).
  */
-public class PrinterTileEntity extends TileEntity implements ITickableTileEntity, IInventory, INamedContainerProvider {
+public class PrinterTileEntity extends BlockEntity implements Container, MenuProvider {
     public static final int[] DENOMS = DirtyMoneyItem.DENOMS;
     /** Тиков на одну купюру: 10₽ — 5 с, 100₽ — 1 мин, 500₽ — 5 мин, 1000₽ — 10 мин, 5000₽ — 50 мин. */
     public static final int[] TICKS = {100, 1200, 6000, 12000, 60000};
@@ -39,7 +39,7 @@ public class PrinterTileEntity extends TileEntity implements ITickableTileEntity
     public static final int WORKING = 0, OFFLINE = 1, FULL = 2;
 
     private NonNullList<ItemStack> items = NonNullList.withSize(SIZE, ItemStack.EMPTY);
-    @Nullable
+    
     private UUID owner;
     private int denomIdx = 1;
     private int progress;
@@ -49,7 +49,7 @@ public class PrinterTileEntity extends TileEntity implements ITickableTileEntity
     /** Сколько всего напечатано (для статистики в окне). */
     private long printed;
 
-    private final IIntArray data = new IIntArray() {
+    private final ContainerData data = new ContainerData() {
         @Override
         public int get(int index) {
             switch (index) {
@@ -71,19 +71,19 @@ public class PrinterTileEntity extends TileEntity implements ITickableTileEntity
         }
     };
 
-    public PrinterTileEntity() {
-        super(ModTileEntities.PRINTER.get());
+    public PrinterTileEntity(BlockPos pos, BlockState state) {
+        super(ModTileEntities.PRINTER.get(), pos, state);
     }
 
-    @Nullable
+    
     public UUID getOwner() {
         return owner;
     }
 
-    public void setOwner(@Nullable UUID owner) {
+    public void setOwner(UUID owner) {
         this.owner = owner;
         this.check = 0;
-        markDirty();
+        setChanged();
     }
 
     public int getDenomIdx() {
@@ -98,7 +98,7 @@ public class PrinterTileEntity extends TileEntity implements ITickableTileEntity
         if (idx < 0 || idx >= DENOMS.length || idx == denomIdx) return;
         denomIdx = idx;
         progress = 0;
-        markDirty();
+        setChanged();
     }
 
     public int getStatus() {
@@ -109,9 +109,8 @@ public class PrinterTileEntity extends TileEntity implements ITickableTileEntity
         return printed;
     }
 
-    @Override
     public void tick() {
-        if (world == null || world.isRemote) return;
+        if (level == null || level.isClientSide()) return;
         if (--check <= 0) {
             check = 40;
             active = isRegistered();
@@ -123,10 +122,10 @@ public class PrinterTileEntity extends TileEntity implements ITickableTileEntity
         if (progress < TICKS[denomIdx]) {
             progress++;
             status = WORKING;
-            if (progress % 200 == 0) markDirty();
+            if (progress % 200 == 0) setChanged();
         }
         if (progress >= TICKS[denomIdx]) {
-            if (status == FULL && world.getGameTime() % 40 != 0) return;
+            if (status == FULL && level.getGameTime() % 40 != 0) return;
             if (printOne()) {
                 progress = 0;
                 status = WORKING;
@@ -138,59 +137,59 @@ public class PrinterTileEntity extends TileEntity implements ITickableTileEntity
 
     /** Подключён ли станок: у хозяина есть счёт, станок в его списке, хозяин на свободе. */
     private boolean isRegistered() {
-        if (owner == null || world == null) return false;
-        MinecraftServer server = world.getServer();
+        if (owner == null || level == null) return false;
+        MinecraftServer server = level.getServer();
         if (server == null) return false;
         Account a = EconomyData.get(server).get(owner);
-        return a != null && a.captivity == Account.FREE && a.printerList.contains(pos);
+        return a != null && a.captivity == Account.FREE && a.printerList.contains(worldPosition);
     }
 
     /** Напечатать одну купюру прямо сейчас (для тестов и тика). */
     public boolean printOne() {
-        if (world == null) return false;
+        if (level == null) return false;
         ItemStack note = DirtyMoneyItem.of(denom(), 1);
-        MinecraftServer server = world.getServer();
+        MinecraftServer server = level.getServer();
         if (server != null && owner != null) {
             Account a = EconomyData.get(server).get(owner);
-            if (a != null && !a.businessChest.equals(BlockPos.ZERO) && world.isBlockLoaded(a.businessChest)) {
-                TileEntity te = world.getTileEntity(a.businessChest);
-                if (te instanceof IInventory && te != this && insert((IInventory) te, note)) {
-                    te.markDirty();
+            if (a != null && !a.businessChest.equals(BlockPos.ZERO) && level.isLoaded(a.businessChest)) {
+                BlockEntity te = level.getBlockEntity(a.businessChest);
+                if (te instanceof Container && te != this && insert((Container) te, note)) {
+                    te.setChanged();
                     printed += denom();
-                    markDirty();
+                    setChanged();
                     return true;
                 }
             }
         }
         if (insert(this, note)) {
             printed += denom();
-            markDirty();
+            setChanged();
             return true;
         }
         return false;
     }
 
     /** Положить стопку в инвентарь (с объединением одинаковых). true — влезло целиком. */
-    public static boolean insert(IInventory inv, ItemStack stack) {
-        int size = inv.getSizeInventory();
+    public static boolean insert(Container inv, ItemStack stack) {
+        int size = inv.getContainerSize();
         for (int i = 0; i < size && !stack.isEmpty(); i++) {
-            ItemStack cur = inv.getStackInSlot(i);
-            if (!cur.isEmpty() && ItemStack.areItemsEqual(cur, stack) && ItemStack.areItemStackTagsEqual(cur, stack)) {
-                int max = Math.min(cur.getMaxStackSize(), inv.getInventoryStackLimit());
+            ItemStack cur = inv.getItem(i);
+            if (!cur.isEmpty() && ItemStack.isSameItemSameComponents(cur, stack)) {
+                int max = Math.min(cur.getMaxStackSize(), inv.getMaxStackSize());
                 int n = Math.min(max - cur.getCount(), stack.getCount());
                 if (n > 0) {
                     cur.grow(n);
                     stack.shrink(n);
-                    inv.setInventorySlotContents(i, cur);
+                    inv.setItem(i, cur);
                 }
             }
         }
         for (int i = 0; i < size && !stack.isEmpty(); i++) {
-            if (inv.getStackInSlot(i).isEmpty() && inv.isItemValidForSlot(i, stack)) {
-                int n = Math.min(stack.getCount(), Math.min(stack.getMaxStackSize(), inv.getInventoryStackLimit()));
+            if (inv.getItem(i).isEmpty() && inv.canPlaceItem(i, stack)) {
+                int n = Math.min(stack.getCount(), Math.min(stack.getMaxStackSize(), inv.getMaxStackSize()));
                 ItemStack put = stack.copy();
                 put.setCount(n);
-                inv.setInventorySlotContents(i, put);
+                inv.setItem(i, put);
                 stack.shrink(n);
             }
         }
@@ -200,31 +199,30 @@ public class PrinterTileEntity extends TileEntity implements ITickableTileEntity
     // ------------------------------------------------------------------ NBT
 
     @Override
-    public void read(BlockState state, CompoundNBT nbt) {
-        super.read(state, nbt);
+    protected void loadAdditional(ValueInput in) {
+        super.loadAdditional(in);
         items = NonNullList.withSize(SIZE, ItemStack.EMPTY);
-        ItemStackHelper.loadAllItems(nbt, items);
-        owner = nbt.hasUniqueId("Owner") ? nbt.getUniqueId("Owner") : null;
-        denomIdx = Math.max(0, Math.min(DENOMS.length - 1, nbt.contains("Denom") ? nbt.getInt("Denom") : 1));
-        progress = nbt.getInt("Progress");
-        printed = nbt.getLong("Printed");
+        ContainerHelper.loadAllItems(in, items);
+        owner = in.read("Owner", UUIDUtil.CODEC).orElse(null);
+        denomIdx = Math.max(0, Math.min(DENOMS.length - 1, in.getIntOr("Denom", 1)));
+        progress = in.getIntOr("Progress", 0);
+        printed = in.getLongOr("Printed", 0L);
     }
 
     @Override
-    public CompoundNBT write(CompoundNBT nbt) {
-        super.write(nbt);
-        ItemStackHelper.saveAllItems(nbt, items);
-        if (owner != null) nbt.putUniqueId("Owner", owner);
-        nbt.putInt("Denom", denomIdx);
-        nbt.putInt("Progress", progress);
-        nbt.putLong("Printed", printed);
-        return nbt;
+    protected void saveAdditional(ValueOutput out) {
+        super.saveAdditional(out);
+        ContainerHelper.saveAllItems(out, items);
+        out.storeNullable("Owner", UUIDUtil.CODEC, owner);
+        out.putInt("Denom", denomIdx);
+        out.putInt("Progress", progress);
+        out.putLong("Printed", printed);
     }
 
-    // ------------------------------------------------------------------ IInventory (лоток)
+    // ------------------------------------------------------------------ Container (лоток)
 
     @Override
-    public int getSizeInventory() {
+    public int getContainerSize() {
         return SIZE;
     }
 
@@ -235,55 +233,54 @@ public class PrinterTileEntity extends TileEntity implements ITickableTileEntity
     }
 
     @Override
-    public ItemStack getStackInSlot(int index) {
+    public ItemStack getItem(int index) {
         return items.get(index);
     }
 
     @Override
-    public ItemStack decrStackSize(int index, int count) {
-        ItemStack r = ItemStackHelper.getAndSplit(items, index, count);
-        if (!r.isEmpty()) markDirty();
+    public ItemStack removeItem(int index, int count) {
+        ItemStack r = ContainerHelper.removeItem(items, index, count);
+        if (!r.isEmpty()) setChanged();
         return r;
     }
 
     @Override
-    public ItemStack removeStackFromSlot(int index) {
-        return ItemStackHelper.getAndRemove(items, index);
+    public ItemStack removeItemNoUpdate(int index) {
+        return ContainerHelper.takeItem(items, index);
     }
 
     @Override
-    public void setInventorySlotContents(int index, ItemStack stack) {
+    public void setItem(int index, ItemStack stack) {
         items.set(index, stack);
-        markDirty();
+        setChanged();
     }
 
     @Override
-    public boolean isUsableByPlayer(PlayerEntity player) {
-        return world != null && world.getTileEntity(pos) == this
-                && player.getDistanceSq(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5) <= 64.0;
+    public boolean stillValid(Player player) {
+        return Container.stillValidBlockEntity(this, player);
     }
 
     @Override
-    public boolean isItemValidForSlot(int index, ItemStack stack) {
+    public boolean canPlaceItem(int index, ItemStack stack) {
         return stack.getItem() instanceof DirtyMoneyItem;
     }
 
     @Override
-    public void clear() {
+    public void clearContent() {
         items.clear();
-        markDirty();
+        setChanged();
     }
 
     // ------------------------------------------------------------------ окно
 
     @Override
-    public ITextComponent getDisplayName() {
-        return new StringTextComponent("Печатный станок");
+    public Component getDisplayName() {
+        return Component.literal("Печатный станок");
     }
 
-    @Nullable
+    
     @Override
-    public Container createMenu(int id, PlayerInventory inv, PlayerEntity player) {
-        return new PrinterContainer(id, inv, this, data, pos);
+    public AbstractContainerMenu createMenu(int id, Inventory inv, Player player) {
+        return new PrinterContainer(id, inv, this, data, worldPosition);
     }
 }

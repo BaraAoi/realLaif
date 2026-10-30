@@ -1,57 +1,45 @@
 package com.baraaoi.reallife.block;
 
+import com.baraaoi.reallife.registry.ModTileEntities;
 import com.baraaoi.reallife.tile.PrinterTileEntity;
-import net.minecraft.block.BlockState;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.entity.player.ServerPlayerEntity;
-import net.minecraft.inventory.IInventory;
-import net.minecraft.inventory.InventoryHelper;
-import net.minecraft.tileentity.TileEntity;
-import net.minecraft.util.ActionResultType;
-import net.minecraft.util.Hand;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.BlockRayTraceResult;
-import net.minecraft.world.IBlockReader;
-import net.minecraft.world.World;
-import net.minecraftforge.fml.network.NetworkHooks;
-
-import javax.annotation.Nullable;
+import net.minecraft.core.BlockPos;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.EntityBlock;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.entity.BlockEntityTicker;
+import net.minecraft.world.level.block.entity.BlockEntityType;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.BlockHitResult;
+import org.jspecify.annotations.Nullable;
 
 /** Печатный станок: ПКМ — окно выбора номинала и лоток с напечатанным. */
-public class MoneyPrinterBlock extends DecorBlock {
+public class MoneyPrinterBlock extends DecorBlock implements EntityBlock {
     public MoneyPrinterBlock(Properties props) {
         super(props);
     }
 
     @Override
-    public boolean hasTileEntity(BlockState state) {
-        return true;
-    }
-
-    @Nullable
-    @Override
-    public TileEntity createTileEntity(BlockState state, IBlockReader world) {
-        return new PrinterTileEntity();
+    public @Nullable BlockEntity newBlockEntity(BlockPos pos, BlockState state) {
+        return new PrinterTileEntity(pos, state);
     }
 
     @Override
-    @SuppressWarnings("deprecation")
-    public ActionResultType onBlockActivated(BlockState state, World world, BlockPos pos, PlayerEntity player, Hand hand, BlockRayTraceResult hit) {
-        if (world.isRemote) return ActionResultType.SUCCESS;
-        TileEntity te = world.getTileEntity(pos);
-        if (te instanceof PrinterTileEntity && player instanceof ServerPlayerEntity) {
-            NetworkHooks.openGui((ServerPlayerEntity) player, (PrinterTileEntity) te, pos);
+    @SuppressWarnings("unchecked")
+    public <T extends BlockEntity> @Nullable BlockEntityTicker<T> getTicker(Level level, BlockState state, BlockEntityType<T> type) {
+        if (level.isClientSide() || type != ModTileEntities.PRINTER.get()) return null;
+        return (BlockEntityTicker<T>) (BlockEntityTicker<PrinterTileEntity>) (l, p, s, be) -> be.tick();
+    }
+
+    @Override
+    protected InteractionResult useWithoutItem(BlockState state, Level world, BlockPos pos, Player player, BlockHitResult hit) {
+        if (world.isClientSide()) return InteractionResult.SUCCESS;
+        BlockEntity te = world.getBlockEntity(pos);
+        if (te instanceof PrinterTileEntity pt && player instanceof ServerPlayer sp) {
+            sp.openMenu(pt, pos);
         }
-        return ActionResultType.CONSUME;
-    }
-
-    @Override
-    @SuppressWarnings("deprecation")
-    public void onReplaced(BlockState state, World world, BlockPos pos, BlockState newState, boolean isMoving) {
-        if (!state.isIn(newState.getBlock())) {
-            TileEntity te = world.getTileEntity(pos);
-            if (te instanceof IInventory) InventoryHelper.dropInventoryItems(world, pos, (IInventory) te);
-            super.onReplaced(state, world, pos, newState, isMoving);
-        }
+        return InteractionResult.CONSUME;
     }
 }

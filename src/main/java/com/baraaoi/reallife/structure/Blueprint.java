@@ -1,25 +1,25 @@
 package com.baraaoi.reallife.structure;
 
-import net.minecraft.block.BedBlock;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.Blocks;
-import net.minecraft.block.DoorBlock;
-import net.minecraft.block.StairsBlock;
-import net.minecraft.block.WallSignBlock;
-import net.minecraft.state.properties.BedPart;
-import net.minecraft.state.properties.DoubleBlockHalf;
-import net.minecraft.inventory.IInventory;
-import net.minecraft.nbt.CompoundNBT;
-import net.minecraft.nbt.INBT;
-import net.minecraft.nbt.ListNBT;
-import net.minecraft.nbt.NBTUtil;
-import net.minecraft.tileentity.SignTileEntity;
-import net.minecraft.tileentity.TileEntity;
-import net.minecraft.util.Direction;
-import net.minecraft.util.Rotation;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.text.StringTextComponent;
-import net.minecraft.world.World;
+import net.minecraft.world.level.block.BedBlock;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.DoorBlock;
+import net.minecraft.world.level.block.StairBlock;
+import net.minecraft.world.level.block.WallSignBlock;
+import net.minecraft.world.level.block.state.properties.BedPart;
+import net.minecraft.world.level.block.state.properties.DoubleBlockHalf;
+import net.minecraft.world.Container;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.Tag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.NbtUtils;
+import net.minecraft.world.level.block.entity.SignBlockEntity;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.core.Direction;
+import net.minecraft.world.level.block.Rotation;
+import net.minecraft.core.BlockPos;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.level.Level;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -36,7 +36,7 @@ import java.util.Set;
 public class Blueprint {
     public static final int FLAGS = 2 | 16;
 
-    private final World world;
+    private final Level world;
     private final BlockPos origin;
     private final Direction forward;
     private final Direction left;
@@ -44,14 +44,14 @@ public class Blueprint {
     private int minX = Integer.MAX_VALUE, minY = Integer.MAX_VALUE, minZ = Integer.MAX_VALUE;
     private int maxX = Integer.MIN_VALUE, maxY = Integer.MIN_VALUE, maxZ = Integer.MIN_VALUE;
     /** Снимок исходных блоков (для временных построек), null — не записывать. */
-    private ListNBT snapshot;
+    private ListTag snapshot;
     private final Set<Long> seen = new HashSet<>();
 
-    public Blueprint(World world, BlockPos origin, Direction forward) {
+    public Blueprint(Level world, BlockPos origin, Direction forward) {
         this.world = world;
         this.origin = origin;
         this.forward = forward.getAxis().isHorizontal() ? forward : Direction.SOUTH;
-        this.left = this.forward.rotateYCCW();
+        this.left = this.forward.getCounterClockWise();
         switch (this.forward) {
             case WEST: rotation = Rotation.CLOCKWISE_90; break;
             case NORTH: rotation = Rotation.CLOCKWISE_180; break;
@@ -62,57 +62,57 @@ public class Blueprint {
 
     /** Включить запись исходных блоков перед перезаписью. */
     public Blueprint recordSnapshot() {
-        this.snapshot = new ListNBT();
+        this.snapshot = new ListTag();
         return this;
     }
 
-    public ListNBT snapshot() {
-        return snapshot == null ? new ListNBT() : snapshot;
+    public ListTag snapshot() {
+        return snapshot == null ? new ListTag() : snapshot;
     }
 
-    public World world() {
+    public Level world() {
         return world;
     }
 
     private void remember(BlockPos p) {
-        if (snapshot == null || !seen.add(p.toLong())) return;
-        CompoundNBT t = new CompoundNBT();
-        t.putLong("p", p.toLong());
-        t.put("s", NBTUtil.writeBlockState(world.getBlockState(p)));
-        TileEntity te = world.getTileEntity(p);
+        if (snapshot == null || !seen.add(p.asLong())) return;
+        CompoundTag t = new CompoundTag();
+        t.putLong("p", p.asLong());
+        t.put("s", NbtUtils.writeBlockState(world.getBlockState(p)));
+        BlockEntity te = world.getBlockEntity(p);
         if (te != null) {
-            t.put("t", te.write(new CompoundNBT()));
+            t.put("t", te.write(new CompoundTag()));
         }
         snapshot.add(t);
     }
 
     /** Вернуть всё, как было до постройки. */
-    public static void restore(World world, ListNBT snap) {
-        List<CompoundNBT> list = new ArrayList<>();
-        for (INBT n : snap) list.add((CompoundNBT) n);
+    public static void restore(Level world, ListTag snap) {
+        List<CompoundTag> list = new ArrayList<>();
+        for (Tag n : snap) list.add((CompoundTag) n);
         // сначала убрать временную постройку (без выпадения вещей)
-        for (CompoundNBT t : list) {
-            BlockPos p = BlockPos.fromLong(t.getLong("p"));
-            TileEntity te = world.getTileEntity(p);
-            if (te instanceof IInventory) ((IInventory) te).clear();
-            world.setBlockState(p, Blocks.AIR.getDefaultState(), FLAGS);
+        for (CompoundTag t : list) {
+            BlockPos p = BlockPos.of(t.getLongOr("p", 0L));
+            BlockEntity te = world.getBlockEntity(p);
+            if (te instanceof Container) ((Container) te).clear();
+            world.setBlockState(p, Blocks.AIR.defaultBlockState(), FLAGS);
         }
-        for (CompoundNBT t : list) {
-            BlockPos p = BlockPos.fromLong(t.getLong("p"));
-            BlockState st = NBTUtil.readBlockState(t.getCompound("s"));
+        for (CompoundTag t : list) {
+            BlockPos p = BlockPos.of(t.getLongOr("p", 0L));
+            BlockState st = com.baraaoi.reallife.util.Nbt.readBlockState(t.getCompoundOrEmpty("s"));
             world.setBlockState(p, st, FLAGS);
             if (t.contains("t")) {
-                TileEntity te = world.getTileEntity(p);
+                BlockEntity te = world.getBlockEntity(p);
                 if (te != null) {
-                    te.read(st, t.getCompound("t"));
-                    te.markDirty();
+                    te.read(st, t.getCompoundOrEmpty("t"));
+                    te.setChanged();
                 }
             }
         }
     }
 
     public BlockPos pos(int x, int y, int z) {
-        return origin.offset(left, x).offset(forward, z).up(y);
+        return origin.relative(left, x).relative(forward, z).above(y);
     }
 
     public Direction dir(Direction local) {
@@ -153,7 +153,7 @@ public class Blueprint {
     }
 
     public void clear(int x1, int y1, int z1, int x2, int y2, int z2) {
-        fill(x1, y1, z1, x2, y2, z2, Blocks.AIR.getDefaultState());
+        fill(x1, y1, z1, x2, y2, z2, Blocks.AIR.defaultBlockState());
     }
 
     /** Фундамент: заполняет пустоты под постройкой до земли (до 12 блоков вниз). */
@@ -164,7 +164,7 @@ public class Blueprint {
                 for (int y = -2; y >= -12; y--) {
                     BlockPos p = pos(x, y, z);
                     BlockState s = world.getBlockState(p);
-                    if (!s.isAir(world, p) && !s.getMaterial().isLiquid() && !s.getMaterial().isReplaceable()) break;
+                    if (!s.isAir(world, p) && !s.liquid() && !s.canBeReplaced()) break;
                     world.setBlockState(p, state, FLAGS);
                 }
             }
@@ -172,35 +172,35 @@ public class Blueprint {
 
     /** Дверь (две половинки). facing — куда смотрит дверь в локальной системе. */
     public void door(int x, int y, int z, BlockState door, Direction facing) {
-        BlockState base = door.with(DoorBlock.FACING, facing);
-        set(x, y + 1, z, base.with(DoorBlock.HALF, DoubleBlockHalf.UPPER));
-        set(x, y, z, base.with(DoorBlock.HALF, DoubleBlockHalf.LOWER));
+        BlockState base = door.setValue(DoorBlock.FACING, facing);
+        set(x, y + 1, z, base.setValue(DoorBlock.HALF, DoubleBlockHalf.UPPER));
+        set(x, y, z, base.setValue(DoorBlock.HALF, DoubleBlockHalf.LOWER));
     }
 
     /** Кровать. facing — направление от ног к голове (локально). */
     public void bed(int x, int y, int z, BlockState bed, Direction facing) {
-        BlockState base = bed.with(BedBlock.HORIZONTAL_FACING, facing);
-        set(x, y, z, base.with(BedBlock.PART, BedPart.FOOT));
+        BlockState base = bed.setValue(BedBlock.HORIZONTAL_FACING, facing);
+        set(x, y, z, base.setValue(BedBlock.PART, BedPart.FOOT));
         int hx = x + offX(facing), hz = z + offZ(facing);
-        set(hx, y, hz, base.with(BedBlock.PART, BedPart.HEAD));
+        set(hx, y, hz, base.setValue(BedBlock.PART, BedPart.HEAD));
     }
 
     public BlockState stairs(BlockState stairs, Direction facing) {
-        return stairs.with(StairsBlock.FACING, facing);
+        return stairs.setValue(StairBlock.FACING, facing);
     }
 
     /** Табличка на стене. facing — куда смотрит лицевая сторона (локально). */
     public void sign(int x, int y, int z, BlockState wallSign, Direction facing, String... lines) {
-        set(x, y, z, wallSign.with(WallSignBlock.FACING, facing));
-        TileEntity te = world.getTileEntity(pos(x, y, z));
-        if (te instanceof SignTileEntity) {
-            SignTileEntity sign = (SignTileEntity) te;
+        set(x, y, z, wallSign.setValue(WallSignBlock.FACING, facing));
+        BlockEntity te = world.getBlockEntity(pos(x, y, z));
+        if (te instanceof SignBlockEntity) {
+            SignBlockEntity sign = (SignBlockEntity) te;
             for (int i = 0; i < 4 && i < lines.length; i++) {
-                sign.setText(i, new StringTextComponent(lines[i]));
+                sign.setText(i, Component.literal(lines[i]));
             }
-            sign.markDirty();
+            sign.setChanged();
             BlockState st = world.getBlockState(pos(x, y, z));
-            world.notifyBlockUpdate(pos(x, y, z), st, st, 3);
+            world.sendBlockUpdated(pos(x, y, z), st, st, 3);
         }
     }
 

@@ -6,16 +6,16 @@ import com.baraaoi.reallife.economy.BankService;
 import com.baraaoi.reallife.economy.EconomyData;
 import com.baraaoi.reallife.economy.Finance;
 import com.baraaoi.reallife.event.DebtManager;
-import net.minecraft.entity.CreatureEntity;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.ai.goal.MeleeAttackGoal;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.entity.player.ServerPlayerEntity;
-import net.minecraft.inventory.EquipmentSlotType;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.world.World;
+import net.minecraft.world.entity.PathfinderMob;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.ai.goal.MeleeAttackGoal;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.level.Level;
 
 /**
  * Братки от Шайкина.
@@ -27,10 +27,10 @@ public class BratokEntity extends DebtNpcEntity {
     private long calmUntil;
     private double pocket;
 
-    public BratokEntity(EntityType<? extends CreatureEntity> type, World world) {
-        super(type, world);
-        this.setItemStackToSlot(EquipmentSlotType.MAINHAND, new ItemStack(Items.WOODEN_SWORD));
-        this.setDropChance(EquipmentSlotType.MAINHAND, 0.0F);
+    public BratokEntity(EntityType<? extends PathfinderMob> type, Level level) {
+        super(type, level);
+        this.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.WOODEN_SWORD));
+        this.setDropChance(EquipmentSlot.MAINHAND, 0.0F);
     }
 
     @Override
@@ -55,32 +55,32 @@ public class BratokEntity extends DebtNpcEntity {
     @Override
     public void onMoneyPicked(double value) {
         pocket += value;
-        PlayerEntity p = getTargetPlayer();
+        Player p = getTargetPlayer();
         int need = Config.BRATOK_BRIBE.get();
         if (pocket >= need) {
             if (p != null) say(p, "§aО, другое дело. Я своё взял — пацаны сами разберутся. Бывай, коммерсант.");
-            if (p != null && world.getServer() != null) {
-                EconomyData data = EconomyData.get(world.getServer());
+            if (p != null && this.level().getServer() != null) {
+                EconomyData data = EconomyData.get(this.level().getServer());
                 Account a = data.get(p);
-                a.nextBratkiTick = Math.max(a.nextBratkiTick, world.getGameTime() + 6000);
-                data.markDirty();
+                a.nextBratkiTick = Math.max(a.nextBratkiTick, this.level().getGameTime() + 6000);
+                data.setDirty();
             }
-            this.remove();
+            this.discard();
         } else if (p != null) {
             say(p, "§eЗабираю " + Finance.money(value) + ". Ещё " + Finance.money(need - pocket) + " — и я тебя не видел.");
         }
     }
 
     @Override
-    public void writeAdditional(net.minecraft.nbt.CompoundNBT nbt) {
-        super.writeAdditional(nbt);
+    protected void addAdditionalSaveData(net.minecraft.world.level.storage.ValueOutput nbt) {
+        super.addAdditionalSaveData(nbt);
         nbt.putDouble("Pocket", pocket);
     }
 
     @Override
-    public void readAdditional(net.minecraft.nbt.CompoundNBT nbt) {
-        super.readAdditional(nbt);
-        pocket = nbt.getDouble("Pocket");
+    protected void readAdditionalSaveData(net.minecraft.world.level.storage.ValueInput nbt) {
+        super.readAdditionalSaveData(nbt);
+        pocket = nbt.getDoubleOr("Pocket", 0.0);
     }
 
     @Override
@@ -95,46 +95,46 @@ public class BratokEntity extends DebtNpcEntity {
     }
 
     private boolean lethal() {
-        PlayerEntity p = getTargetPlayer();
-        if (p == null || world.getServer() == null) return false;
-        return DebtManager.mfoStage(EconomyData.get(world.getServer()).get(p)) == 3;
+        Player p = getTargetPlayer();
+        if (p == null || this.level().getServer() == null) return false;
+        return DebtManager.mfoStage(EconomyData.get(this.level().getServer()).get(p)) == 3;
     }
 
     @Override
     public boolean wantsToFight() {
-        return world.getGameTime() >= calmUntil;
+        return this.level().getGameTime() >= calmUntil;
     }
 
     @Override
-    public boolean attackEntityAsMob(Entity target) {
-        if (target instanceof ServerPlayerEntity && !lethal()) {
-            ServerPlayerEntity p = (ServerPlayerEntity) target;
+    public boolean doHurtTarget(net.minecraft.server.level.ServerLevel level, Entity target) {
+        if (target instanceof ServerPlayer && !lethal()) {
+            ServerPlayer p = (ServerPlayer) target;
             if (p.getHealth() <= 7.0F) {
                 // не добивают — грабят
-                calmUntil = world.getGameTime() + 600;
-                this.setAttackTarget(null);
-                Account a = EconomyData.get(world.getServer()).get(p);
+                calmUntil = this.level().getGameTime() + 600;
+                this.setTarget(null);
+                Account a = EconomyData.get(this.level().getServer()).get(p);
                 double got = BankService.takeValuables(p, a.mfoDebt, 0.5);
                 say(p, got > 0
                         ? "§cЛежи и не дёргайся. Забираем на " + Finance.money(got) + ". Это пока только проценты."
                         : "§cПустой, как барабан... В следующий раз придём с паяльником.");
                 if (got > 0) BankService.payMfo(p, a, got, " (изъято братками)");
-                EconomyData.get(world.getServer()).markDirty();
+                EconomyData.get(this.level().getServer()).setDirty();
                 return false;
             }
         }
-        return super.attackEntityAsMob(target);
+        return super.doHurtTarget(level, target);
     }
 
     @Override
-    protected void serverSecond(ServerPlayerEntity p, Account a) {
-        if (++talk % 12 == 1 && this.rand.nextInt(2) == 0) {
+    protected void serverSecond(ServerPlayer p, Account a) {
+        if (++talk % 12 == 1 && this.random.nextInt(2) == 0) {
             String[] soft = {"Слышь, ты Шайкину должен!", "Сейчас будем разговаривать по-взрослому.",
                     "Гони бабки, коммерсант!", "Мы тебя предупреждали."};
             String[] hard = {"Паяльник греется...", "Ну всё, ты доигрался.", "Поедешь с нами в подвал.",
                     "Шайкин сказал — без разговоров."};
             String[] l = lethal() ? hard : soft;
-            say(p, "§c" + l[this.rand.nextInt(l.length)]);
+            say(p, "§c" + l[this.random.nextInt(l.length)]);
         }
     }
 }

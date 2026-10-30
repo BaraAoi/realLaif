@@ -1,19 +1,18 @@
 package com.baraaoi.reallife.economy;
 
 import com.baraaoi.reallife.structure.BizBuildings;
-import net.minecraft.entity.player.ServerPlayerEntity;
-import net.minecraft.nbt.CompoundNBT;
-import net.minecraft.nbt.ListNBT;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.util.Direction;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.text.StringTextComponent;
-import net.minecraft.util.text.Style;
-import net.minecraft.util.text.event.ClickEvent;
-import net.minecraft.world.World;
-import net.minecraft.world.server.ServerWorld;
+import net.minecraft.core.Direction;
+import net.minecraft.core.BlockPos;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.Style;
+import net.minecraft.network.chat.ClickEvent;
+import net.minecraft.world.level.Level;
+import net.minecraft.server.level.ServerLevel;
 
-import javax.annotation.Nullable;
 import java.util.UUID;
 
 /**
@@ -40,7 +39,7 @@ public final class Malls {
         return new String[]{head, u.width + "×" + u.depth + " продаётся", Finance.money(u.price), "аренда " + Finance.money(u.rent) + "/д"};
     }
 
-    public static void updateSign(World w, EconomyData data, Mall m, Mall.Unit u) {
+    public static void updateSign(Level w, EconomyData data, Mall m, Mall.Unit u) {
         if (u.sign.equals(BlockPos.ZERO)) return;
         BizBuildings.writeSign(w, u.sign, signText(data, m, u));
     }
@@ -51,7 +50,7 @@ public final class Malls {
 
     // ------------------------------------------------------------------ поиск
 
-    @Nullable
+    
     public static Mall.Unit ownUnitAt(EconomyData data, UUID player, BlockPos pos) {
         Mall m = data.mallAt(pos, 0);
         if (m == null) return null;
@@ -60,7 +59,7 @@ public final class Malls {
     }
 
     /** Почему игроку нельзя строить/ломать здесь (null — можно или это не ТЦ). */
-    @Nullable
+    
     public static String editDenied(EconomyData data, UUID player, BlockPos pos) {
         Mall m = data.mallAt(pos, 0);
         if (m == null) return null;
@@ -79,9 +78,9 @@ public final class Malls {
     // ------------------------------------------------------------------ действия
 
     /** ПКМ по табличке: true — это была табличка помещения. */
-    public static boolean onSignClick(ServerPlayerEntity p, BlockPos pos) {
-        if (p.getServer() == null) return false;
-        EconomyData data = EconomyData.get(p.getServer());
+    public static boolean onSignClick(ServerPlayer p, BlockPos pos) {
+        if (p.level().getServer() == null) return false;
+        EconomyData data = EconomyData.get(p.level().getServer());
         for (Mall m : data.malls) {
             if (!m.contains(pos, 2)) continue;
             for (Mall.Unit u : m.units) {
@@ -94,13 +93,13 @@ public final class Malls {
     }
 
     static StringTextComponent button(String label, String cmd) {
-        StringTextComponent c = new StringTextComponent(label);
-        c.setStyle(Style.EMPTY.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, cmd)));
+        StringTextComponent c = Component.literal(label);
+        c.setStyle(Style.EMPTY.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, cmd)));
         return c;
     }
 
-    public static void info(ServerPlayerEntity p, EconomyData data, Mall m, Mall.Unit u) {
-        UUID id = p.getUniqueID();
+    public static void info(ServerPlayer p, EconomyData data, Mall m, Mall.Unit u) {
+        UUID id = p.getUUID();
         boolean owner = id.equals(m.owner);
         BankService.msg(p, TC + "Помещение §e№" + (u.idx + 1) + "§f (" + u.label() + ", " + u.width + "×" + u.depth + " = " + u.area()
                 + " м²) в ТЦ «" + m.ownerName + "».");
@@ -114,12 +113,12 @@ public final class Malls {
             if (owner) {
                 BankService.msg(p, TC + "Оно ваше и свободно. Займите сами (бесплатно, без аренды) или ждите покупателя: другой игрок заплатит §a"
                         + Finance.money(u.price) + "§f и будет платить вам §a" + Finance.money(u.rent) + "/день§f.");
-                p.sendMessage(new StringTextComponent("§d  ").append(button("§a§l[Занять себе]", "/reallife mall take" + cmd)), p.getUniqueID());
+                p.sendMessage(Component.literal("§d  ").append(button("§a§l[Занять себе]", "/reallife mall take" + cmd)), p.getUUID());
             } else {
                 BankService.msg(p, TC + "Цена §e" + Finance.money(u.price) + "§f (владельцу ТЦ) + аренда §e" + Finance.money(u.rent)
                         + "/день§f. Внутри — что угодно: жильё, склад, любое заведение (прибыль +50%). Не платите аренду "
                         + Mall.EVICT_DAYS + " дня подряд — выселят.");
-                p.sendMessage(new StringTextComponent("§d  ").append(button("§a§l[Купить за " + Finance.money(u.price) + "]", "/reallife mall buy" + cmd)), p.getUniqueID());
+                p.sendMessage(Component.literal("§d  ").append(button("§a§l[Купить за " + Finance.money(u.price) + "]", "/reallife mall buy" + cmd)), p.getUUID());
             }
             return;
         }
@@ -127,14 +126,14 @@ public final class Malls {
         if (id.equals(u.tenant)) {
             BankService.msg(p, TC + "Это ваше помещение" + (owner ? " (без аренды — ТЦ ваш)" : ", аренда §e" + Finance.money(u.rent) + "/день"
                     + (u.unpaid > 0 ? " §cдолг " + u.unpaid + " дн." : "")) + "§f. " + (b == null ? "Заведения нет — можно открыть любое лицензией." : "Здесь «" + b.type.title + "»."));
-            if (b == null) p.sendMessage(new StringTextComponent("§d  ").append(button("§c[Освободить помещение]", "/reallife mall leave" + cmd)), p.getUniqueID());
+            if (b == null) p.sendMessage(Component.literal("§d  ").append(button("§c[Освободить помещение]", "/reallife mall leave" + cmd)), p.getUUID());
         } else {
             BankService.msg(p, TC + "Занято: §e" + u.tenantName + "§f" + (b == null ? "" : " — «" + b.type.title + "»") + ".");
         }
     }
 
     /** Покупка помещения другим игроком (деньги — владельцу ТЦ). null — успех, иначе причина. */
-    @Nullable
+    
     public static String buyCore(EconomyData data, Mall m, Mall.Unit u, Account buyer, String buyerName, long today) {
         if (!u.free()) return "помещение уже занято";
         if (buyer.id.equals(m.owner)) return "это ваш ТЦ — займите помещение бесплатно";
@@ -146,7 +145,7 @@ public final class Malls {
             owner.peakBalance = Math.max(owner.peakBalance, owner.balance);
         }
         assign(m, u, buyer.id, buyerName, today);
-        data.markDirty();
+        data.setDirty();
         return null;
     }
 
@@ -157,8 +156,8 @@ public final class Malls {
         u.since = today;
     }
 
-    public static void buy(ServerPlayerEntity p, int mallId, int idx) {
-        MinecraftServer server = p.getServer();
+    public static void buy(ServerPlayer p, int mallId, int idx) {
+        MinecraftServer server = p.level().getServer();
         if (server == null) return;
         EconomyData data = EconomyData.get(server);
         Mall m = data.mallById(mallId);
@@ -166,7 +165,7 @@ public final class Malls {
         if (u == null) return;
         Account a = data.get(p);
         if (a.captivity != Account.FREE) return;
-        if (p.getDistanceSq(u.entrance.getX(), u.entrance.getY(), u.entrance.getZ()) > 64 * 64) {
+        if (p.distanceToSqr(u.entrance.getX(), u.entrance.getY(), u.entrance.getZ()) > 64 * 64) {
             BankService.msg(p, TC + "§cПодойдите к помещению — покупку оформляют на месте.");
             return;
         }
@@ -176,22 +175,22 @@ public final class Malls {
             return;
         }
         BankService.sync(p);
-        updateSign(p.world, data, m, u);
+        updateSign(p.level(), data, m, u);
         BankService.msg(p, TC + "§a§lПомещение №" + (u.idx + 1) + " ваше! §r§fСписано §c" + Finance.money(u.price)
                 + "§f. Аренда §e" + Finance.money(u.rent) + "/день§f спишется утром со счёта. Стройте внутри что угодно; заведение — ПКМ лицензией по полу помещения.");
-        ServerPlayerEntity op = m.owner == null ? null : server.getPlayerList().getPlayerByUUID(m.owner);
+        ServerPlayer op = m.owner == null ? null : server.getPlayerList().getPlayer(m.owner);
         if (op != null) BankService.msg(op, TC + "§a" + p.getGameProfile().getName() + " купил помещение №" + (u.idx + 1) + " в вашем ТЦ: +"
                 + Finance.money(u.price) + "§f, дальше аренда " + Finance.money(u.rent) + "/день.");
     }
 
-    public static void take(ServerPlayerEntity p, int mallId, int idx) {
-        MinecraftServer server = p.getServer();
+    public static void take(ServerPlayer p, int mallId, int idx) {
+        MinecraftServer server = p.level().getServer();
         if (server == null) return;
         EconomyData data = EconomyData.get(server);
         Mall m = data.mallById(mallId);
         Mall.Unit u = m == null ? null : m.unit(idx);
         if (u == null) return;
-        if (!p.getUniqueID().equals(m.owner)) {
+        if (!p.getUUID().equals(m.owner)) {
             BankService.msg(p, TC + "§cЗанять бесплатно может только владелец ТЦ.");
             return;
         }
@@ -199,19 +198,19 @@ public final class Malls {
             BankService.msg(p, TC + "§cПомещение уже занято.");
             return;
         }
-        assign(m, u, p.getUniqueID(), p.getGameProfile().getName(), BankService.today(server));
-        data.markDirty();
-        updateSign(p.world, data, m, u);
+        assign(m, u, p.getUUID(), p.getGameProfile().getName(), BankService.today(server));
+        data.setDirty();
+        updateSign(p.level(), data, m, u);
         BankService.msg(p, TC + "§aПомещение №" + (u.idx + 1) + " теперь ваше (без аренды). §fЖильё, склад или любое заведение — ПКМ лицензией по полу помещения.");
     }
 
-    public static void leave(ServerPlayerEntity p, int mallId, int idx) {
-        MinecraftServer server = p.getServer();
+    public static void leave(ServerPlayer p, int mallId, int idx) {
+        MinecraftServer server = p.level().getServer();
         if (server == null) return;
         EconomyData data = EconomyData.get(server);
         Mall m = data.mallById(mallId);
         Mall.Unit u = m == null ? null : m.unit(idx);
-        if (u == null || !p.getUniqueID().equals(u.tenant)) return;
+        if (u == null || !p.getUUID().equals(u.tenant)) return;
         if (m.business(data, u) != null) {
             BankService.msg(p, TC + "§cСначала закройте заведение в помещении (сломайте главную кассу).");
             return;
@@ -219,18 +218,18 @@ public final class Malls {
         u.tenant = null;
         u.tenantName = "";
         u.unpaid = 0;
-        data.markDirty();
-        updateSign(p.world, data, m, u);
-        BankService.msg(p, TC + "Помещение №" + (u.idx + 1) + " освобождено" + (p.getUniqueID().equals(m.owner) ? "." : ", аренда больше не списывается. Деньги за покупку не возвращаются."));
+        data.setDirty();
+        updateSign(p.level(), data, m, u);
+        BankService.msg(p, TC + "Помещение №" + (u.idx + 1) + " освобождено" + (p.getUUID().equals(m.owner) ? "." : ", аренда больше не списывается. Деньги за покупку не возвращаются."));
     }
 
     /** Открыть заведение в помещении (без проверок и денег). Используется и самотестом. */
-    public static LegalBusiness openInUnit(EconomyData data, World w, Mall m, Mall.Unit u, BlockPos counter, Direction facing, BizType type, UUID owner, String ownerName) {
+    public static LegalBusiness openInUnit(EconomyData data, Level w, Mall m, Mall.Unit u, BlockPos counter, Direction facing, BizType type, UUID owner, String ownerName) {
         LegalBusiness b = LegalBiz.register(data, w, counter, facing, type, owner, ownerName);
         b.mallId = m.id;
         b.mallUnit = u.idx;
         b.setZone(u.min, u.max);
-        data.markDirty();
+        data.setDirty();
         updateSign(w, data, m, u);
         return b;
     }
@@ -238,7 +237,7 @@ public final class Malls {
     // ------------------------------------------------------------------ день
 
     public static void processDay(MinecraftServer server, EconomyData data) {
-        ServerWorld ow = EconomyData.overworld(server);
+        ServerLevel ow = EconomyData.overworld(server);
         long today = BankService.today(server);
         for (Mall m : data.malls) {
             Account owner = m.owner == null ? null : data.getOrCreate(m.owner);
@@ -252,7 +251,7 @@ public final class Malls {
                 }
                 if (u.tenant == null || u.tenant.equals(m.owner)) continue;
                 Account t = data.getOrCreate(u.tenant);
-                ServerPlayerEntity tp = server.getPlayerList().getPlayerByUUID(u.tenant);
+                ServerPlayer tp = server.getPlayerList().getPlayer(u.tenant);
                 if (t.balance >= u.rent) {
                     t.balance -= u.rent;
                     income += u.rent;
@@ -271,15 +270,15 @@ public final class Malls {
             if (owner != null && income > 0) {
                 owner.balance += income;
                 owner.peakBalance = Math.max(owner.peakBalance, owner.balance);
-                ServerPlayerEntity op = server.getPlayerList().getPlayerByUUID(m.owner);
+                ServerPlayer op = server.getPlayerList().getPlayer(m.owner);
                 if (op != null) BankService.msg(op, TC + "Аренда за день в вашем ТЦ: §a+" + Finance.money(income)
                         + (bots > 0 ? " §7(в т.ч. конкуренты: " + bots + ")" : ""));
             }
         }
-        data.markDirty();
+        data.setDirty();
     }
 
-    static void evict(MinecraftServer server, EconomyData data, Mall m, Mall.Unit u, @Nullable ServerPlayerEntity tp) {
+    static void evict(MinecraftServer server, EconomyData data, Mall m, Mall.Unit u, ServerPlayer tp) {
         LegalBusiness b = m.business(data, u);
         String name = u.tenantName;
         if (b != null) LegalBiz.close(server, data, b, tp);
@@ -289,18 +288,18 @@ public final class Malls {
         updateSign(server, data, m, u);
         if (tp != null) BankService.msg(tp, TC + "§c§lВас выселили из помещения №" + (u.idx + 1) + " за долг по аренде."
                 + (b != null ? " §r§cЗаведение закрыто, лицензия возвращена." : ""));
-        ServerPlayerEntity op = m.owner == null ? null : server.getPlayerList().getPlayerByUUID(m.owner);
+        ServerPlayer op = m.owner == null ? null : server.getPlayerList().getPlayer(m.owner);
         if (op != null) BankService.msg(op, TC + "Арендатор " + name + " выселен из помещения №" + (u.idx + 1) + " за неуплату. Помещение снова продаётся.");
     }
 
     // ------------------------------------------------------------------ телефон
 
-    public static ListNBT phoneList(EconomyData data, UUID player) {
-        ListNBT l = new ListNBT();
+    public static ListTag phoneList(EconomyData data, UUID player) {
+        ListTag l = new ListTag();
         for (Mall m : data.malls) {
             boolean own = player.equals(m.owner);
             if (own) {
-                CompoundNBT t = new CompoundNBT();
+                CompoundTag t = new CompoundTag();
                 t.putBoolean("own", true);
                 t.putInt("id", m.id);
                 BlockPos c = m.center();
@@ -322,7 +321,7 @@ public final class Malls {
             }
             for (Mall.Unit u : m.units) {
                 if (!player.equals(u.tenant) || own) continue;
-                CompoundNBT t = new CompoundNBT();
+                CompoundTag t = new CompoundTag();
                 t.putBoolean("own", false);
                 t.putInt("id", m.id);
                 t.putString("mall", m.ownerName);

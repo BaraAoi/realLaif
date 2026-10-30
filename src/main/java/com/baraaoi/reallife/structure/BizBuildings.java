@@ -5,21 +5,21 @@ import com.baraaoi.reallife.economy.BizEquip;
 import com.baraaoi.reallife.economy.BizType;
 import com.baraaoi.reallife.economy.Mall;
 import com.baraaoi.reallife.registry.ModBlocks;
-import net.minecraft.block.Block;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.Blocks;
-import net.minecraft.block.CauldronBlock;
-import net.minecraft.block.FenceGateBlock;
-import net.minecraft.block.FourWayBlock;
-import net.minecraft.block.HorizontalBlock;
-import net.minecraft.block.LeavesBlock;
-import net.minecraft.block.StandingSignBlock;
-import net.minecraft.tileentity.SignTileEntity;
-import net.minecraft.tileentity.TileEntity;
-import net.minecraft.util.Direction;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.text.StringTextComponent;
-import net.minecraft.world.World;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.LayeredCauldronBlock;
+import net.minecraft.world.level.block.FenceGateBlock;
+import net.minecraft.world.level.block.CrossCollisionBlock;
+import net.minecraft.world.level.block.HorizontalDirectionalBlock;
+import net.minecraft.world.level.block.LeavesBlock;
+import net.minecraft.world.level.block.StandingSignBlock;
+import net.minecraft.world.level.block.entity.SignBlockEntity;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.core.Direction;
+import net.minecraft.core.BlockPos;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.level.Level;
 
 /**
  * v1.11: здания «под ключ» (у каждого вида своя планировка), торговый центр и ларьки ботов-конкурентов.
@@ -36,31 +36,31 @@ public final class BizBuildings {
     }
 
     static BlockState s(Block b) {
-        return b.getDefaultState();
+        return b.defaultBlockState();
     }
 
     /** Повернуть блок лицом в нужную (локальную) сторону. */
     static BlockState facing(BlockState st, Direction d) {
-        return st.hasProperty(HorizontalBlock.HORIZONTAL_FACING) ? st.with(HorizontalBlock.HORIZONTAL_FACING, d) : st;
+        return st.hasProperty(HorizontalDirectionalBlock.HORIZONTAL_FACING) ? st.setValue(HorizontalDirectionalBlock.HORIZONTAL_FACING, d) : st;
     }
 
     static BlockState water() {
-        return Blocks.CAULDRON.getDefaultState().with(CauldronBlock.LEVEL, 3);
+        return Blocks.CAULDRON.defaultBlockState().setValue(LayeredCauldronBlock.LEVEL, 3);
     }
 
     /** Решётка/забор, соединённые вдоль x (east-west) или вдоль z. */
     static BlockState joined(Block b, boolean alongX) {
-        BlockState st = b.getDefaultState();
-        return alongX ? st.with(FourWayBlock.EAST, true).with(FourWayBlock.WEST, true)
-                : st.with(FourWayBlock.NORTH, true).with(FourWayBlock.SOUTH, true);
+        BlockState st = b.defaultBlockState();
+        return alongX ? st.setValue(CrossCollisionBlock.EAST, true).setValue(CrossCollisionBlock.WEST, true)
+                : st.setValue(CrossCollisionBlock.NORTH, true).setValue(CrossCollisionBlock.SOUTH, true);
     }
 
     static void eq(Blueprint b, int x, int z, BizEquip e, Direction d) {
-        b.set(x, 1, z, facing(e.block.get().getDefaultState(), d));
+        b.set(x, 1, z, facing(e.block.get().defaultBlockState(), d));
     }
 
     static void counter(Blueprint b, int x, int z, Direction d) {
-        b.set(x, 1, z, facing(ModBlocks.BIZ_COUNTER.get().getDefaultState(), d));
+        b.set(x, 1, z, facing(ModBlocks.BIZ_COUNTER.get().defaultBlockState(), d));
     }
 
     /** Стол: забор + ковёр сверху. */
@@ -101,7 +101,7 @@ public final class BizBuildings {
     }
 
     /** Коробка здания: пол, стены, окна, вход 3×3, крыша со светом, козырёк и вывеска. fz — линия фасада. */
-    static Blueprint shell(World w, BlockPos origin, Direction fwd, Style st, int fz, BizType type, String ownerName) {
+    static Blueprint shell(Level w, BlockPos origin, Direction fwd, Style st, int fz, BizType type, String ownerName) {
         Blueprint b = new Blueprint(w, origin, fwd);
         int X = SHOP_X, Z = SHOP_Z, H = SHOP_H;
         b.clear(-X, 0, SHOP_FRONT_MIN, X, H + 2, Z);
@@ -131,7 +131,7 @@ public final class BizBuildings {
         return b;
     }
 
-    public static Blueprint buildShop(World w, BlockPos origin, Direction forward, BizType type, String ownerName) {
+    public static Blueprint buildShop(Level w, BlockPos origin, Direction forward, BizType type, String ownerName) {
         switch (type) {
             case SHAWARMA: return shawarma(w, origin, forward, ownerName);
             case MINIMARKET: return minimarket(w, origin, forward, ownerName);
@@ -146,7 +146,7 @@ public final class BizBuildings {
     private static final Direction N = Direction.NORTH, S = Direction.SOUTH, E = Direction.EAST, W = Direction.WEST;
 
     /** Шаурмичная: зал со столиками, стойка отделяет кухню, за кухней — склад. */
-    static Blueprint shawarma(World w, BlockPos o, Direction f, String owner) {
+    static Blueprint shawarma(Level w, BlockPos o, Direction f, String owner) {
         Style st = new Style(Blocks.ORANGE_TERRACOTTA, Blocks.BROWN_TERRACOTTA, Blocks.SPRUCE_PLANKS, Blocks.SMOOTH_STONE,
                 Blocks.GLASS, Blocks.RED_WOOL);
         Blueprint b = shell(w, o, f, st, 0, BizType.SHAWARMA, owner);
@@ -155,7 +155,7 @@ public final class BizBuildings {
         b.fill(-6, 0, 12, 6, 0, 13, s(Blocks.POLISHED_ANDESITE));
         // стойка-раздача по линии z=7, калитка на кухню справа
         for (int x = -6; x <= 6; x++) b.set(x, 1, 7, s(Blocks.STRIPPED_SPRUCE_LOG));
-        b.set(6, 1, 7, s(Blocks.SPRUCE_FENCE_GATE).with(FenceGateBlock.HORIZONTAL_FACING, N));
+        b.set(6, 1, 7, s(Blocks.SPRUCE_FENCE_GATE).setValue(FenceGateBlock.HORIZONTAL_FACING, N));
         counter(b, 0, 7, N);
         counter(b, -3, 7, N);
         // кухня: грили, холодильники, раковина, коптильня
@@ -185,7 +185,7 @@ public final class BizBuildings {
     }
 
     /** Мини-маркет: полки вдоль стен, холодильники-острова, кассы, служебный проход и склад за стеной. */
-    static Blueprint minimarket(World w, BlockPos o, Direction f, String owner) {
+    static Blueprint minimarket(Level w, BlockPos o, Direction f, String owner) {
         Style st = new Style(Blocks.WHITE_CONCRETE, Blocks.LIME_CONCRETE, Blocks.SMOOTH_QUARTZ, Blocks.SMOOTH_STONE,
                 Blocks.GLASS, Blocks.LIME_WOOL);
         Blueprint b = shell(w, o, f, st, 0, BizType.MINIMARKET, owner);
@@ -217,7 +217,7 @@ public final class BizBuildings {
     }
 
     /** Автомойка: два бокса с воротами, между ними офис с кассами, склад автохимии в конце офиса. */
-    static Blueprint carWash(World w, BlockPos o, Direction f, String owner) {
+    static Blueprint carWash(Level w, BlockPos o, Direction f, String owner) {
         Style st = new Style(Blocks.LIGHT_GRAY_CONCRETE, Blocks.BLUE_CONCRETE, Blocks.SMOOTH_STONE, Blocks.SMOOTH_STONE,
                 Blocks.LIGHT_BLUE_STAINED_GLASS, Blocks.BLUE_WOOL);
         Blueprint b = shell(w, o, f, st, 0, BizType.CAR_WASH, owner);
@@ -253,7 +253,7 @@ public final class BizBuildings {
     }
 
     /** Карьер: ангар с воротами, дробилки у дальней стены, стеклянная будка диспетчера, сарай-склад, рельсы. */
-    static Blueprint quarry(World w, BlockPos o, Direction f, String owner) {
+    static Blueprint quarry(Level w, BlockPos o, Direction f, String owner) {
         Style st = new Style(Blocks.GRAY_CONCRETE, Blocks.YELLOW_CONCRETE, Blocks.POLISHED_ANDESITE, Blocks.SMOOTH_STONE,
                 Blocks.GLASS, Blocks.YELLOW_WOOL);
         Blueprint b = shell(w, o, f, st, 0, BizType.QUARRY, owner);
@@ -287,7 +287,7 @@ public final class BizBuildings {
     }
 
     /** Ломбард: зал с витринами и скамьями, окно оценщика за решёткой, кабинет, хранилище с сейфами и склад. */
-    static Blueprint pawnshop(World w, BlockPos o, Direction f, String owner) {
+    static Blueprint pawnshop(Level w, BlockPos o, Direction f, String owner) {
         Style st = new Style(Blocks.POLISHED_BLACKSTONE_BRICKS, Blocks.GILDED_BLACKSTONE, Blocks.DARK_OAK_PLANKS, Blocks.SMOOTH_STONE,
                 Blocks.GLASS, Blocks.YELLOW_WOOL);
         Blueprint b = shell(w, o, f, st, 0, BizType.PAWNSHOP, owner);
@@ -330,7 +330,7 @@ public final class BizBuildings {
     }
 
     /** Заправка: площадка с колонками под навесом, магазин с кассами и полками, склад за стеной. */
-    static Blueprint gasStation(World w, BlockPos o, Direction f, String owner) {
+    static Blueprint gasStation(Level w, BlockPos o, Direction f, String owner) {
         Style st = new Style(Blocks.WHITE_CONCRETE, Blocks.RED_CONCRETE, Blocks.SMOOTH_QUARTZ, Blocks.SMOOTH_STONE,
                 Blocks.GLASS, null);
         int fz = 4;
@@ -371,7 +371,7 @@ public final class BizBuildings {
     }
 
     /** Магазин техники: витрины-острова, полки вдоль стен, кассы и сервис, мастерская и склад. */
-    static Blueprint electronics(World w, BlockPos o, Direction f, String owner) {
+    static Blueprint electronics(Level w, BlockPos o, Direction f, String owner) {
         Style st = new Style(Blocks.GRAY_CONCRETE, Blocks.LIGHT_BLUE_CONCRETE, Blocks.SMOOTH_QUARTZ, Blocks.SMOOTH_STONE,
                 Blocks.LIGHT_BLUE_STAINED_GLASS, Blocks.LIGHT_BLUE_WOOL);
         Blueprint b = shell(w, o, f, st, 0, BizType.ELECTRONICS, owner);
@@ -417,20 +417,20 @@ public final class BizBuildings {
 
     /** Стоячая табличка (rotation 0 — лицом на локальный юг, 8 — на север). */
     static void standingSign(Blueprint b, int x, int y, int z, int rotation, String... lines) {
-        b.set(x, y, z, Blocks.OAK_SIGN.getDefaultState().with(StandingSignBlock.ROTATION, rotation));
+        b.set(x, y, z, Blocks.OAK_SIGN.defaultBlockState().setValue(StandingSignBlock.ROTATION, rotation));
         writeSign(b.world(), b.pos(x, y, z), lines);
     }
 
     /** Переписать текст таблички (если чанк загружен). */
-    public static void writeSign(World w, BlockPos p, String... lines) {
-        if (!w.isBlockLoaded(p)) return;
-        TileEntity te = w.getTileEntity(p);
-        if (!(te instanceof SignTileEntity)) return;
-        SignTileEntity sign = (SignTileEntity) te;
-        for (int i = 0; i < 4; i++) sign.setText(i, new StringTextComponent(i < lines.length && lines[i] != null ? lines[i] : ""));
-        sign.markDirty();
+    public static void writeSign(Level w, BlockPos p, String... lines) {
+        if (!w.isLoaded(p)) return;
+        BlockEntity te = w.getBlockEntity(p);
+        if (!(te instanceof SignBlockEntity)) return;
+        SignBlockEntity sign = (SignBlockEntity) te;
+        for (int i = 0; i < 4; i++) sign.setText(i, Component.literal(i < lines.length && lines[i] != null ? lines[i] : ""));
+        sign.setChanged();
         BlockState st = w.getBlockState(p);
-        w.notifyBlockUpdate(p, st, st, 3);
+        w.sendBlockUpdated(p, st, st, 3);
     }
 
     /** Локальные данные помещения: вход, табличка, направление внутрь. */
@@ -468,7 +468,7 @@ public final class BizBuildings {
             }
     }
 
-    public static Blueprint buildMall(World w, BlockPos origin, Direction forward, String ownerName) {
+    public static Blueprint buildMall(Level w, BlockPos origin, Direction forward, String ownerName) {
         Blueprint b = new Blueprint(w, origin, forward);
         int X1 = Mall.X1, X2 = Mall.X2, Z1 = Mall.Z1, Z2 = Mall.Z2, H = Mall.H;
         BlockState wall = s(Blocks.WHITE_CONCRETE), glass = s(Blocks.LIGHT_BLUE_STAINED_GLASS), lamp = s(Blocks.SEA_LANTERN);
@@ -557,7 +557,7 @@ public final class BizBuildings {
             b.set(fx - 5, 1, fz + d, b.stairs(s(Blocks.SPRUCE_STAIRS), W));
             b.set(fx + 5, 1, fz + d, b.stairs(s(Blocks.SPRUCE_STAIRS), E));
         }
-        BlockState leaves = s(Blocks.OAK_LEAVES).with(LeavesBlock.PERSISTENT, true);
+        BlockState leaves = s(Blocks.OAK_LEAVES).setValue(LeavesBlock.PERSISTENT, true);
         for (int[] p : new int[][]{{-12, 10}, {14, 10}, {-12, 37}, {14, 37}}) {
             int px = p[0], pz = p[1];
             b.fill(px - 1, 1, pz - 1, px + 1, 1, pz + 1, s(Blocks.SPRUCE_PLANKS));
@@ -608,7 +608,7 @@ public final class BizBuildings {
     }
 
     /** Ларёк конкурента 7×7 (с записью исходных блоков — при закрытии всё вернётся). */
-    public static Blueprint buildKiosk(World w, BlockPos origin, Direction forward, BizType type, String name) {
+    public static Blueprint buildKiosk(Level w, BlockPos origin, Direction forward, BizType type, String name) {
         Blueprint b = new Blueprint(w, origin, forward).recordSnapshot();
         BlockState wall = s(kioskColor(type));
         b.clear(-3, 1, -1, 3, 5, 6);
@@ -630,8 +630,8 @@ public final class BizBuildings {
     }
 
     /** Бот заехал в помещение ТЦ: прилавок и немного мебели (с записью исходных блоков). */
-    public static Blueprint decorateUnit(World w, Mall.Unit u, BizType type) {
-        BlockPos origin = u.entrance.offset(u.facing).down();
+    public static Blueprint decorateUnit(Level w, Mall.Unit u, BizType type) {
+        BlockPos origin = u.entrance.relative(u.facing).below();
         Blueprint b = new Blueprint(w, origin, u.facing).recordSnapshot();
         int half = (u.width - 1) / 2;
         int cz = Math.min(2, Math.max(0, u.depth - 3));

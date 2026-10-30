@@ -9,29 +9,29 @@ import com.baraaoi.reallife.entity.SellerEntity;
 import com.baraaoi.reallife.registry.ModBlocks;
 import com.baraaoi.reallife.registry.ModEntities;
 import com.baraaoi.reallife.tile.FridgeTileEntity;
-import net.minecraft.block.CauldronBlock;
-import net.minecraft.block.TrapDoorBlock;
-import net.minecraft.inventory.IInventory;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.state.properties.Half;
-import net.minecraft.tileentity.TileEntity;
-import net.minecraft.util.math.AxisAlignedBB;
-import net.minecraft.world.server.ServerWorld;
+import net.minecraft.world.level.block.LayeredCauldronBlock;
+import net.minecraft.world.level.block.TrapDoorBlock;
+import net.minecraft.world.Container;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.level.block.state.properties.Half;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.server.level.ServerLevel;
 import java.util.UUID;
-import net.minecraft.block.AbstractFurnaceBlock;
-import net.minecraft.block.Block;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.Blocks;
-import net.minecraft.block.ChestBlock;
-import net.minecraft.block.LadderBlock;
-import net.minecraft.block.LeavesBlock;
-import net.minecraft.block.SlabBlock;
-import net.minecraft.state.properties.SlabType;
-import net.minecraft.util.Direction;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.world.World;
+import net.minecraft.world.level.block.AbstractFurnaceBlock;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.ChestBlock;
+import net.minecraft.world.level.block.LadderBlock;
+import net.minecraft.world.level.block.LeavesBlock;
+import net.minecraft.world.level.block.SlabBlock;
+import net.minecraft.world.level.block.state.properties.SlabType;
+import net.minecraft.core.Direction;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.Level;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -39,15 +39,14 @@ import java.util.Random;
 import com.baraaoi.reallife.economy.Account;
 import com.baraaoi.reallife.economy.Structure;
 import com.baraaoi.reallife.entity.CashierEntity;
-import net.minecraft.potion.PotionUtils;
-import net.minecraft.potion.Potion;
-import net.minecraft.potion.Potions;
+import net.minecraft.world.item.alchemy.PotionContents;
+import net.minecraft.world.item.alchemy.Potion;
+import net.minecraft.world.item.alchemy.Potions;
 import net.minecraft.tags.BlockTags;
-import net.minecraft.block.material.Material;
-import net.minecraft.tileentity.BarrelTileEntity;
-import net.minecraft.tileentity.ChestTileEntity;
-import net.minecraft.tileentity.BrewingStandTileEntity;
-import net.minecraft.util.math.ChunkPos;
+import net.minecraft.world.level.block.entity.BarrelBlockEntity;
+import net.minecraft.world.level.block.entity.ChestBlockEntity;
+import net.minecraft.world.level.block.entity.BrewingStandBlockEntity;
+import net.minecraft.world.level.ChunkPos;
 
 /**
  * Все постройки мода: банк, контора МФО, дома для ипотеки, тюрьма и подвал.
@@ -55,42 +54,42 @@ import net.minecraft.util.math.ChunkPos;
 public class Buildings {
 
     static BlockState s(Block b) {
-        return b.getDefaultState();
+        return b.defaultBlockState();
     }
 
     static BlockState topSlab(Block b) {
-        return b.getDefaultState().with(SlabBlock.TYPE, SlabType.TOP);
+        return b.defaultBlockState().setValue(SlabBlock.TYPE, SlabType.TOP);
     }
 
     static BlockState furnace(Block b, Direction d) {
-        return b.getDefaultState().with(AbstractFurnaceBlock.FACING, d);
+        return b.defaultBlockState().setValue(AbstractFurnaceBlock.FACING, d);
     }
 
     static BlockState chest(Direction d) {
-        return Blocks.CHEST.getDefaultState().with(ChestBlock.FACING, d);
+        return Blocks.CHEST.defaultBlockState().setValue(ChestBlock.FACING, d);
     }
 
     static BlockState ladder(Direction d) {
-        return Blocks.LADDER.getDefaultState().with(LadderBlock.FACING, d);
+        return Blocks.LADDER.defaultBlockState().setValue(LadderBlock.FACING, d);
     }
 
     static BlockState leaves() {
-        return Blocks.OAK_LEAVES.getDefaultState().with(LeavesBlock.PERSISTENT, true);
+        return Blocks.OAK_LEAVES.defaultBlockState().setValue(LeavesBlock.PERSISTENT, true);
     }
 
     static BlockState counter(Block b, Direction d) {
-        return b.getDefaultState().with(FinanceBlock.HORIZONTAL_FACING, d);
+        return b.defaultBlockState().setValue(FinanceBlock.HORIZONTAL_FACING, d);
     }
 
     // =====================================================================================
     //  БАНК
     // =====================================================================================
-    public static Blueprint buildBank(World w, BlockPos origin, Direction facing) {
+    public static Blueprint buildBank(Level w, BlockPos origin, Direction facing) {
         return buildBank(w, origin, facing, false);
     }
 
     /** Отделение банка 19×12: зал, три окна с кассирами, окна продавцов, хранилище. */
-    public static Blueprint buildBank(World w, BlockPos origin, Direction facing, boolean protect) {
+    public static Blueprint buildBank(Level w, BlockPos origin, Direction facing, boolean protect) {
         Blueprint b = new Blueprint(w, origin, facing);
         removeStaff(w, b.pos(-10, 0, -3), b.pos(10, 9, 12));
         b.clear(-10, 0, -3, 10, 9, 12);
@@ -185,28 +184,28 @@ public class Buildings {
     }
 
     /** Убрать старых продавцов и кассиров (перед перестройкой). */
-    static void removeStaff(World w, BlockPos a, BlockPos c) {
-        if (!(w instanceof ServerWorld)) return;
-        AxisAlignedBB box = new AxisAlignedBB(a, c).grow(1.0D);
-        for (SellerEntity e : w.getEntitiesWithinAABB(SellerEntity.class, box)) e.remove();
-        for (CashierEntity e : w.getEntitiesWithinAABB(CashierEntity.class, box)) e.remove();
+    static void removeStaff(Level w, BlockPos a, BlockPos c) {
+        if (!(w instanceof ServerLevel)) return;
+        AABB box = new AABB(net.minecraft.world.phys.Vec3.atLowerCornerOf(a), net.minecraft.world.phys.Vec3.atLowerCornerOf(c)).inflate(1.0D);
+        for (SellerEntity e : w.getEntitiesOfClass(SellerEntity.class, box)) e.discard();
+        for (CashierEntity e : w.getEntitiesOfClass(CashierEntity.class, box)) e.discard();
     }
 
-    public static void spawnCashier(World w, BlockPos pos, Direction face) {
-        if (!(w instanceof ServerWorld)) return;
-        for (CashierEntity old : w.getEntitiesWithinAABB(CashierEntity.class, new AxisAlignedBB(pos).grow(1.0D))) old.remove();
-        CashierEntity e = ModEntities.CASHIER.get().create(w);
+    public static void spawnCashier(Level w, BlockPos pos, Direction face) {
+        if (!(w instanceof ServerLevel)) return;
+        for (CashierEntity old : w.getEntitiesOfClass(CashierEntity.class, new AABB(pos).inflate(1.0D))) old.discard();
+        CashierEntity e = ModEntities.CASHIER.get().create(w, net.minecraft.world.entity.EntitySpawnReason.MOB_SUMMONED);
         if (e == null) return;
-        float yaw = face.getHorizontalAngle();
-        e.setLocationAndAngles(pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5, yaw, 0F);
+        float yaw = face.toYRot();
+        e.snapTo(pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5, yaw, 0F);
         e.rotationYawHead = yaw;
         e.renderYawOffset = yaw;
-        w.addEntity(e);
+        w.addFreshEntity(e);
     }
 
     /** Записать постройку в реестр мира (для защиты, кассиров, охраны казино). */
-    static Structure register(World w, String type, Blueprint b, boolean protect, BlockPos exit, List<BlockPos> cashiers) {
-        if (!(w instanceof ServerWorld) || w.getServer() == null || w.getDimensionKey() != World.OVERWORLD) return null;
+    static Structure register(Level w, String type, Blueprint b, boolean protect, BlockPos exit, List<BlockPos> cashiers) {
+        if (!(w instanceof ServerLevel) || w.getServer() == null || w.dimension() != Level.OVERWORLD) return null;
         Structure st = new Structure();
         st.type = type;
         st.min = b.min();
@@ -220,13 +219,13 @@ public class Buildings {
     // =====================================================================================
     //  КОНТОРА МФО «Шайкин и Ко»
     // =====================================================================================
-    public static Blueprint buildMfo(World w, BlockPos origin, Direction facing) {
+    public static Blueprint buildMfo(Level w, BlockPos origin, Direction facing) {
         return buildMfo(w, origin, facing, false);
     }
 
-    public static Blueprint buildMfo(World w, BlockPos origin, Direction facing, boolean protect) {
+    public static Blueprint buildMfo(Level w, BlockPos origin, Direction facing, boolean protect) {
         Blueprint b = new Blueprint(w, origin, facing);
-        Random r = new Random(origin.toLong());
+        Random r = new Random(origin.asLong());
         b.clear(-4, 0, -1, 4, 6, 7);
         b.foundation(-4, -1, 4, 7, s(Blocks.COBBLESTONE));
         b.fill(-2, 0, 1, 2, 0, 5, s(Blocks.COARSE_DIRT));
@@ -274,14 +273,14 @@ public class Buildings {
         b.set(-1, 1, 1, s(Blocks.LOOM)); // v4: станки больше не раздаются бесплатно
         claimCity(w, b);
         register(w, Structure.MFO, b, protect, b.pos(0, 1, -2), new ArrayList<>());
-        if (w instanceof ServerWorld && w.getServer() != null && w.getDimensionKey() == World.OVERWORLD) {
+        if (w instanceof ServerLevel && w.getServer() != null && w.dimension() == Level.OVERWORLD) {
             EconomyData data = EconomyData.get(w.getServer());
             BlockPos c = b.pos(0, 0, 3);
             boolean known = false;
             for (BlockPos m : data.mfoCenters) if (m.distanceSq(c) < 9) known = true;
             if (!known) {
                 data.mfoCenters.add(c);
-                data.markDirty();
+                data.setDirty();
             }
         }
         return b;
@@ -290,7 +289,7 @@ public class Buildings {
     // =====================================================================================
     //  ДОМА ПО ИПОТЕКЕ
     // =====================================================================================
-    public static Blueprint buildHouse(World w, BlockPos origin, Direction facing, HouseType type) {
+    public static Blueprint buildHouse(Level w, BlockPos origin, Direction facing, HouseType type) {
         Blueprint b;
         switch (type) {
             case DIRT_HUT: b = dirtHut(w, origin, facing); break;
@@ -300,12 +299,12 @@ public class Buildings {
             case MANSION: b = mansion(w, origin, facing); break;
             default: b = penthouse(w, origin, facing); break;
         }
-        furnish(b, type.ordinal(), new Random(origin.toLong() ^ 0x5EEDL));
+        furnish(b, type.ordinal(), new Random(origin.asLong() ^ 0x5EEDL));
         return b;
     }
 
     /** Землянка из грязи 5×5. */
-    static Blueprint dirtHut(World w, BlockPos o, Direction f) {
+    static Blueprint dirtHut(Level w, BlockPos o, Direction f) {
         Blueprint b = new Blueprint(w, o, f);
         b.clear(-2, 0, 0, 2, 4, 4);
         b.foundation(-2, 0, 2, 4, s(Blocks.DIRT));
@@ -324,7 +323,7 @@ public class Buildings {
     }
 
     /** Деревянная изба 7×7. */
-    static Blueprint woodenHut(World w, BlockPos o, Direction f) {
+    static Blueprint woodenHut(Level w, BlockPos o, Direction f) {
         Blueprint b = new Blueprint(w, o, f);
         b.clear(-4, 0, -1, 4, 9, 7);
         b.foundation(-3, 0, 3, 6, s(Blocks.COBBLESTONE));
@@ -351,7 +350,7 @@ public class Buildings {
     }
 
     /** Каменный дом 9×8. */
-    static Blueprint stoneHouse(World w, BlockPos o, Direction f) {
+    static Blueprint stoneHouse(Level w, BlockPos o, Direction f) {
         Blueprint b = new Blueprint(w, o, f);
         b.clear(-5, 0, -1, 5, 10, 8);
         b.foundation(-4, 0, 4, 7, s(Blocks.COBBLESTONE));
@@ -391,7 +390,7 @@ public class Buildings {
     }
 
     /** Двухэтажный кирпичный коттедж 11×10. */
-    static Blueprint brickCottage(World w, BlockPos o, Direction f) {
+    static Blueprint brickCottage(Level w, BlockPos o, Direction f) {
         Blueprint b = new Blueprint(w, o, f);
         b.clear(-6, 0, -2, 6, 15, 10);
         b.foundation(-5, -2, 5, 9, s(Blocks.STONE_BRICKS));
@@ -449,7 +448,7 @@ public class Buildings {
         // 2 этаж: гардероб, ванная, кабинет, растения
         b.set(-4, 5, 3, s(Blocks.BARREL)); b.set(-4, 6, 3, s(Blocks.BARREL));
         b.set(-4, 5, 4, s(Blocks.BARREL)); b.set(-4, 6, 4, s(Blocks.BARREL));
-        b.set(3, 5, 6, s(Blocks.CAULDRON).with(CauldronBlock.LEVEL, 3));
+        b.set(3, 5, 6, s(Blocks.CAULDRON).setValue(LayeredCauldronBlock.LEVEL, 3));
         b.set(3, 5, 5, s(Blocks.QUARTZ_SLAB));
         b.set(2, 5, 6, s(Blocks.WHITE_CARPET));
         b.set(4, 5, 2, s(Blocks.LECTERN));
@@ -462,14 +461,14 @@ public class Buildings {
     }
 
     /** Двухэтажный особняк 15×13 с садом и балконом. */
-    static Blueprint mansion(World w, BlockPos o, Direction f) {
+    static Blueprint mansion(Level w, BlockPos o, Direction f) {
         Blueprint b = new Blueprint(w, o, f);
         b.clear(-8, 0, -4, 8, 19, 13);
         b.foundation(-8, -4, 8, 13, s(Blocks.STONE_BRICKS));
         // сад
         b.fill(-8, -1, -4, 8, -1, -1, s(Blocks.GRASS_BLOCK));
         b.fill(-1, -1, -4, 1, -1, -1, s(Blocks.SMOOTH_STONE));
-        Random r = new Random(o.toLong());
+        Random r = new Random(o.asLong());
         BlockState[] flowers = {s(Blocks.POPPY), s(Blocks.DANDELION), s(Blocks.AZURE_BLUET), s(Blocks.OXEYE_DAISY), s(Blocks.CORNFLOWER), leaves()};
         for (int x = -7; x <= 7; x++) {
             if (Math.abs(x) <= 2) continue;
@@ -549,8 +548,8 @@ public class Buildings {
         b.set(-6, 6, 3, s(Blocks.BARREL)); b.set(-6, 7, 3, s(Blocks.BARREL));
         b.set(-6, 6, 4, s(Blocks.BARREL)); b.set(-6, 7, 4, s(Blocks.BARREL));
         b.set(-6, 6, 5, chest(Direction.EAST));
-        b.set(4, 6, 1, s(Blocks.CAULDRON).with(CauldronBlock.LEVEL, 3));
-        b.set(5, 6, 1, s(Blocks.CAULDRON).with(CauldronBlock.LEVEL, 3));
+        b.set(4, 6, 1, s(Blocks.CAULDRON).setValue(LayeredCauldronBlock.LEVEL, 3));
+        b.set(5, 6, 1, s(Blocks.CAULDRON).setValue(LayeredCauldronBlock.LEVEL, 3));
         for (int x = 3; x <= 5; x++) b.set(x, 6, 2, s(Blocks.WHITE_CARPET));
         b.set(5, 6, 3, s(Blocks.POTTED_BAMBOO));
         b.set(3, 6, 4, s(Blocks.POTTED_ORANGE_TULIP));
@@ -564,7 +563,7 @@ public class Buildings {
     }
 
     /** Башня 13×13 на 4 уровня, пентхаус наверху с террасой и бассейном. */
-    static Blueprint penthouse(World w, BlockPos o, Direction f) {
+    static Blueprint penthouse(Level w, BlockPos o, Direction f) {
         Blueprint b = new Blueprint(w, o, f);
         BlockState frame = s(Blocks.BLACK_CONCRETE);
         BlockState glass = s(Blocks.LIGHT_BLUE_STAINED_GLASS);
@@ -664,7 +663,7 @@ public class Buildings {
         // выход из пентхауса прямо в воду: проём в перилах террасы
         b.fill(-3, 15, 0, 3, 15, 0, s(Blocks.AIR));
         // трамплин
-        b.set(0, 15, 0, topSlab(Blocks.SMOOTH_QUARTZ_SLAB).with(SlabBlock.TYPE, SlabType.BOTTOM));
+        b.set(0, 15, 0, topSlab(Blocks.SMOOTH_QUARTZ_SLAB).setValue(SlabBlock.TYPE, SlabType.BOTTOM));
         // ===== БАР НА ВЕРАНДЕ (правая сторона, проход x −2..2 свободен) =====
         for (int z = 1; z <= 4; z++) b.set(3, 15, z, s(Blocks.POLISHED_BLACKSTONE_BRICKS));
         b.set(3, 16, 1, s(Blocks.LANTERN));
@@ -710,7 +709,7 @@ public class Buildings {
         // пентхаус: холодильник, ванна
         b.set(4, 15, 8, counter(ModBlocks.FRIDGE.get(), Direction.WEST));
         b.set(4, 16, 8, counter(ModBlocks.FRIDGE.get(), Direction.WEST));
-        b.set(5, 15, 10, s(Blocks.CAULDRON).with(CauldronBlock.LEVEL, 3));
+        b.set(5, 15, 10, s(Blocks.CAULDRON).setValue(LayeredCauldronBlock.LEVEL, 3));
         return b;
     }
 
@@ -720,21 +719,21 @@ public class Buildings {
 
     public static final UUID CITY = new UUID(0L, 0L);
 
-    static void spawnSeller(World w, BlockPos pos, int variant) {
-        if (!(w instanceof ServerWorld)) return;
-        for (SellerEntity old : w.getEntitiesWithinAABB(SellerEntity.class, new AxisAlignedBB(pos).grow(1.5D))) old.remove();
-        SellerEntity e = ModEntities.SELLER.get().create(w);
+    static void spawnSeller(Level w, BlockPos pos, int variant) {
+        if (!(w instanceof ServerLevel)) return;
+        for (SellerEntity old : w.getEntitiesOfClass(SellerEntity.class, new AABB(pos).inflate(1.5D))) old.discard();
+        SellerEntity e = ModEntities.SELLER.get().create(w, net.minecraft.world.entity.EntitySpawnReason.MOB_SUMMONED);
         if (e == null) return;
         e.setVariant(variant);
-        e.setLocationAndAngles(pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5, 0F, 0F);
-        w.addEntity(e);
+        e.snapTo(pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5, 0F, 0F);
+        w.addFreshEntity(e);
     }
 
     /** Земля под банком / МФО — городская, строить на ней нельзя. */
-    static void claimCity(World w, Blueprint b) {
-        if (!(w instanceof ServerWorld) || w.getServer() == null || w.getDimensionKey() != World.OVERWORLD) return;
+    static void claimCity(Level w, Blueprint b) {
+        if (!(w instanceof ServerLevel) || w.getServer() == null || w.dimension() != Level.OVERWORLD) return;
         EconomyData data = EconomyData.get(w.getServer());
-        claimArea(data, CITY, b.min().add(-2, 0, -2), b.max().add(2, 0, 2), false);
+        claimArea(data, CITY, b.min().offset(-2, 0, -2), b.max().offset(2, 0, 2), false);
     }
 
     /** Закрепить за владельцем все ничейные чанки в прямоугольнике. */
@@ -742,7 +741,7 @@ public class Buildings {
         int n = 0;
         for (int cx = Math.min(a.getX(), b.getX()) >> 4; cx <= Math.max(a.getX(), b.getX()) >> 4; cx++)
             for (int cz = Math.min(a.getZ(), b.getZ()) >> 4; cz <= Math.max(a.getZ(), b.getZ()) >> 4; cz++) {
-                long key = net.minecraft.util.math.ChunkPos.asLong(cx, cz);
+                long key = net.minecraft.world.level.ChunkPos.pack(cx, cz);
                 UUID cur = data.owner(key);
                 if (cur == null || (!onlyFree && !cur.equals(owner) && owner.equals(CITY))) {
                     data.claim(owner, key);
@@ -763,51 +762,52 @@ public class Buildings {
     private static final Item[] RICH = {Items.IRON_INGOT, Items.GOLD_NUGGET, Items.COAL, Items.REDSTONE, Items.LAPIS_LAZULI,
             Items.LEATHER, Items.FEATHER, Items.EXPERIENCE_BOTTLE, Items.NAME_TAG, Items.EMERALD};
 
-    private static void put(IInventory inv, Random r, ItemStack st) {
+    private static void put(Container inv, Random r, ItemStack st) {
         for (int tries = 0; tries < 10; tries++) {
-            int slot = r.nextInt(inv.getSizeInventory());
-            if (inv.getStackInSlot(slot).isEmpty()) {
-                inv.setInventorySlotContents(slot, st);
+            int slot = r.nextInt(inv.getContainerSize());
+            if (inv.getItem(slot).isEmpty()) {
+                inv.setItem(slot, st);
                 return;
             }
         }
     }
 
-    private static final Potion[] DRINKS = {Potions.SWIFTNESS, Potions.STRENGTH, Potions.LEAPING, Potions.FIRE_RESISTANCE,
+    @SuppressWarnings("unchecked")
+    private static final net.minecraft.core.Holder<Potion>[] DRINKS = new net.minecraft.core.Holder[]{Potions.SWIFTNESS, Potions.STRENGTH, Potions.LEAPING, Potions.FIRE_RESISTANCE,
             Potions.NIGHT_VISION, Potions.REGENERATION, Potions.WATER_BREATHING, Potions.LONG_SWIFTNESS, Potions.HEALING};
 
-    public static ItemStack drink(Potion p) {
-        return PotionUtils.addPotionToItemStack(new ItemStack(Items.POTION), p);
+    public static ItemStack drink(net.minecraft.core.Holder<Potion> p) {
+        return PotionContents.createItemStack(Items.POTION, p);
     }
 
     /** Бар: бочки с зельями-«коктейлями», в варочной стойке — три готовых напитка. */
-    static void fillBar(World w, Blueprint b, int[][] spots) {
-        Random r = new Random(b.pos(0, 0, 0).toLong());
+    static void fillBar(Level w, Blueprint b, int[][] spots) {
+        Random r = new Random(b.pos(0, 0, 0).asLong());
         for (int[] sp : spots) {
-            TileEntity te = w.getTileEntity(b.pos(sp[0], sp[1], sp[2]));
-            if (te instanceof BrewingStandTileEntity) {
-                IInventory inv = (IInventory) te;
-                for (int i = 0; i < 3; i++) inv.setInventorySlotContents(i, drink(DRINKS[r.nextInt(DRINKS.length)]));
-                te.markDirty();
-            } else if (te instanceof IInventory) {
-                IInventory inv = (IInventory) te;
-                for (int i = 0; i < 9; i++) inv.setInventorySlotContents(i * 3, drink(DRINKS[r.nextInt(DRINKS.length)]));
-                inv.setInventorySlotContents(1, it(Items.HONEY_BOTTLE, 4));
-                inv.setInventorySlotContents(4, it(Items.MILK_BUCKET, 1));
-                inv.setInventorySlotContents(7, it(Items.GLASS_BOTTLE, 8));
-                te.markDirty();
+            BlockEntity te = w.getBlockEntity(b.pos(sp[0], sp[1], sp[2]));
+            if (te instanceof BrewingStandBlockEntity) {
+                Container inv = (Container) te;
+                for (int i = 0; i < 3; i++) inv.setItem(i, drink(DRINKS[r.nextInt(DRINKS.length)]));
+                te.setChanged();
+            } else if (te instanceof Container) {
+                Container inv = (Container) te;
+                for (int i = 0; i < 9; i++) inv.setItem(i * 3, drink(DRINKS[r.nextInt(DRINKS.length)]));
+                inv.setItem(1, it(Items.HONEY_BOTTLE, 4));
+                inv.setItem(4, it(Items.MILK_BUCKET, 1));
+                inv.setItem(7, it(Items.GLASS_BOTTLE, 8));
+                te.setChanged();
             }
         }
     }
 
     /** Заполнить все пустые сундуки, бочки и холодильники дома. tier 0..5 — чем дороже дом, тем богаче. */
     public static void furnish(Blueprint b, int tier, Random r) {
-        World w = b.world();
+        Level w = b.world();
         BlockPos min = b.min(), max = b.max();
-        for (BlockPos pos : BlockPos.getAllInBoxMutable(min, max)) {
-            TileEntity te = w.getTileEntity(pos);
-            if (!(te instanceof ChestTileEntity) && !(te instanceof BarrelTileEntity) && !(te instanceof FridgeTileEntity)) continue;
-            IInventory inv = (IInventory) te;
+        for (BlockPos pos : BlockPos.betweenClosed(min, max)) {
+            BlockEntity te = w.getBlockEntity(pos);
+            if (!(te instanceof ChestBlockEntity) && !(te instanceof BarrelBlockEntity) && !(te instanceof FridgeTileEntity)) continue;
+            Container inv = (Container) te;
             if (!inv.isEmpty()) continue;
             if (te instanceof FridgeTileEntity) {
                 int n = 4 + r.nextInt(3) + tier;
@@ -824,7 +824,7 @@ public class Buildings {
                 }
                 if (tier >= 4 && r.nextInt(3) == 0) put(inv, r, it(Items.DIAMOND, 1));
             }
-            te.markDirty();
+            te.setChanged();
         }
     }
 
@@ -833,17 +833,17 @@ public class Buildings {
     // =====================================================================================
 
     /** Габарит камеры относительно центра: x/z −4..4, y 0..5. */
-    public static boolean cellFits(World w, BlockPos c, int margin) {
+    public static boolean cellFits(Level w, BlockPos c, int margin) {
         for (int x = -4 - margin; x <= 4 + margin; x++)
             for (int z = -4 - margin; z <= 4 + margin; z++)
                 for (int y = -margin; y <= 5 + margin; y++) {
-                    BlockPos p = c.add(x, y, z);
-                    if (!w.isAirBlock(p)) return false;
+                    BlockPos p = c.offset(x, y, z);
+                    if (!w.isEmptyBlock(p)) return false;
                 }
         return true;
     }
 
-    public static Blueprint buildJail(World w, BlockPos center) {
+    public static Blueprint buildJail(Level w, BlockPos center) {
         Blueprint b = new Blueprint(w, center, Direction.SOUTH).recordSnapshot();
         BlockState wall = s(ModBlocks.JAIL_WALL.get());
         b.fill(-4, 0, -4, 4, 5, 4, wall);
@@ -860,7 +860,7 @@ public class Buildings {
         return b;
     }
 
-    public static Blueprint buildPit(World w, BlockPos center) {
+    public static Blueprint buildPit(Level w, BlockPos center) {
         Blueprint b = new Blueprint(w, center, Direction.SOUTH).recordSnapshot();
         BlockState wall = s(ModBlocks.JAIL_WALL.get());
         b.fill(-4, 0, -4, 4, 5, 4, wall);
@@ -885,13 +885,13 @@ public class Buildings {
     // =====================================================================================
 
     /** Засыпать подвал (при изъятии дома). */
-    public static void fillBasement(World w, BlockPos min, BlockPos max) {
+    public static void fillBasement(Level w, BlockPos min, BlockPos max) {
         long volume = (long) (max.getX() - min.getX() + 1) * (max.getY() - min.getY() + 1) * (max.getZ() - min.getZ() + 1);
         if (volume <= 0 || volume > 4000) return;
-        for (BlockPos p : BlockPos.getAllInBoxMutable(min, max)) {
-            TileEntity te = w.getTileEntity(p);
-            if (te instanceof IInventory) ((IInventory) te).clear();
-            w.setBlockState(p.toImmutable(), s(Blocks.STONE), Blueprint.FLAGS);
+        for (BlockPos p : BlockPos.betweenClosed(min, max)) {
+            BlockEntity te = w.getBlockEntity(p);
+            if (te instanceof Container) ((Container) te).clear();
+            w.setBlockState(p.immutable(), s(Blocks.STONE), Blueprint.FLAGS);
         }
     }
 
@@ -938,15 +938,14 @@ public class Buildings {
             {-6, 0, -2, 6, 15, 10}, {-8, 0, -4, 8, 19, 13}, {-7, 0, -8, 7, 21, 13}};
 
     static boolean isGround(BlockState st) {
-        Material m = st.getMaterial();
-        if (!m.isSolid() || m.isLiquid() || m.isReplaceable()) return false;
-        if (st.isIn(BlockTags.LOGS) || st.isIn(BlockTags.LEAVES)) return false;
-        return m != Material.PLANTS && m != Material.TALL_PLANTS && m != Material.BAMBOO && m != Material.BAMBOO_SAPLING
-                && m != Material.CACTUS && m != Material.GOURD && m != Material.WEB;
+        if (!st.isSolid() || st.liquid() || st.canBeReplaced()) return false;
+        if (st.is(BlockTags.LOGS) || st.is(BlockTags.LEAVES)) return false;
+        return !st.is(Blocks.BAMBOO) && !st.is(Blocks.BAMBOO_SAPLING) && !st.is(Blocks.CACTUS) && !st.is(Blocks.COBWEB)
+                && !st.is(Blocks.PUMPKIN) && !st.is(Blocks.CARVED_PUMPKIN) && !st.is(Blocks.MELON);
     }
 
     /** Верхний «грунтовый» блок столбца в окне ±16 от y0 (деревья, трава, вода — не грунт). */
-    static int groundY(World w, int x, int z, int y0) {
+    static int groundY(Level w, int x, int z, int y0) {
         BlockPos.Mutable m = new BlockPos.Mutable();
         for (int y = y0 + 16; y >= y0 - 16; y--) {
             m.setPos(x, y, z);
@@ -987,7 +986,7 @@ public class Buildings {
         }
         for (int cx = min.getX() >> 4; cx <= max.getX() >> 4; cx++)
             for (int cz = min.getZ() >> 4; cz <= max.getZ() >> 4; cz++) {
-                UUID owner = data.owner(ChunkPos.asLong(cx, cz));
+                UUID owner = data.owner(ChunkPos.pack(cx, cz));
                 if (owner == null || owner.equals(player)) continue;
                 return owner.equals(CITY) ? "это городская земля (рядом банк/МФО/казино)" : "участок принадлежит другому игроку";
             }
@@ -999,7 +998,7 @@ public class Buildings {
      * Нельзя: на другом доме, на банке/МФО/казино, на чужой или городской земле, на чужом имуществе,
      * на неровной площадке (перепад больше houseFlatness).
      */
-    public static String checkHouseSite(World w, BlockPos origin, Direction facing, HouseType type, EconomyData data, UUID player) {
+    public static String checkHouseSite(Level w, BlockPos origin, Direction facing, HouseType type, EconomyData data, UUID player) {
         int[] bx = HOUSE_BOX[type.ordinal()];
         Blueprint b = new Blueprint(w, origin, facing);
         BlockPos p1 = b.pos(bx[0], bx[1], bx[2]), p2 = b.pos(bx[3], bx[4], bx[5]);
@@ -1020,9 +1019,9 @@ public class Buildings {
         if (hi - lo > tol) return "площадка неровная: перепад " + (hi - lo) + " бл. (допустимо " + tol + "). Выровняйте участок";
         int base = origin.getY() - 1;
         if (base - lo > tol || hi - base > tol) return "дом повиснет в воздухе или уйдёт в землю — кликните по земле на ровном месте";
-        for (BlockPos p : BlockPos.getAllInBoxMutable(min.up(), max)) {
-            if (w.getTileEntity(p) != null) {
-                return "на месте стройки чьё-то имущество (" + new net.minecraft.item.ItemStack(w.getBlockState(p).getBlock()).getDisplayName().getString()
+        for (BlockPos p : BlockPos.betweenClosed(min.above(), max)) {
+            if (w.getBlockEntity(p) != null) {
+                return "на месте стройки чьё-то имущество (" + new net.minecraft.world.item.ItemStack(w.getBlockState(p).getBlock()).getHoverName().getString()
                         + " на " + p.getX() + ", " + p.getY() + ", " + p.getZ() + ")";
             }
         }
@@ -1033,7 +1032,7 @@ public class Buildings {
     //  КАЗИНО «Три семёрки»
     // =====================================================================================
 
-    public static Blueprint buildCasino(World w, BlockPos origin, Direction facing, boolean protect) {
+    public static Blueprint buildCasino(Level w, BlockPos origin, Direction facing, boolean protect) {
         Blueprint b = new Blueprint(w, origin, facing);
         removeStaff(w, b.pos(-16, 0, -5), b.pos(16, 14, 31));
         BlockState black = s(Blocks.BLACK_CONCRETE);
@@ -1073,7 +1072,7 @@ public class Buildings {
         // вход 5×4 без дверей — заходи, кто хочет
         b.fill(-2, 1, 0, 2, 4, 0, s(Blocks.AIR));
         b.fill(-3, 5, -3, 3, 5, -1, red);
-        for (int x = -3; x <= 3; x += 2) b.set(x, 4, -3, s(Blocks.LANTERN).with(net.minecraft.block.LanternBlock.HANGING, true));
+        for (int x = -3; x <= 3; x += 2) b.set(x, 4, -3, s(Blocks.LANTERN).setValue(net.minecraft.world.level.block.LanternBlock.HANGING, true));
         b.sign(0, 6, -1, s(Blocks.DARK_OAK_WALL_SIGN), Direction.NORTH, "§6§lКАЗИНО", "«Три семёрки»", "§47 7 7", "§018+");
         b.sign(-4, 2, -1, s(Blocks.DARK_OAK_WALL_SIGN), Direction.NORTH, "Однорукий бандит", "Рулетка 0–25x", "Орёл и решка", "Мама Анархия");
         b.sign(4, 2, -1, s(Blocks.DARK_OAK_WALL_SIGN), Direction.NORTH, "§4Правила:", "Слишком везёт —", "выведут под руки", "на сутки");
@@ -1129,7 +1128,7 @@ public class Buildings {
         int ey = ex.getY();
         for (int y = ex.getY() + 12; y >= ex.getY() - 12; y--) {
             BlockPos q = new BlockPos(ex.getX(), y, ex.getZ());
-            if (w.isAirBlock(q) && w.isAirBlock(q.up()) && w.getBlockState(q.down()).getMaterial().isSolid()) { ey = y; break; }
+            if (w.isEmptyBlock(q) && w.isEmptyBlock(q.above()) && w.getBlockState(q.below()).isSolid()) { ey = y; break; }
         }
         register(w, Structure.CASINO, b, protect, new BlockPos(ex.getX(), ey, ex.getZ()), new ArrayList<>());
         return b;

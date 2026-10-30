@@ -3,14 +3,14 @@ package com.baraaoi.reallife.economy;
 import com.baraaoi.reallife.Config;
 import com.baraaoi.reallife.container.CryptoContainer;
 import com.baraaoi.reallife.tile.CryptoRigTileEntity;
-import net.minecraft.entity.player.ServerPlayerEntity;
-import net.minecraft.nbt.CompoundNBT;
-import net.minecraft.nbt.DoubleNBT;
-import net.minecraft.nbt.ListNBT;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.DoubleTag;
+import net.minecraft.nbt.ListTag;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.tileentity.TileEntity;
-import net.minecraft.util.text.StringTextComponent;
-import net.minecraft.world.server.ServerWorld;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.network.chat.Component;
+import net.minecraft.server.level.ServerLevel;
 
 import java.util.Locale;
 import java.util.Random;
@@ -133,7 +133,7 @@ public final class Crypto {
 
     /** Курсы меняются раз в 20 секунд. */
     public static void tick(MinecraftServer server) {
-        ServerWorld ow = EconomyData.overworld(server);
+        ServerLevel ow = EconomyData.overworld(server);
         if (ow == null) return;
         long now = ow.getGameTime();
         EconomyData data = EconomyData.get(server);
@@ -150,13 +150,13 @@ public final class Crypto {
                 String[] pool = (up ? NEWS_UP : NEWS_DOWN)[0];
                 String text = EX + (up ? "§a" : "§c") + String.format(pool[R.nextInt(pool.length)], c.title) + " §f" + c.ticker + " "
                         + (up ? "§a▲" : "§c▼") + String.format(Locale.ROOT, " %+.0f%%", (nv / old - 1) * 100) + "§f → " + price(nv);
-                for (ServerPlayerEntity p : server.getPlayerList().getPlayers()) p.sendStatusMessage(new StringTextComponent(text), false);
+                for (ServerPlayer p : server.getPlayerList().getPlayers()) p.sendSystemMessage(Component.literal(text));
             }
             setRate(data, c, nv);
         }
         data.btcUpdated = now;
         snapshot(data);
-        data.markDirty();
+        data.setDirty();
     }
 
     private static void snapshot(EconomyData data) {
@@ -167,15 +167,15 @@ public final class Crypto {
     }
 
     /** Данные биржи для телефона. */
-    public static ListNBT sync(EconomyData data, Account a) {
-        ListNBT l = new ListNBT();
+    public static ListTag sync(EconomyData data, Account a) {
+        ListTag l = new ListTag();
         for (Coin c : Coin.values()) {
-            CompoundNBT t = new CompoundNBT();
+            CompoundTag t = new CompoundTag();
             t.putDouble("rate", rate(data, c));
             t.putDouble("base", c.base());
             t.putDouble("held", held(a, c));
-            ListNBT h = new ListNBT();
-            for (double[] s : data.cryptoHist) h.add(DoubleNBT.valueOf(s[c.ordinal()]));
+            ListTag h = new ListTag();
+            for (double[] s : data.cryptoHist) h.add(DoubleTag.valueOf(s[c.ordinal()]));
             t.put("hist", h);
             l.add(t);
         }
@@ -183,8 +183,8 @@ public final class Crypto {
     }
 
     /** Перевести добытое фермой в кошелёк игрока. */
-    static void withdrawRig(ServerPlayerEntity p, Account a, CryptoContainer c) {
-        TileEntity te = p.world.getTileEntity(c.getPos());
+    static void withdrawRig(ServerPlayer p, Account a, CryptoContainer c) {
+        BlockEntity te = p.level().getBlockEntity(c.getPos());
         if (!(te instanceof CryptoRigTileEntity)) return;
         double m = ((CryptoRigTileEntity) te).takeMined();
         if (m <= 0) { BankService.msg(p, EX + "На ферме пока ничего не намайнено."); return; }
@@ -193,8 +193,8 @@ public final class Crypto {
     }
 
     /** Продать percent% монеты по текущему курсу — деньги на счёт. */
-    static void sell(ServerPlayerEntity p, Account a, int percent, int coinIdx) {
-        MinecraftServer server = p.getServer();
+    static void sell(ServerPlayer p, Account a, int percent, int coinIdx) {
+        MinecraftServer server = p.level().getServer();
         Coin c = Coin.byId(coinIdx);
         if (server == null || c == null || percent <= 0 || percent > 100) return;
         double have = held(a, c);
@@ -208,8 +208,8 @@ public final class Crypto {
     }
 
     /** Купить монету на rub рублей со счёта (rub ≤ 0 — на весь положительный остаток). */
-    static void buy(ServerPlayerEntity p, Account a, int coinIdx, int rub) {
-        MinecraftServer server = p.getServer();
+    static void buy(ServerPlayer p, Account a, int coinIdx, int rub) {
+        MinecraftServer server = p.level().getServer();
         Coin c = Coin.byId(coinIdx);
         if (server == null || c == null) return;
         if (a.captivity != Account.FREE) { BankService.msg(p, EX + "§cИз-под стражи биржа недоступна."); return; }

@@ -2,89 +2,89 @@ package com.baraaoi.reallife.entity;
 
 import com.baraaoi.reallife.economy.BizType;
 import com.baraaoi.reallife.economy.LegalBiz;
-import net.minecraft.entity.CreatureEntity;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.ai.goal.LookAtGoal;
-import net.minecraft.entity.ai.goal.LookRandomlyGoal;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.nbt.CompoundNBT;
-import net.minecraft.network.datasync.DataParameter;
-import net.minecraft.network.datasync.DataSerializers;
-import net.minecraft.network.datasync.EntityDataManager;
-import net.minecraft.util.DamageSource;
-import net.minecraft.world.World;
+import net.minecraft.world.entity.PathfinderMob;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.ai.goal.LookAtPlayerGoal;
+import net.minecraft.world.entity.ai.goal.RandomLookAroundGoal;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.syncher.EntityDataAccessor;
+import net.minecraft.network.syncher.EntityDataSerializers;
+import net.minecraft.network.syncher.SynchedEntityData;
+import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.level.Level;
 
 /**
  * Наёмный работник заведения: стоит за кассой. Без него заведение не работает и не приносит прибыли.
  * Убьют — придётся нанимать нового.
  */
-public class WorkerEntity extends CreatureEntity {
-    private static final DataParameter<Integer> TYPE = EntityDataManager.createKey(WorkerEntity.class, DataSerializers.VARINT);
+public class WorkerEntity extends PathfinderMob {
+    private static final EntityDataAccessor<Integer> TYPE = SynchedEntityData.defineId(WorkerEntity.class, EntityDataSerializers.INT);
 
     public int bizId;
 
-    public WorkerEntity(EntityType<? extends CreatureEntity> type, World world) {
-        super(type, world);
-        this.enablePersistence();
+    public WorkerEntity(EntityType<? extends PathfinderMob> type, Level level) {
+        super(type, level);
+        this.setPersistenceRequired();
     }
 
     @Override
-    protected void registerData() {
-        super.registerData();
-        this.dataManager.register(TYPE, 0);
+    protected void defineSynchedData(net.minecraft.network.syncher.SynchedEntityData.Builder builder) {
+        super.defineSynchedData(builder);
+        builder.define(TYPE, 0);
     }
 
     public BizType getBizType() {
-        BizType t = BizType.byId(this.dataManager.get(TYPE));
+        BizType t = BizType.byId(this.entityData.get(TYPE));
         return t == null ? BizType.SHAWARMA : t;
     }
 
     public void setBizType(BizType t) {
-        this.dataManager.set(TYPE, t.ordinal());
+        this.entityData.set(TYPE, t.ordinal());
     }
 
     @Override
     protected void registerGoals() {
-        this.goalSelector.addGoal(1, new LookAtGoal(this, PlayerEntity.class, 8.0F));
-        this.goalSelector.addGoal(2, new LookRandomlyGoal(this));
+        this.goalSelector.addGoal(1, new LookAtPlayerGoal(this, Player.class, 8.0F));
+        this.goalSelector.addGoal(2, new RandomLookAroundGoal(this));
     }
 
     @Override
-    public boolean attackEntityFrom(DamageSource source, float amount) {
-        if (world.isRemote) return super.attackEntityFrom(source, amount);
-        Entity e = source.getTrueSource();
-        if (e instanceof PlayerEntity || source == DamageSource.OUT_OF_WORLD) return super.attackEntityFrom(source, amount);
+    public boolean hurtServer(net.minecraft.server.level.ServerLevel level, DamageSource source, float amount) {
+        if (this.level().isClientSide()) return super.hurtServer(level, source, amount);
+        Entity e = source.getEntity();
+        if (e instanceof Player || source.is(net.minecraft.tags.DamageTypeTags.BYPASSES_INVULNERABILITY)) return super.hurtServer(level, source, amount);
         return false;
     }
 
     @Override
-    public void onDeath(DamageSource cause) {
-        super.onDeath(cause);
-        if (!world.isRemote) LegalBiz.onWorkerDeath(this);
+    public void die(DamageSource cause) {
+        super.die(cause);
+        if (!this.level().isClientSide()) LegalBiz.onWorkerDeath(this);
     }
 
     @Override
-    public boolean canDespawn(double distanceToClosestPlayer) {
+    public boolean removeWhenFarAway(double distanceToClosestPlayer) {
         return false;
     }
 
     @Override
-    public boolean canBePushed() {
+    public boolean isPushable() {
         return false;
     }
 
     @Override
-    public void writeAdditional(CompoundNBT nbt) {
-        super.writeAdditional(nbt);
-        nbt.putInt("WorkerType", this.dataManager.get(TYPE));
+    protected void addAdditionalSaveData(net.minecraft.world.level.storage.ValueOutput nbt) {
+        super.addAdditionalSaveData(nbt);
+        nbt.putInt("WorkerType", this.entityData.get(TYPE));
         nbt.putInt("BizId", bizId);
     }
 
     @Override
-    public void readAdditional(CompoundNBT nbt) {
-        super.readAdditional(nbt);
-        this.dataManager.set(TYPE, nbt.getInt("WorkerType"));
-        this.bizId = nbt.getInt("BizId");
+    protected void readAdditionalSaveData(net.minecraft.world.level.storage.ValueInput nbt) {
+        super.readAdditionalSaveData(nbt);
+        this.entityData.set(TYPE, nbt.getIntOr("WorkerType", 0));
+        this.bizId = nbt.getIntOr("BizId", 0);
     }
 }

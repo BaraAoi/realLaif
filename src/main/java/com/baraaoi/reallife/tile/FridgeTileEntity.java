@@ -1,41 +1,41 @@
 package com.baraaoi.reallife.tile;
 
 import com.baraaoi.reallife.registry.ModTileEntities;
-import net.minecraft.block.BlockState;
-import net.minecraft.entity.player.PlayerInventory;
-import net.minecraft.inventory.ItemStackHelper;
-import net.minecraft.inventory.container.ChestContainer;
-import net.minecraft.inventory.container.Container;
-import net.minecraft.item.ItemStack;
-import net.minecraft.nbt.CompoundNBT;
-import net.minecraft.tileentity.LockableLootTileEntity;
-import net.minecraft.util.NonNullList;
-import net.minecraft.util.text.ITextComponent;
-import net.minecraft.util.text.StringTextComponent;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.NonNullList;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.ContainerHelper;
+import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.ChestMenu;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.block.entity.RandomizableContainerBlockEntity;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 
-public class FridgeTileEntity extends LockableLootTileEntity {
+public class FridgeTileEntity extends RandomizableContainerBlockEntity {
     private NonNullList<ItemStack> items = NonNullList.withSize(27, ItemStack.EMPTY);
 
-    public FridgeTileEntity() {
-        super(ModTileEntities.FRIDGE.get());
+    public FridgeTileEntity(BlockPos pos, BlockState state) {
+        super(ModTileEntities.FRIDGE.get(), pos, state);
     }
 
     @Override
-    public CompoundNBT write(CompoundNBT compound) {
-        super.write(compound);
-        if (!this.checkLootAndWrite(compound)) ItemStackHelper.saveAllItems(compound, this.items);
-        return compound;
+    protected void saveAdditional(ValueOutput out) {
+        super.saveAdditional(out);
+        if (!this.trySaveLootTable(out)) ContainerHelper.saveAllItems(out, this.items);
     }
 
     @Override
-    public void read(BlockState state, CompoundNBT nbt) {
-        super.read(state, nbt);
-        this.items = NonNullList.withSize(this.getSizeInventory(), ItemStack.EMPTY);
-        if (!this.checkLootAndRead(nbt)) ItemStackHelper.loadAllItems(nbt, this.items);
+    protected void loadAdditional(ValueInput in) {
+        super.loadAdditional(in);
+        this.items = NonNullList.withSize(this.getContainerSize(), ItemStack.EMPTY);
+        if (!this.tryLoadLootTable(in)) ContainerHelper.loadAllItems(in, this.items);
     }
 
     @Override
-    public int getSizeInventory() {
+    public int getContainerSize() {
         return 27;
     }
 
@@ -50,15 +50,15 @@ public class FridgeTileEntity extends LockableLootTileEntity {
     }
 
     @Override
-    protected ITextComponent getDefaultName() {
-        if (this.world != null && this.getBlockState().getBlock() == com.baraaoi.reallife.registry.ModBlocks.BUSINESS_CHEST.get()) {
-            return new StringTextComponent("Сундук цеха");
+    protected Component getDefaultName() {
+        if (this.getBlockState().getBlock() == com.baraaoi.reallife.registry.ModBlocks.BUSINESS_CHEST.get()) {
+            return Component.literal("Сундук цеха");
         }
-        return new StringTextComponent("Холодильник");
+        return Component.literal("Холодильник");
     }
 
     @Override
-    protected Container createMenu(int id, PlayerInventory player) {
-        return ChestContainer.createGeneric9X3(id, player, this);
+    protected AbstractContainerMenu createMenu(int id, Inventory player) {
+        return ChestMenu.threeRows(id, player, this);
     }
 }

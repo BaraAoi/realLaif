@@ -4,25 +4,24 @@ import com.baraaoi.reallife.economy.Account;
 import com.baraaoi.reallife.economy.BizType;
 import com.baraaoi.reallife.economy.EconomyData;
 import com.baraaoi.reallife.economy.LegalBusiness;
-import net.minecraft.block.Block;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.Blocks;
-import net.minecraft.block.CauldronBlock;
-import net.minecraft.entity.monster.MonsterEntity;
-import net.minecraft.entity.player.ServerPlayerEntity;
-import net.minecraft.inventory.IInventory;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.tileentity.TileEntity;
-import net.minecraft.util.Direction;
-import net.minecraft.util.math.AxisAlignedBB;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.ChunkPos;
-import net.minecraft.world.LightType;
-import net.minecraft.world.World;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.LayeredCauldronBlock;
+import net.minecraft.world.entity.monster.Monster;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.Container;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.core.Direction;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.LightLayer;
+import net.minecraft.world.level.Level;
 
-import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -95,29 +94,29 @@ public final class Inspections {
     }
 
     /** Проверка СЭС. confiscate — сразу изъять просрочку. */
-    public static Report sanepid(World w, LegalBusiness b, long today, boolean confiscate) {
+    public static Report sanepid(Level w, LegalBusiness b, long today, boolean confiscate) {
         Report r = new Report();
         int floorY = b.counter.getY();
         Set<BlockPos> exposed = new HashSet<>();
         int dirty = 0, cobweb = 0, floorSpots = 0, dark = 0;
         boolean sink = false;
-        for (BlockPos mp : BlockPos.getAllInBoxMutable(b.min, b.max)) {
+        for (BlockPos mp : BlockPos.betweenClosed(b.min, b.max)) {
             BlockState st = w.getBlockState(mp);
             if (st.getBlock() == Blocks.COBWEB) cobweb++;
-            if (st.getBlock() == Blocks.CAULDRON && st.get(CauldronBlock.LEVEL) > 0) sink = true;
+            if (st.getBlock() == Blocks.CAULDRON && st.get(LayeredCauldronBlock.LEVEL) > 0) sink = true;
             if (mp.getY() < floorY || !st.isAir(w, mp) || w.canSeeSky(mp)) continue;
-            BlockPos pos = mp.toImmutable();
+            BlockPos pos = mp.immutable();
             for (Direction d : Direction.values()) {
-                BlockPos q = pos.offset(d);
+                BlockPos q = pos.relative(d);
                 if (!b.contains(q, 0) || exposed.contains(q)) continue;
                 BlockState qs = w.getBlockState(q);
-                if (qs.isAir(w, q) || !qs.getMaterial().isSolid()) continue;
+                if (qs.isAir(w, q) || !qs.isSolid()) continue;
                 exposed.add(q);
                 if (DIRTY.contains(qs.getBlock())) dirty++;
             }
-            if (pos.getY() <= floorY + 1 && w.getBlockState(pos.down()).getMaterial().isSolid()) {
+            if (pos.getY() <= floorY + 1 && w.getBlockState(pos.below()).isSolid()) {
                 floorSpots++;
-                if (w.getLightFor(LightType.BLOCK, pos) < 8) dark++;
+                if (w.getBrightness(LightLayer.BLOCK, pos) < 8) dark++;
             }
         }
         if (exposed.size() < 25) {
@@ -127,22 +126,22 @@ public final class Inspections {
             if (floorSpots > 0 && dark > floorSpots * 0.3) r.add("Тёмный зал (" + Math.round(dark * 100.0 / floorSpots) + "% пола без света)", 500);
         }
         if (cobweb > 0) r.add("Паутина в торговом зале (" + cobweb + ")", 300);
-        List<MonsterEntity> mobs = w.getEntitiesWithinAABB(MonsterEntity.class, new AxisAlignedBB(b.min, b.max.add(1, 1, 1)));
+        List<Monster> mobs = w.getEntitiesOfClass(Monster.class, new AABB(net.minecraft.world.phys.Vec3.atLowerCornerOf(b.min), net.minecraft.world.phys.Vec3.atLowerCornerOf(b.max.offset(1, 1, 1))));
         if (!mobs.isEmpty()) r.add("Нечисть в заведении (" + mobs.size() + ")", 1500);
         if (food(b.type)) {
             if (!sink) r.add("Нет раковины (котёл с водой)", 400);
             int spoiled = 0;
-            for (BlockPos mp : BlockPos.getAllInBoxMutable(b.min, b.max)) {
-                TileEntity te = w.getTileEntity(mp);
-                if (!(te instanceof IInventory)) continue;
-                IInventory inv = (IInventory) te;
-                for (int i = 0; i < inv.getSizeInventory(); i++) {
-                    ItemStack it = inv.getStackInSlot(i);
+            for (BlockPos mp : BlockPos.betweenClosed(b.min, b.max)) {
+                BlockEntity te = w.getBlockEntity(mp);
+                if (!(te instanceof Container)) continue;
+                Container inv = (Container) te;
+                for (int i = 0; i < inv.getContainerSize(); i++) {
+                    ItemStack it = inv.getItem(i);
                     if (it.isEmpty() || !SPOILED.contains(it.getItem())) continue;
                     spoiled += it.getCount();
-                    if (confiscate) inv.setInventorySlotContents(i, ItemStack.EMPTY);
+                    if (confiscate) inv.setItem(i, ItemStack.EMPTY);
                 }
-                if (confiscate) inv.markDirty();
+                if (confiscate) inv.setChanged();
             }
             r.spoiled = spoiled;
             if (spoiled > 0) r.add("Просрочка/отрава на складе (" + spoiled + " шт., изъято)", 700);
@@ -155,17 +154,17 @@ public final class Inspections {
     // ------------------------------------------------------------------ пожар
 
     /** Где у игрока «своё»: ипотечный дом, заведения, купленная земля рядом. Коробки [min, max] в радиусе r от игрока. */
-    public static List<BlockPos[]> homeBoxes(ServerPlayerEntity p, Account a, EconomyData data, int r) {
+    public static List<BlockPos[]> homeBoxes(ServerPlayer p, Account a, EconomyData data, int r) {
         List<BlockPos[]> l = new ArrayList<>();
         if (a.hasHouse && !a.houseMin.equals(BlockPos.ZERO)) l.add(new BlockPos[]{a.houseMin, a.houseMax});
         for (LegalBusiness b : data.bizOf(a.id)) l.add(new BlockPos[]{b.min, b.max});
-        int py = (int) p.getPosY();
+        int py = (int) p.getY();
         BlockPos[] land = null;
         double best = Double.MAX_VALUE;
         for (Map.Entry<Long, UUID> e : data.landOwners.entrySet()) {
             if (!a.id.equals(e.getValue())) continue;
             int cx = ChunkPos.getX(e.getKey()), cz = ChunkPos.getZ(e.getKey());
-            double dx = cx * 16 + 8 - p.getPosX(), dz = cz * 16 + 8 - p.getPosZ();
+            double dx = cx * 16 + 8 - p.getX(), dz = cz * 16 + 8 - p.getZ();
             double d = dx * dx + dz * dz;
             if (d < best) {
                 best = d;
@@ -174,21 +173,21 @@ public final class Inspections {
         }
         if (land != null) l.add(land);
         l.removeIf(bx -> {
-            double cx = (bx[0].getX() + bx[1].getX()) / 2.0 - p.getPosX(), cz = (bx[0].getZ() + bx[1].getZ()) / 2.0 - p.getPosZ();
+            double cx = (bx[0].getX() + bx[1].getX()) / 2.0 - p.getX(), cz = (bx[0].getZ() + bx[1].getZ()) / 2.0 - p.getZ();
             return cx * cx + cz * cz > r * r;
         });
         return l;
     }
 
     /** Места, где может вспыхнуть: горючий блок, над ним воздух. */
-    public static List<BlockPos> fireSpots(World w, BlockPos min, BlockPos max, int n, Random rnd, @Nullable EconomyData data) {
+    public static List<BlockPos> fireSpots(Level w, BlockPos min, BlockPos max, int n, Random rnd, EconomyData data) {
         List<BlockPos> cand = new ArrayList<>();
-        for (BlockPos mp : BlockPos.getAllInBoxMutable(min, max)) {
+        for (BlockPos mp : BlockPos.betweenClosed(min, max)) {
             BlockState st = w.getBlockState(mp);
             if (st.isAir(w, mp) || !st.isFlammable(w, mp, Direction.UP)) continue;
-            BlockPos up = mp.up();
-            if (!w.isAirBlock(up) || (data != null && data.isProtected(up))) continue;
-            cand.add(up.toImmutable());
+            BlockPos up = mp.above();
+            if (!w.isEmptyBlock(up) || (data != null && data.isProtected(up))) continue;
+            cand.add(up.immutable());
         }
         Collections.shuffle(cand, rnd);
         List<BlockPos> out = new ArrayList<>();
@@ -201,26 +200,26 @@ public final class Inspections {
         return out;
     }
 
-    public static int ignite(World w, List<BlockPos> spots) {
+    public static int ignite(Level w, List<BlockPos> spots) {
         int n = 0;
-        for (BlockPos p : spots) if (w.isAirBlock(p)) { w.setBlockState(p, Blocks.FIRE.getDefaultState(), 11); n++; }
+        for (BlockPos p : spots) if (w.isEmptyBlock(p)) { w.setBlockState(p, Blocks.FIRE.defaultBlockState(), 11); n++; }
         return n;
     }
 
-    public static int countFire(World w, BlockPos min, BlockPos max) {
+    public static int countFire(Level w, BlockPos min, BlockPos max) {
         int n = 0;
-        for (BlockPos mp : BlockPos.getAllInBoxMutable(min, max)) {
+        for (BlockPos mp : BlockPos.betweenClosed(min, max)) {
             Block b = w.getBlockState(mp).getBlock();
             if (b == Blocks.FIRE || b == Blocks.SOUL_FIRE) n++;
         }
         return n;
     }
 
-    public static int extinguish(World w, BlockPos min, BlockPos max) {
+    public static int extinguish(Level w, BlockPos min, BlockPos max) {
         int n = 0;
-        for (BlockPos mp : BlockPos.getAllInBoxMutable(min, max)) {
+        for (BlockPos mp : BlockPos.betweenClosed(min, max)) {
             Block b = w.getBlockState(mp).getBlock();
-            if (b == Blocks.FIRE || b == Blocks.SOUL_FIRE) { w.setBlockState(mp.toImmutable(), Blocks.AIR.getDefaultState(), 3); n++; }
+            if (b == Blocks.FIRE || b == Blocks.SOUL_FIRE) { w.setBlockState(mp.immutable(), Blocks.AIR.defaultBlockState(), 3); n++; }
         }
         return n;
     }
@@ -228,30 +227,30 @@ public final class Inspections {
     // ------------------------------------------------------------------ обвал
 
     /** Блоки потолка над точкой, которые обвалятся (природная порода, 1–2 слоя, радиус 2). */
-    public static List<BlockPos> caveIn(World w, BlockPos at, @Nullable EconomyData data) {
+    public static List<BlockPos> caveIn(Level w, BlockPos at, EconomyData data) {
         List<BlockPos> l = new ArrayList<>();
         for (int dx = -2; dx <= 2; dx++)
             for (int dz = -2; dz <= 2; dz++) {
                 if (Math.abs(dx) == 2 && Math.abs(dz) == 2) continue;
-                BlockPos c = at.add(dx, 1, dz);
+                BlockPos c = at.offset(dx, 1, dz);
                 int y = 0;
-                while (y < 6 && w.isAirBlock(c.up(y))) y++;
+                while (y < 6 && w.isEmptyBlock(c.above(y))) y++;
                 if (y >= 6) continue;
                 for (int k = 0; k < 2; k++) {
-                    BlockPos q = c.up(y + k);
+                    BlockPos q = c.above(y + k);
                     if (q.getY() > 250) break;
                     if (!ROCK.contains(w.getBlockState(q).getBlock()) || (data != null && data.isProtected(q))) break;
-                    l.add(q.toImmutable());
+                    l.add(q.immutable());
                 }
             }
         return l;
     }
 
-    public static int collapse(World w, List<BlockPos> blocks) {
+    public static int collapse(Level w, List<BlockPos> blocks) {
         int n = 0;
         for (BlockPos q : blocks) {
             if (!ROCK.contains(w.getBlockState(q).getBlock())) continue;
-            w.setBlockState(q, Blocks.GRAVEL.getDefaultState(), 3);
+            w.setBlockState(q, Blocks.GRAVEL.defaultBlockState(), 3);
             n++;
         }
         return n;
@@ -260,15 +259,15 @@ public final class Inspections {
     // ------------------------------------------------------------------ домушник
 
     /** Непустой сундук/бочка в своих коробках (самый «жирный» из случайных трёх). */
-    @Nullable
-    public static BlockPos burglarTarget(World w, List<BlockPos[]> boxes, Random rnd) {
+    
+    public static BlockPos burglarTarget(Level w, List<BlockPos[]> boxes, Random rnd) {
         List<BlockPos> chests = new ArrayList<>();
         for (BlockPos[] bx : boxes)
-            for (BlockPos mp : BlockPos.getAllInBoxMutable(bx[0], bx[1])) {
-                TileEntity te = w.getTileEntity(mp);
-                if (!(te instanceof IInventory) || ((IInventory) te).isEmpty()) continue;
+            for (BlockPos mp : BlockPos.betweenClosed(bx[0], bx[1])) {
+                BlockEntity te = w.getBlockEntity(mp);
+                if (!(te instanceof Container) || ((Container) te).isEmpty()) continue;
                 if (te.getClass().getName().contains("reallife")) continue; // кассы, станки, полки бизнеса не трогает
-                chests.add(mp.toImmutable());
+                chests.add(mp.immutable());
                 if (chests.size() > 64) break;
             }
         if (chests.isEmpty()) return null;

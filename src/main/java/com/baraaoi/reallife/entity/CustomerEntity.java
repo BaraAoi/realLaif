@@ -3,28 +3,27 @@ package com.baraaoi.reallife.entity;
 import com.baraaoi.reallife.economy.BizType;
 import com.baraaoi.reallife.economy.EconomyData;
 import com.baraaoi.reallife.economy.LegalBusiness;
-import net.minecraft.block.BlockState;
-import net.minecraft.entity.CreatureEntity;
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.ai.RandomPositionGenerator;
-import net.minecraft.entity.ai.goal.Goal;
-import net.minecraft.entity.ai.goal.LookAtGoal;
-import net.minecraft.entity.ai.goal.LookRandomlyGoal;
-import net.minecraft.entity.ai.goal.OpenDoorGoal;
-import net.minecraft.entity.ai.goal.SwimGoal;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.nbt.CompoundNBT;
-import net.minecraft.network.datasync.DataParameter;
-import net.minecraft.network.datasync.DataSerializers;
-import net.minecraft.network.datasync.EntityDataManager;
-import net.minecraft.pathfinding.GroundPathNavigator;
-import net.minecraft.util.DamageSource;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.vector.Vector3d;
-import net.minecraft.util.text.StringTextComponent;
-import net.minecraft.world.World;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.entity.PathfinderMob;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.ai.util.DefaultRandomPos;
+import net.minecraft.world.entity.ai.goal.Goal;
+import net.minecraft.world.entity.ai.goal.LookAtPlayerGoal;
+import net.minecraft.world.entity.ai.goal.RandomLookAroundGoal;
+import net.minecraft.world.entity.ai.goal.OpenDoorGoal;
+import net.minecraft.world.entity.ai.goal.FloatGoal;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.syncher.EntityDataAccessor;
+import net.minecraft.network.syncher.EntityDataSerializers;
+import net.minecraft.network.syncher.SynchedEntityData;
+import net.minecraft.world.entity.ai.navigation.GroundPathNavigation;
+import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.level.Level;
 
-import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
@@ -34,9 +33,9 @@ import java.util.List;
  * открывает двери, подходит к кассе и к паре единиц оборудования, задерживается, бормочет заказ — и уходит.
  * Косметика: на выручку не влияет, но считается в «покупателях за день».
  */
-public class CustomerEntity extends CreatureEntity {
+public class CustomerEntity extends PathfinderMob {
     public static final int VARIANTS = 6;
-    private static final DataParameter<Integer> VARIANT = EntityDataManager.createKey(CustomerEntity.class, DataSerializers.VARINT);
+    private static final EntityDataAccessor<Integer> VARIANT = SynchedEntityData.defineId(CustomerEntity.class, EntityDataSerializers.INT);
 
     private static final String[][] ORDER = {
             {"Одну шаурму, сырную, без лука!", "А шаурма сегодняшняя? Точно-точно?", "Две с собой, и соуса побольше!"},
@@ -53,54 +52,54 @@ public class CustomerEntity extends CreatureEntity {
     public int life = 3000;
     /** 0 — к точкам заведения, 1 — уходит. */
     public int stage;
-    @Nullable
+    
     public BlockPos counter;
     public final List<BlockPos> targets = new ArrayList<>();
     private int leaveTicks;
     private boolean served;
 
-    public CustomerEntity(EntityType<? extends CreatureEntity> type, World world) {
-        super(type, world);
-        if (this.getNavigator() instanceof GroundPathNavigator) ((GroundPathNavigator) this.getNavigator()).setBreakDoors(true);
+    public CustomerEntity(EntityType<? extends PathfinderMob> type, Level level) {
+        super(type, level);
+        if (this.getNavigation() instanceof GroundPathNavigation) ((GroundPathNavigation) this.getNavigation()).setCanOpenDoors(true);
     }
 
     @Override
-    protected void registerData() {
-        super.registerData();
-        this.dataManager.register(VARIANT, 0);
+    protected void defineSynchedData(net.minecraft.network.syncher.SynchedEntityData.Builder builder) {
+        super.defineSynchedData(builder);
+        builder.define(VARIANT, 0);
     }
 
     public int getVariant() {
-        return Math.max(0, Math.min(VARIANTS - 1, this.dataManager.get(VARIANT)));
+        return Math.max(0, Math.min(VARIANTS - 1, this.entityData.get(VARIANT)));
     }
 
     public void setVariant(int v) {
-        this.dataManager.set(VARIANT, Math.floorMod(v, VARIANTS));
+        this.entityData.set(VARIANT, Math.floorMod(v, VARIANTS));
     }
 
     @Override
     protected void registerGoals() {
-        this.goalSelector.addGoal(0, new SwimGoal(this));
+        this.goalSelector.addGoal(0, new FloatGoal(this));
         this.goalSelector.addGoal(1, new OpenDoorGoal(this, true));
         this.goalSelector.addGoal(2, new ShopGoal());
-        this.goalSelector.addGoal(6, new LookAtGoal(this, PlayerEntity.class, 6.0F));
-        this.goalSelector.addGoal(7, new LookRandomlyGoal(this));
+        this.goalSelector.addGoal(6, new LookAtPlayerGoal(this, Player.class, 6.0F));
+        this.goalSelector.addGoal(7, new RandomLookAroundGoal(this));
     }
 
-    @Nullable
+    
     LegalBusiness biz() {
-        if (this.getServer() == null || bizId < 0) return null;
-        return EconomyData.get(this.getServer()).bizById(bizId);
+        if (this.level().getServer() == null || bizId < 0) return null;
+        return EconomyData.get(this.level().getServer()).bizById(bizId);
     }
 
     @Override
-    public void livingTick() {
-        super.livingTick();
-        if (world.isRemote) return;
+    public void aiStep() {
+        super.aiStep();
+        if (this.level().isClientSide()) return;
         life--;
         if (stage == 1) leaveTicks++;
-        boolean far = counter == null || this.getDistanceSq(counter.getX() + 0.5, counter.getY(), counter.getZ() + 0.5) > 22 * 22;
-        if (life <= 0 || (stage == 1 && (far || leaveTicks > 400))) this.remove();
+        boolean far = counter == null || this.distanceToSqr(counter.getX() + 0.5, counter.getY(), counter.getZ() + 0.5) > 22 * 22;
+        if (life <= 0 || (stage == 1 && (far || leaveTicks > 400))) this.discard();
         else if (stage == 0 && life < 600) startLeaving();
     }
 
@@ -108,15 +107,15 @@ public class CustomerEntity extends CreatureEntity {
         if (stage == 1) return;
         stage = 1;
         leaveTicks = 0;
-        this.getNavigator().clearPath();
+        this.getNavigation().stop();
     }
 
     /** Сказать фразу игрокам рядом. */
     public void say(String text, double radius) {
-        if (world.isRemote) return;
-        for (PlayerEntity p : world.getPlayers()) {
-            if (p.getDistanceSq(this) <= radius * radius) {
-                p.sendStatusMessage(new StringTextComponent("§7<§fПокупатель§7> §f" + text), false);
+        if (this.level().isClientSide()) return;
+        for (Player p : this.level().players()) {
+            if (p.distanceToSqr(this) <= radius * radius) {
+                p.sendSystemMessage(Component.literal("§7<§fПокупатель§7> §f" + text));
             }
         }
     }
@@ -125,58 +124,58 @@ public class CustomerEntity extends CreatureEntity {
         LegalBusiness b = biz();
         BizType t = b == null ? BizType.MINIMARKET : b.type;
         String[] l = ORDER[t.ordinal() % ORDER.length];
-        return l[rand.nextInt(l.length)];
+        return l[random.nextInt(l.length)];
     }
 
     @Override
-    public boolean attackEntityFrom(DamageSource source, float amount) {
-        boolean r = super.attackEntityFrom(source, amount);
-        if (!world.isRemote && this.isAlive() && source.getTrueSource() instanceof PlayerEntity && stage == 0) {
-            say(HIT[rand.nextInt(HIT.length)], 12);
+    public boolean hurtServer(net.minecraft.server.level.ServerLevel level, DamageSource source, float amount) {
+        boolean r = super.hurtServer(level, source, amount);
+        if (!this.level().isClientSide() && this.isAlive() && source.getEntity() instanceof Player && stage == 0) {
+            say(HIT[random.nextInt(HIT.length)], 12);
             startLeaving();
         }
         return r;
     }
 
     /** ПКМ игроком (из ForgeEvents). */
-    public void talkTo(PlayerEntity player) {
-        player.sendStatusMessage(new StringTextComponent("§7<§fПокупатель§7> §f" + (stage == 0 ? orderLine() : BYE[rand.nextInt(BYE.length)])), false);
+    public void talkTo(Player player) {
+        player.sendSystemMessage(Component.literal("§7<§fПокупатель§7> §f" + (stage == 0 ? orderLine() : BYE[random.nextInt(BYE.length)])));
     }
 
     @Override
-    public boolean canDespawn(double distanceToClosestPlayer) {
+    public boolean removeWhenFarAway(double distanceToClosestPlayer) {
         return false;
     }
 
     @Override
-    public void writeAdditional(CompoundNBT nbt) {
-        super.writeAdditional(nbt);
+    protected void addAdditionalSaveData(net.minecraft.world.level.storage.ValueOutput nbt) {
+        super.addAdditionalSaveData(nbt);
         nbt.putInt("Biz", bizId);
         nbt.putInt("Life", life);
         nbt.putInt("Variant", getVariant());
-        if (counter != null) nbt.putLong("Counter", counter.toLong());
+        if (counter != null) nbt.putLong("Counter", counter.asLong());
     }
 
     @Override
-    public void readAdditional(CompoundNBT nbt) {
-        super.readAdditional(nbt);
-        bizId = nbt.getInt("Biz");
-        life = Math.min(600, nbt.contains("Life") ? nbt.getInt("Life") : 600); // после загрузки мира — быстро уходит
-        setVariant(nbt.getInt("Variant"));
-        counter = nbt.contains("Counter") ? BlockPos.fromLong(nbt.getLong("Counter")) : null;
+    protected void readAdditionalSaveData(net.minecraft.world.level.storage.ValueInput nbt) {
+        super.readAdditionalSaveData(nbt);
+        bizId = nbt.getIntOr("Biz", 0);
+        life = Math.min(600, nbt.getIntOr("Life", 600)); // после загрузки мира — быстро уходит
+        setVariant(nbt.getIntOr("Variant", 0));
+        counter = nbt.getLong("Counter").map(BlockPos::of).orElse(null);
         stage = 1;
     }
 
     /** Место, где можно встать рядом с target. */
-    @Nullable
+    
     BlockPos standNear(BlockPos target) {
         for (int i = 0; i < 30; i++) {
-            int dx = rand.nextInt(3) - 1, dz = rand.nextInt(3) - 1, dy = rand.nextInt(3) - 1;
+            int dx = random.nextInt(3) - 1, dz = random.nextInt(3) - 1, dy = random.nextInt(3) - 1;
             if (dx == 0 && dz == 0) continue;
-            BlockPos p = target.add(dx, dy, dz);
-            if (!world.isBlockLoaded(p)) continue;
-            BlockState below = world.getBlockState(p.down());
-            if (world.isAirBlock(p) && world.isAirBlock(p.up()) && below.getMaterial().isSolid()) return p;
+            BlockPos p = target.offset(dx, dy, dz);
+            if (!this.level().isLoaded(p)) continue;
+            BlockState below = this.level().getBlockState(p.below());
+            if (this.level().isEmptyBlock(p) && this.level().isEmptyBlock(p.above()) && below.isSolid()) return p;
         }
         return null;
     }
@@ -189,21 +188,21 @@ public class CustomerEntity extends CreatureEntity {
         private int timeout;
 
         ShopGoal() {
-            this.setMutexFlags(EnumSet.of(Goal.Flag.MOVE, Goal.Flag.LOOK));
+            this.setFlags(EnumSet.of(Goal.Flag.MOVE, Goal.Flag.LOOK));
         }
 
         @Override
-        public boolean shouldExecute() {
+        public boolean canUse() {
             CustomerEntity me = CustomerEntity.this;
             if (stage == 1) {
-                Vector3d from = counter == null ? me.getPositionVec() : new Vector3d(counter.getX() + 0.5, counter.getY(), counter.getZ() + 0.5);
-                Vector3d v = RandomPositionGenerator.findRandomTargetBlockAwayFrom(me, 24, 7, from);
+                Vec3 from = counter == null ? me.position() : new Vec3(counter.getX() + 0.5, counter.getY(), counter.getZ() + 0.5);
+                Vec3 v = DefaultRandomPos.getPosAway(me, 24, 7, from);
                 if (v == null) return false;
-                goal = new BlockPos(v);
+                goal = BlockPos.containing(v);
                 look = null;
                 linger = 0;
                 timeout = 400;
-                return me.getNavigator().tryMoveToXYZ(v.x, v.y, v.z, 0.8D);
+                return me.getNavigation().moveTo(v.x, v.y, v.z, 0.8D);
             }
             while (!targets.isEmpty()) {
                 look = targets.remove(0);
@@ -214,14 +213,14 @@ public class CustomerEntity extends CreatureEntity {
                 if (targets.isEmpty()) startLeaving();
                 return false;
             }
-            linger = 60 + rand.nextInt(100);
+            linger = 60 + random.nextInt(100);
             timeout = 600;
-            return me.getNavigator().tryMoveToXYZ(goal.getX() + 0.5, goal.getY(), goal.getZ() + 0.5, 0.7D);
+            return me.getNavigation().moveTo(goal.getX() + 0.5, goal.getY(), goal.getZ() + 0.5, 0.7D);
         }
 
         @Override
-        public boolean shouldContinueExecuting() {
-            if (stage == 1) return goal != null && timeout > 0 && !CustomerEntity.this.getNavigator().noPath();
+        public boolean canContinueToUse() {
+            if (stage == 1) return goal != null && timeout > 0 && !CustomerEntity.this.getNavigation().isDone();
             return goal != null && linger > 0 && timeout > 0;
         }
 
@@ -230,30 +229,30 @@ public class CustomerEntity extends CreatureEntity {
             CustomerEntity me = CustomerEntity.this;
             timeout--;
             if (stage == 1 || goal == null) return;
-            boolean near = me.getDistanceSq(goal.getX() + 0.5, goal.getY(), goal.getZ() + 0.5) < 1.8D * 1.8D;
+            boolean near = me.distanceToSqr(goal.getX() + 0.5, goal.getY(), goal.getZ() + 0.5) < 1.8D * 1.8D;
             if (near) {
-                if (look != null) me.getLookController().setLookPosition(look.getX() + 0.5, look.getY() + 0.5, look.getZ() + 0.5, 10F, 40F);
+                if (look != null) me.getLookControl().setLookAt(look.getX() + 0.5, look.getY() + 0.5, look.getZ() + 0.5, 10F, 40F);
                 if (linger == 40 && look != null && look.equals(counter) && !served) {
                     served = true;
                     LegalBusiness b = biz();
                     if (b != null) b.customersToday++;
-                    if (rand.nextInt(3) == 0) say(orderLine(), 10);
+                    if (random.nextInt(3) == 0) say(orderLine(), 10);
                 }
                 linger--;
-            } else if (me.getNavigator().noPath()) {
-                if (timeout % 40 == 0) me.getNavigator().tryMoveToXYZ(goal.getX() + 0.5, goal.getY(), goal.getZ() + 0.5, 0.7D);
+            } else if (me.getNavigation().isDone()) {
+                if (timeout % 40 == 0) me.getNavigation().moveTo(goal.getX() + 0.5, goal.getY(), goal.getZ() + 0.5, 0.7D);
                 linger -= 2;
             }
         }
 
         @Override
-        public void resetTask() {
+        public void stop() {
             boolean wasCounter = look != null && look.equals(counter);
             goal = null;
             look = null;
-            CustomerEntity.this.getNavigator().clearPath();
+            CustomerEntity.this.getNavigation().stop();
             if (stage == 0 && targets.isEmpty()) {
-                if (wasCounter || served) { if (rand.nextInt(4) == 0) say(BYE[rand.nextInt(BYE.length)], 8); }
+                if (wasCounter || served) { if (random.nextInt(4) == 0) say(BYE[random.nextInt(BYE.length)], 8); }
                 startLeaving();
             }
         }

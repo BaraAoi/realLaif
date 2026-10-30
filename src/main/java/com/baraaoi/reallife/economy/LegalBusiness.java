@@ -1,8 +1,9 @@
 package com.baraaoi.reallife.economy;
 
-import net.minecraft.nbt.CompoundNBT;
-import net.minecraft.nbt.ListNBT;
-import net.minecraft.util.math.BlockPos;
+import com.baraaoi.reallife.util.Nbt;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.core.BlockPos;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -50,8 +51,8 @@ public class LegalBusiness {
     public boolean customZone;
 
     public void setZone(BlockPos zmin, BlockPos zmax) {
-        min = zmin.toImmutable();
-        max = zmax.toImmutable();
+        min = zmin.immutable();
+        max = zmax.immutable();
         customZone = true;
     }
 
@@ -60,9 +61,9 @@ public class LegalBusiness {
     }
 
     public void setCounter(BlockPos c) {
-        counter = c.toImmutable();
-        min = c.add(-R_XZ, -R_DOWN, -R_XZ);
-        max = c.add(R_XZ, R_UP, R_XZ);
+        counter = c.immutable();
+        min = c.offset(-R_XZ, -R_DOWN, -R_XZ);
+        max = c.offset(R_XZ, R_UP, R_XZ);
     }
 
     public boolean contains(BlockPos p, int grow) {
@@ -82,17 +83,17 @@ public class LegalBusiness {
         return launderDay == today ? launderedToday : 0;
     }
 
-    public CompoundNBT write() {
-        CompoundNBT t = new CompoundNBT();
+    public CompoundTag write() {
+        CompoundTag t = new CompoundTag();
         t.putInt("id", id);
-        if (owner != null) t.putUniqueId("owner", owner);
+        if (owner != null) Nbt.putUUID(t, "owner", owner);
         t.putString("ownerName", ownerName);
         t.putInt("type", type.ordinal());
-        t.putLong("counter", counter.toLong());
-        ListNBT wl = new ListNBT();
+        t.putLong("counter", counter.asLong());
+        ListTag wl = new ListTag();
         for (UUID u : workers) {
-            CompoundNBT w = new CompoundNBT();
-            w.putUniqueId("u", u);
+            CompoundTag w = new CompoundTag();
+            Nbt.putUUID(w, "u", u);
             wl.add(w);
         }
         t.put("workers", wl);
@@ -111,44 +112,44 @@ public class LegalBusiness {
         t.putInt("mallId", mallId);
         t.putInt("mallUnit", mallUnit);
         if (customZone) {
-            t.putLong("zmin", min.toLong());
-            t.putLong("zmax", max.toLong());
+            t.putLong("zmin", min.asLong());
+            t.putLong("zmax", max.asLong());
         }
         return t;
     }
 
-    public static LegalBusiness read(CompoundNBT t) {
+    public static LegalBusiness read(CompoundTag t) {
         LegalBusiness b = new LegalBusiness();
-        b.id = t.getInt("id");
-        b.owner = t.hasUniqueId("owner") ? t.getUniqueId("owner") : null;
-        b.ownerName = t.getString("ownerName");
-        BizType bt = BizType.byId(t.getInt("type"));
+        b.id = t.getIntOr("id", 0);
+        b.owner = Nbt.hasUUID(t, "owner") ? Nbt.getUUID(t, "owner") : null;
+        b.ownerName = t.getStringOr("ownerName", "");
+        BizType bt = BizType.byId(t.getIntOr("type", 0));
         b.type = bt == null ? BizType.SHAWARMA : bt;
-        b.setCounter(BlockPos.fromLong(t.getLong("counter")));
+        b.setCounter(BlockPos.of(t.getLongOr("counter", 0L)));
         if (t.contains("workers")) {
-            ListNBT wl = t.getList("workers", 10);
+            ListTag wl = t.getListOrEmpty("workers");
             for (int i = 0; i < wl.size(); i++) {
-                CompoundNBT w = wl.getCompound(i);
-                if (w.hasUniqueId("u")) b.workers.add(w.getUniqueId("u"));
+                CompoundTag w = wl.getCompoundOrEmpty(i);
+                if (Nbt.hasUUID(w, "u")) b.workers.add(Nbt.getUUID(w, "u"));
             }
-        } else if (t.getBoolean("worker") && t.hasUniqueId("workerId")) {
-            b.workers.add(t.getUniqueId("workerId")); // сохранение v5
+        } else if (t.getBooleanOr("worker", false) && Nbt.hasUUID(t, "workerId")) {
+            b.workers.add(Nbt.getUUID(t, "workerId")); // сохранение v5
         }
-        b.lastProfit = t.getDouble("lastProfit");
-        b.lastNote = t.getString("lastNote");
-        b.totalProfit = t.getDouble("totalProfit");
-        b.days = t.getInt("days");
-        b.launderDay = t.contains("launderDay") ? t.getLong("launderDay") : -1;
-        b.launderedToday = t.getDouble("launderedToday");
-        b.cacheSets = t.getInt("cacheSets");
-        b.cacheStock = t.getInt("cacheStock");
-        b.sealedUntil = t.getLong("sealedUntil");
-        b.sealReason = t.getString("sealReason");
-        b.docsUntil = t.getLong("docsUntil");
-        b.docsWorkers = t.getInt("docsWorkers");
-        b.mallId = t.contains("mallId") ? t.getInt("mallId") : -1;
-        b.mallUnit = t.contains("mallUnit") ? t.getInt("mallUnit") : -1;
-        if (t.contains("zmin")) b.setZone(BlockPos.fromLong(t.getLong("zmin")), BlockPos.fromLong(t.getLong("zmax")));
+        b.lastProfit = t.getDoubleOr("lastProfit", 0.0);
+        b.lastNote = t.getStringOr("lastNote", "");
+        b.totalProfit = t.getDoubleOr("totalProfit", 0.0);
+        b.days = t.getIntOr("days", 0);
+        b.launderDay = t.contains("launderDay") ? t.getLongOr("launderDay", 0L) : -1;
+        b.launderedToday = t.getDoubleOr("launderedToday", 0.0);
+        b.cacheSets = t.getIntOr("cacheSets", 0);
+        b.cacheStock = t.getIntOr("cacheStock", 0);
+        b.sealedUntil = t.getLongOr("sealedUntil", 0L);
+        b.sealReason = t.getStringOr("sealReason", "");
+        b.docsUntil = t.getLongOr("docsUntil", 0L);
+        b.docsWorkers = t.getIntOr("docsWorkers", 0);
+        b.mallId = t.contains("mallId") ? t.getIntOr("mallId", 0) : -1;
+        b.mallUnit = t.contains("mallUnit") ? t.getIntOr("mallUnit", 0) : -1;
+        if (t.contains("zmin")) b.setZone(BlockPos.of(t.getLongOr("zmin", 0L)), BlockPos.of(t.getLongOr("zmax", 0L)));
         return b;
     }
 }

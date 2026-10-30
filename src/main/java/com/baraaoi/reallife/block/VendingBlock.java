@@ -1,15 +1,12 @@
 package com.baraaoi.reallife.block;
 
-import com.baraaoi.reallife.economy.Trades;
-import com.baraaoi.reallife.economy.VendingMerchant;
-import net.minecraft.block.BlockState;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.util.ActionResultType;
-import net.minecraft.util.Hand;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.BlockRayTraceResult;
-import net.minecraft.util.text.StringTextComponent;
-import net.minecraft.world.World;
+import net.minecraft.core.BlockPos;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.BlockHitResult;
 
 /** Торговый автомат: интерфейс торговли за купюры (как у жителя). */
 public class VendingBlock extends DecorBlock {
@@ -21,14 +18,13 @@ public class VendingBlock extends DecorBlock {
     }
 
     @Override
-    @SuppressWarnings("deprecation")
-    public ActionResultType onBlockActivated(BlockState state, World world, BlockPos pos, PlayerEntity player, Hand hand, BlockRayTraceResult hit) {
-        if (!world.isRemote) {
-            VendingMerchant m = new VendingMerchant(player, Trades.vending(kind));
-            m.setCustomer(player);
-            m.openMerchantContainer(player, new StringTextComponent(kind == Trades.VENDING_FOOD
+    protected InteractionResult useWithoutItem(BlockState state, Level world, BlockPos pos, Player player, BlockHitResult hit) {
+        if (!world.isClientSide() && player instanceof ServerPlayer sp) {
+            com.baraaoi.reallife.economy.VendingMerchant m = new com.baraaoi.reallife.economy.VendingMerchant(sp, com.baraaoi.reallife.economy.Trades.vending(kind));
+            m.setTradingPlayer(sp);
+            m.openTradingScreen(sp, net.minecraft.network.chat.Component.literal(kind == com.baraaoi.reallife.economy.Trades.VENDING_FOOD
                     ? "Автомат «Перекус»" : "Автомат «Всё для дома»"), 1);
         }
-        return ActionResultType.SUCCESS;
+        return InteractionResult.SUCCESS;
     }
 }

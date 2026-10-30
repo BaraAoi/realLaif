@@ -2,16 +2,16 @@ package com.baraaoi.reallife.container;
 
 import com.baraaoi.reallife.item.DirtyMoneyItem;
 import com.baraaoi.reallife.registry.ModContainers;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.entity.player.PlayerInventory;
-import net.minecraft.inventory.Inventory;
-import net.minecraft.inventory.container.Container;
-import net.minecraft.inventory.container.Slot;
-import net.minecraft.item.ItemStack;
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.SimpleContainer;
+import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.Slot;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.core.BlockPos;
 
 /** Касса заведения: слот для грязных денег + инвентарь игрока. */
-public class BizContainer extends Container {
+public class BizContainer extends AbstractContainerMenu {
     public static final int WIDTH = 230;
     public static final int HEIGHT = 222;
     public static final int SLOT_X = 200;
@@ -19,15 +19,15 @@ public class BizContainer extends Container {
     public static final int INV_X = 35;
     public static final int INV_Y = 140;
 
-    private final Inventory input = new Inventory(1);
+    private final SimpleContainer input = new SimpleContainer(1);
     private final BlockPos pos;
 
-    public BizContainer(int id, PlayerInventory inv, BlockPos pos) {
+    public BizContainer(int id, Inventory inv, BlockPos pos) {
         super(ModContainers.BIZ.get(), id);
         this.pos = pos;
         this.addSlot(new Slot(input, 0, SLOT_X, SLOT_Y) {
             @Override
-            public boolean isItemValid(ItemStack stack) {
+            public boolean mayPlace(ItemStack stack) {
                 return stack.getItem() instanceof DirtyMoneyItem;
             }
         });
@@ -42,29 +42,29 @@ public class BizContainer extends Container {
         return pos;
     }
 
-    public Inventory getInput() {
+    public SimpleContainer getInput() {
         return input;
     }
 
     @Override
-    public boolean canInteractWith(PlayerEntity player) {
-        return player.getDistanceSq(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5) <= 64.0;
+    public boolean stillValid(Player player) {
+        return player.distanceToSqr(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5) <= 64.0;
     }
 
     @Override
-    public ItemStack transferStackInSlot(PlayerEntity player, int index) {
+    public ItemStack quickMoveStack(Player player, int index) {
         ItemStack result = ItemStack.EMPTY;
-        Slot slot = this.inventorySlots.get(index);
-        if (slot != null && slot.getHasStack()) {
-            ItemStack stack = slot.getStack();
+        Slot slot = this.slots.get(index);
+        if (slot != null && slot.hasItem()) {
+            ItemStack stack = slot.getItem();
             result = stack.copy();
             if (index == 0) {
-                if (!this.mergeItemStack(stack, 1, 37, true)) return ItemStack.EMPTY;
+                if (!this.moveItemStackTo(stack, 1, 37, true)) return ItemStack.EMPTY;
             } else {
-                if (!(stack.getItem() instanceof DirtyMoneyItem) || !this.mergeItemStack(stack, 0, 1, false)) return ItemStack.EMPTY;
+                if (!(stack.getItem() instanceof DirtyMoneyItem) || !this.moveItemStackTo(stack, 0, 1, false)) return ItemStack.EMPTY;
             }
-            if (stack.isEmpty()) slot.putStack(ItemStack.EMPTY);
-            else slot.onSlotChanged();
+            if (stack.isEmpty()) slot.set(ItemStack.EMPTY);
+            else slot.setChanged();
             if (stack.getCount() == result.getCount()) return ItemStack.EMPTY;
             slot.onTake(player, stack);
         }
@@ -72,8 +72,8 @@ public class BizContainer extends Container {
     }
 
     @Override
-    public void onContainerClosed(PlayerEntity player) {
-        super.onContainerClosed(player);
-        this.clearContainer(player, player.world, input);
+    public void removed(Player player) {
+        super.removed(player);
+        this.clearContainer(player, input);
     }
 }

@@ -1,11 +1,12 @@
 package com.baraaoi.reallife.economy;
 
 import com.baraaoi.reallife.registry.ModItems;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.item.MerchantOffer;
-import net.minecraft.item.MerchantOffers;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.item.trading.ItemCost;
+import net.minecraft.world.item.trading.MerchantOffer;
+import net.minecraft.world.item.trading.MerchantOffers;
 
 /**
  * Ассортимент продавцов в банке и торговых автоматов.
@@ -22,11 +23,11 @@ public class Trades {
     /** v4: цены в магазинах тоже выросли вдвое — вслед за стоимостью предметов. */
     public static final int PRICE_MULT = 2;
 
-    private static ItemStack rub(int amount) {
+    private static ItemCost rub(int amount) {
         amount *= PRICE_MULT;
-        if (amount >= 1000 && amount % 1000 == 0) return new ItemStack(ModItems.BANKNOTE_1000.get(), amount / 1000);
-        if (amount >= 100 && amount % 100 == 0) return new ItemStack(ModItems.BANKNOTE_100.get(), amount / 100);
-        return new ItemStack(ModItems.BANKNOTE_10.get(), Math.max(1, amount / 10));
+        if (amount >= 1000 && amount % 1000 == 0) return new ItemCost(ModItems.BANKNOTE_1000.get(), amount / 1000);
+        if (amount >= 100 && amount % 100 == 0) return new ItemCost(ModItems.BANKNOTE_100.get(), amount / 100);
+        return new ItemCost(ModItems.BANKNOTE_10.get(), Math.max(1, amount / 10));
     }
 
     private static void sell(MerchantOffers o, int price, Item item, int count) {
@@ -34,17 +35,17 @@ public class Trades {
     }
 
     private static void swap(MerchantOffers o, Item in, int inCount, Item out, int outCount) {
-        o.add(new MerchantOffer(new ItemStack(in, inCount), new ItemStack(out, outCount), UNLIMITED, 0, 0.0F));
+        o.add(new MerchantOffer(new ItemCost(in, inCount), new ItemStack(out, outCount), UNLIMITED, 0, 0.0F));
     }
 
     public static MerchantOffers seller(int variant) {
         MerchantOffers o = new MerchantOffers();
         if (variant == SELLER_CASINO) {
-            net.minecraft.potion.Potion[] drinks = {net.minecraft.potion.Potions.SWIFTNESS, net.minecraft.potion.Potions.STRENGTH,
-                    net.minecraft.potion.Potions.LEAPING, net.minecraft.potion.Potions.NIGHT_VISION, net.minecraft.potion.Potions.FIRE_RESISTANCE,
-                    net.minecraft.potion.Potions.REGENERATION, net.minecraft.potion.Potions.WATER_BREATHING, net.minecraft.potion.Potions.LUCK};
-            for (net.minecraft.potion.Potion pt : drinks) {
-                o.add(new MerchantOffer(rub(100), net.minecraft.potion.PotionUtils.addPotionToItemStack(new ItemStack(Items.POTION), pt), UNLIMITED, 0, 0.0F));
+            java.util.List<net.minecraft.core.Holder<net.minecraft.world.item.alchemy.Potion>> drinks = java.util.List.of (net.minecraft.world.item.alchemy.Potions.SWIFTNESS, net.minecraft.world.item.alchemy.Potions.STRENGTH,
+                    net.minecraft.world.item.alchemy.Potions.LEAPING, net.minecraft.world.item.alchemy.Potions.NIGHT_VISION, net.minecraft.world.item.alchemy.Potions.FIRE_RESISTANCE,
+                    net.minecraft.world.item.alchemy.Potions.REGENERATION, net.minecraft.world.item.alchemy.Potions.WATER_BREATHING, net.minecraft.world.item.alchemy.Potions.LUCK);
+            for (net.minecraft.core.Holder<net.minecraft.world.item.alchemy.Potion> pt : drinks) {
+                o.add(new MerchantOffer(rub(100), net.minecraft.world.item.alchemy.PotionContents.createItemStack(Items.POTION, pt), UNLIMITED, 0, 0.0F));
             }
             sell(o, 10, Items.HONEY_BOTTLE, 2);
             sell(o, 10, Items.MILK_BUCKET, 1);

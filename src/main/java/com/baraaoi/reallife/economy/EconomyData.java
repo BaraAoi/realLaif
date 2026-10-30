@@ -1,15 +1,16 @@
 package com.baraaoi.reallife.economy;
 
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.nbt.CompoundNBT;
-import net.minecraft.nbt.INBT;
-import net.minecraft.nbt.ListNBT;
+import com.baraaoi.reallife.util.Nbt;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.Tag;
+import net.minecraft.nbt.ListTag;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.ChunkPos;
-import net.minecraft.world.World;
-import net.minecraft.world.server.ServerWorld;
-import net.minecraft.world.storage.WorldSavedData;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.Level;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.saveddata.SavedData;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -23,7 +24,7 @@ import java.util.UUID;
 /**
  * Хранилище всех счетов, земли и построек мода (сохраняется вместе с миром, в overworld).
  */
-public class EconomyData extends WorldSavedData {
+public class EconomyData extends SavedData {
     public static final String NAME = "reallife_economy";
 
     private final Map<UUID, Account> accounts = new HashMap<>();
@@ -69,23 +70,32 @@ public class EconomyData extends WorldSavedData {
     /** Кто сколько блоков поставил в каждом чанке: чанк -> игрок -> позиции. */
     public final Map<Long, Map<UUID, Set<Long>>> placed = new HashMap<>();
 
+    public static final net.minecraft.world.level.saveddata.SavedDataType<EconomyData> TYPE = new net.minecraft.world.level.saveddata.SavedDataType<>(
+            net.minecraft.resources.Identifier.fromNamespaceAndPath("reallife", "economy"), EconomyData::new,
+            CompoundTag.CODEC.xmap(EconomyData::fromTag, d -> d.write(new CompoundTag())), null);
+
     public EconomyData() {
-        super(NAME);
     }
 
-    public static ServerWorld overworld(MinecraftServer server) {
-        return server.getWorld(World.OVERWORLD);
+    private static EconomyData fromTag(CompoundTag tag) {
+        EconomyData d = new EconomyData();
+        d.read(tag);
+        return d;
+    }
+
+    public static ServerLevel overworld(MinecraftServer server) {
+        return server.overworld();
     }
 
     public static EconomyData get(MinecraftServer server) {
-        return overworld(server).getSavedData().getOrCreate(EconomyData::new, NAME);
+        return server.getDataStorage().computeIfAbsent(TYPE);
     }
 
-    public Account get(PlayerEntity player) {
-        Account a = accounts.computeIfAbsent(player.getUniqueID(), Account::new);
-        a.name = player.getGameProfile().getName();
-        if (a.createdDay < 0 && player.world != null) {
-            a.createdDay = player.world.getDayTime() / 24000L;
+    public Account get(Player player) {
+        Account a = accounts.computeIfAbsent(player.getUUID(), Account::new);
+        a.name = player.getGameProfile().name();
+        if (a.createdDay < 0 && player.level() != null) {
+            a.createdDay = player.level().getOverworldClockTime() / 24000L;
         }
         return a;
     }
@@ -104,13 +114,13 @@ public class EconomyData extends WorldSavedData {
 
     public void reset(UUID id) {
         accounts.remove(id);
-        markDirty();
+        setDirty();
     }
 
     // ------------------------------------------------------------ земля
 
     public static long chunkKey(BlockPos pos) {
-        return ChunkPos.asLong(pos.getX() >> 4, pos.getZ() >> 4);
+        return ChunkPos.pack(pos.getX() >> 4, pos.getZ() >> 4);
     }
 
     public UUID owner(long chunk) {
@@ -120,7 +130,7 @@ public class EconomyData extends WorldSavedData {
     public void claim(UUID player, long chunk) {
         landOwners.put(chunk, player);
         placed.remove(chunk);
-        markDirty();
+        setDirty();
     }
 
     public int ownedCount(UUID player) {
@@ -138,8 +148,8 @@ public class EconomyData extends WorldSavedData {
 
     public int addPlaced(long chunk, UUID player, BlockPos pos) {
         Set<Long> s = placed.computeIfAbsent(chunk, k -> new HashMap<>()).computeIfAbsent(player, k -> new HashSet<>());
-        s.add(pos.toLong());
-        markDirty();
+        s.add(pos.asLong());
+        setDirty();
         return s.size();
     }
 
@@ -149,14 +159,14 @@ public class EconomyData extends WorldSavedData {
         if (m == null) return false;
         Set<Long> s = m.get(player);
         if (s == null) return false;
-        boolean r = s.remove(pos.toLong());
-        if (r) markDirty();
+        boolean r = s.remove(pos.asLong());
+        if (r) setDirty();
         return r;
     }
 
     public void clearPlaced(long chunk) {
         placed.remove(chunk);
-        markDirty();
+        setDirty();
     }
 
     // ------------------------------------------------------------ постройки
@@ -165,7 +175,7 @@ public class EconomyData extends WorldSavedData {
     public Structure addStructure(Structure st) {
         structures.removeIf(o -> o.type.equals(st.type) && o.min.equals(st.min));
         structures.add(st);
-        markDirty();
+        setDirty();
         return st;
     }
 
@@ -230,82 +240,80 @@ public class EconomyData extends WorldSavedData {
 
     // ------------------------------------------------------------ NBT
 
-    @Override
-    public void read(CompoundNBT nbt) {
+    public void read(CompoundTag nbt) {
         accounts.clear();
-        ListNBT list = nbt.getList("accounts", 10);
-        for (INBT n : list) {
-            Account a = Account.read((CompoundNBT) n);
+        ListTag list = nbt.getListOrEmpty("accounts");
+        for (Tag n : list) {
+            Account a = Account.read((CompoundTag) n);
             accounts.put(a.id, a);
         }
-        lastDay = nbt.getLong("lastDay");
-        jailBuilt = nbt.getBoolean("jailBuilt");
-        jailPos = BlockPos.fromLong(nbt.getLong("jailPos"));
-        pitBuilt = nbt.getBoolean("pitBuilt");
-        pitPos = BlockPos.fromLong(nbt.getLong("pitPos"));
-        spawnBuilt = nbt.getBoolean("spawnBuilt");
-        spawnVersion = nbt.getInt("spawnVersion");
-        casinoLights = nbt.getInt("casinoLights");
-        casinoBuilt = nbt.getBoolean("casinoBuilt");
+        lastDay = nbt.getLongOr("lastDay", 0L);
+        jailBuilt = nbt.getBooleanOr("jailBuilt", false);
+        jailPos = BlockPos.of(nbt.getLongOr("jailPos", 0L));
+        pitBuilt = nbt.getBooleanOr("pitBuilt", false);
+        pitPos = BlockPos.of(nbt.getLongOr("pitPos", 0L));
+        spawnBuilt = nbt.getBooleanOr("spawnBuilt", false);
+        spawnVersion = nbt.getIntOr("spawnVersion", 0);
+        casinoLights = nbt.getIntOr("casinoLights", 0);
+        casinoBuilt = nbt.getBooleanOr("casinoBuilt", false);
         structures.clear();
-        for (INBT n : nbt.getList("structures", 10)) structures.add(Structure.read((CompoundNBT) n));
+        for (Tag n : nbt.getListOrEmpty("structures")) structures.add(Structure.read((CompoundTag) n));
         businesses.clear();
-        for (INBT n : nbt.getList("legal", 10)) businesses.add(LegalBusiness.read((CompoundNBT) n));
-        nextBizId = Math.max(1, nbt.getInt("nextBizId"));
+        for (Tag n : nbt.getListOrEmpty("legal")) businesses.add(LegalBusiness.read((CompoundTag) n));
+        nextBizId = Math.max(1, nbt.getIntOr("nextBizId", 0));
         for (LegalBusiness b : businesses) nextBizId = Math.max(nextBizId, b.id + 1);
         malls.clear();
-        for (INBT n : nbt.getList("malls", 10)) malls.add(Mall.read((CompoundNBT) n));
-        nextMallId = Math.max(1, nbt.getInt("nextMallId"));
+        for (Tag n : nbt.getListOrEmpty("malls")) malls.add(Mall.read((CompoundTag) n));
+        nextMallId = Math.max(1, nbt.getIntOr("nextMallId", 0));
         for (Mall m : malls) nextMallId = Math.max(nextMallId, m.id + 1);
         rivals.clear();
-        for (INBT n : nbt.getList("rivals", 10)) rivals.add(Rival.read((CompoundNBT) n));
-        nextRivalId = Math.max(1, nbt.getInt("nextRivalId"));
+        for (Tag n : nbt.getListOrEmpty("rivals")) rivals.add(Rival.read((CompoundTag) n));
+        nextRivalId = Math.max(1, nbt.getIntOr("nextRivalId", 0));
         for (Rival r : rivals) nextRivalId = Math.max(nextRivalId, r.id + 1);
-        btcRate = nbt.getDouble("btcRate");
-        btcUpdated = nbt.getLong("btcUpdated");
-        for (int i = 1; i < altRates.length; i++) altRates[i] = nbt.getDouble("altRate" + i);
+        btcRate = nbt.getDoubleOr("btcRate", 0.0);
+        btcUpdated = nbt.getLongOr("btcUpdated", 0L);
+        for (int i = 1; i < altRates.length; i++) altRates[i] = nbt.getDoubleOr("altRate" + i, 0.0);
         mfoCenters.clear();
-        for (long l : nbt.getLongArray("mfoCenters")) mfoCenters.add(BlockPos.fromLong(l));
+        for (long l : nbt.getLongArray("mfoCenters").orElse(new long[0])) mfoCenters.add(BlockPos.of(l));
         landOwners.clear();
-        for (INBT n : nbt.getList("land", 10)) {
-            CompoundNBT t = (CompoundNBT) n;
-            landOwners.put(t.getLong("c"), t.getUniqueId("o"));
+        for (Tag n : nbt.getListOrEmpty("land")) {
+            CompoundTag t = (CompoundTag) n;
+            landOwners.put(t.getLongOr("c", 0L), Nbt.getUUID(t, "o"));
         }
         placed.clear();
-        for (INBT n : nbt.getList("placed", 10)) {
-            CompoundNBT t = (CompoundNBT) n;
+        for (Tag n : nbt.getListOrEmpty("placed")) {
+            CompoundTag t = (CompoundTag) n;
             Set<Long> s = new HashSet<>();
-            for (long l : t.getLongArray("p")) s.add(l);
-            placed.computeIfAbsent(t.getLong("c"), k -> new HashMap<>()).put(t.getUniqueId("u"), s);
+            for (long l : t.getLongArray("p").orElse(new long[0])) s.add(l);
+            placed.computeIfAbsent(t.getLongOr("c", 0L), k -> new HashMap<>()).put(Nbt.getUUID(t, "u"), s);
         }
     }
 
-    @Override
-    public CompoundNBT write(CompoundNBT nbt) {
-        ListNBT list = new ListNBT();
+    public CompoundTag write(CompoundTag nbt) {
+        ListTag list = new ListTag();
         for (Account a : accounts.values()) list.add(a.write());
         nbt.put("accounts", list);
         nbt.putLong("lastDay", lastDay);
         nbt.putBoolean("jailBuilt", jailBuilt);
-        nbt.putLong("jailPos", jailPos.toLong());
+        nbt.putLong("jailPos", jailPos.asLong());
         nbt.putBoolean("pitBuilt", pitBuilt);
-        nbt.putLong("pitPos", pitPos.toLong());
+        nbt.putLong("pitPos", pitPos.asLong());
         nbt.putBoolean("spawnBuilt", spawnBuilt);
         nbt.putInt("spawnVersion", spawnVersion);
         nbt.putInt("casinoLights", casinoLights);
         nbt.putBoolean("casinoBuilt", casinoBuilt);
-        ListNBT sl = new ListNBT();
+        ListTag sl = new ListTag();
         for (Structure st : structures) sl.add(st.write());
         nbt.put("structures", sl);
-        ListNBT bl = new ListNBT();
+        ListTag bl = new ListTag();
         for (LegalBusiness b : businesses) bl.add(b.write());
         nbt.put("legal", bl);
         nbt.putInt("nextBizId", nextBizId);
-        ListNBT ml = new ListNBT();
+        ListTag ml = new ListTag();
         for (Mall m : malls) ml.add(m.write());
         nbt.put("malls", ml);
         nbt.putInt("nextMallId", nextMallId);
-        ListNBT rl = new ListNBT();
+        ListTag rl = new ListTag();
         for (Rival r : rivals) rl.add(r.write());
         nbt.put("rivals", rl);
         nbt.putInt("nextRivalId", nextRivalId);
@@ -313,23 +321,23 @@ public class EconomyData extends WorldSavedData {
         nbt.putLong("btcUpdated", btcUpdated);
         for (int i = 1; i < altRates.length; i++) if (altRates[i] > 0) nbt.putDouble("altRate" + i, altRates[i]);
         long[] mc = new long[mfoCenters.size()];
-        for (int i = 0; i < mc.length; i++) mc[i] = mfoCenters.get(i).toLong();
+        for (int i = 0; i < mc.length; i++) mc[i] = mfoCenters.get(i).asLong();
         nbt.putLongArray("mfoCenters", mc);
-        ListNBT land = new ListNBT();
+        ListTag land = new ListTag();
         for (Map.Entry<Long, UUID> e : landOwners.entrySet()) {
-            CompoundNBT t = new CompoundNBT();
+            CompoundTag t = new CompoundTag();
             t.putLong("c", e.getKey());
-            t.putUniqueId("o", e.getValue());
+            Nbt.putUUID(t, "o", e.getValue());
             land.add(t);
         }
         nbt.put("land", land);
-        ListNBT pl = new ListNBT();
+        ListTag pl = new ListTag();
         for (Map.Entry<Long, Map<UUID, Set<Long>>> e : placed.entrySet()) {
             for (Map.Entry<UUID, Set<Long>> e2 : e.getValue().entrySet()) {
                 if (e2.getValue().isEmpty()) continue;
-                CompoundNBT t = new CompoundNBT();
+                CompoundTag t = new CompoundTag();
                 t.putLong("c", e.getKey());
-                t.putUniqueId("u", e2.getKey());
+                Nbt.putUUID(t, "u", e2.getKey());
                 long[] arr = new long[e2.getValue().size()];
                 int i = 0;
                 for (long l : e2.getValue()) arr[i++] = l;

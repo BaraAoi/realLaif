@@ -1,19 +1,17 @@
 package com.baraaoi.reallife.item;
 
 import com.baraaoi.reallife.structure.Buildings;
-import net.minecraft.client.util.ITooltipFlag;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.ItemUseContext;
-import net.minecraft.util.ActionResultType;
-import net.minecraft.util.Direction;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.text.ITextComponent;
-import net.minecraft.util.text.StringTextComponent;
-import net.minecraft.world.World;
+import net.minecraft.world.item.TooltipFlag;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.context.UseOnContext;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.core.Direction;
+import net.minecraft.core.BlockPos;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.level.Level;
 
-import javax.annotation.Nullable;
 import java.util.List;
 
 /**
@@ -30,38 +28,38 @@ public class BuildPermitItem extends Item {
     }
 
     @Override
-    public ActionResultType onItemUse(ItemUseContext ctx) {
-        World world = ctx.getWorld();
-        PlayerEntity player = ctx.getPlayer();
-        if (world.isRemote || player == null) return ActionResultType.SUCCESS;
-        Direction facing = ctx.getPlacementHorizontalFacing();
-        BlockPos origin = ctx.getPos().up().offset(facing, 2);
+    public InteractionResult useOn(UseOnContext ctx) {
+        Level world = ctx.getLevel();
+        Player player = ctx.getPlayer();
+        if (world.isClientSide() || player == null) return InteractionResult.SUCCESS;
+        Direction facing = ctx.getHorizontalDirection();
+        BlockPos origin = ctx.getClickedPos().above().relative(facing, 2);
         if (kind == Kind.BANK) {
             Buildings.buildBank(world, origin, facing);
-            player.sendStatusMessage(new StringTextComponent("§6[Реал Банк] §fОтделение банка открыто! Добро пожаловать."), false);
+            player.sendSystemMessage(Component.literal("§6[Реал Банк] §fОтделение банка открыто! Добро пожаловать."));
         } else if (kind == Kind.CASINO) {
             Buildings.buildCasino(world, origin, facing, false);
-            player.sendStatusMessage(new StringTextComponent("§5[Казино] §fКазино «Три семёрки» открыто. Ставки сделаны!"), false);
+            player.sendSystemMessage(Component.literal("§5[Казино] §fКазино «Три семёрки» открыто. Ставки сделаны!"));
         } else {
             Buildings.buildMfo(world, origin, facing);
-            player.sendStatusMessage(new StringTextComponent("§2[Шайкин и Ко] §fКонтора открыта. Деньги — сразу, вопросы — потом."), false);
+            player.sendSystemMessage(Component.literal("§2[Шайкин и Ко] §fКонтора открыта. Деньги — сразу, вопросы — потом."));
         }
-        if (!player.abilities.isCreativeMode) ctx.getItem().shrink(1);
-        return ActionResultType.SUCCESS;
+        if (!player.getAbilities().instabuild) ctx.getItemInHand().shrink(1);
+        return InteractionResult.SUCCESS;
     }
 
     @Override
-    public void addInformation(ItemStack stack, @Nullable World world, List<ITextComponent> tooltip, ITooltipFlag flag) {
+    public void appendHoverText(ItemStack stack, Item.TooltipContext context, net.minecraft.world.item.component.TooltipDisplay display, java.util.function.Consumer<Component> tooltip, TooltipFlag flag) {
         if (kind == Kind.BANK) {
-            tooltip.add(new StringTextComponent("§7ПКМ по земле — построить здание банка"));
-            tooltip.add(new StringTextComponent("§7(19×12 блоков перед вами)"));
+            tooltip.accept(Component.literal("§7ПКМ по земле — построить здание банка"));
+            tooltip.accept(Component.literal("§7(19×12 блоков перед вами)"));
         } else if (kind == Kind.CASINO) {
-            tooltip.add(new StringTextComponent("§7ПКМ по земле — построить казино «Три семёрки»"));
-            tooltip.add(new StringTextComponent("§7(31×31 блок перед вами)"));
+            tooltip.accept(Component.literal("§7ПКМ по земле — построить казино «Три семёрки»"));
+            tooltip.accept(Component.literal("§7(31×31 блок перед вами)"));
         } else {
-            tooltip.add(new StringTextComponent("§7ПКМ по земле — построить контору МФО"));
-            tooltip.add(new StringTextComponent("§7(8×7 блоков перед вами)"));
+            tooltip.accept(Component.literal("§7ПКМ по земле — построить контору МФО"));
+            tooltip.accept(Component.literal("§7(8×7 блоков перед вами)"));
         }
-        tooltip.add(new StringTextComponent("§cБлоки на месте стройки будут снесены!"));
+        tooltip.accept(Component.literal("§cБлоки на месте стройки будут снесены!"));
     }
 }

@@ -8,12 +8,12 @@ import com.baraaoi.reallife.economy.Finance;
 import com.baraaoi.reallife.economy.Wholesale;
 import com.baraaoi.reallife.network.ActionPacket;
 import com.baraaoi.reallife.network.Network;
-import com.mojang.blaze3d.matrix.MatrixStack;
-import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.gui.widget.button.Button;
-import net.minecraft.nbt.CompoundNBT;
-import net.minecraft.nbt.ListNBT;
-import net.minecraft.util.text.StringTextComponent;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.network.chat.Component;
 
 import java.util.List;
 import java.util.Locale;
@@ -40,23 +40,23 @@ public class PhoneScreen extends Screen {
     private int ticks;
 
     public PhoneScreen() {
-        super(new StringTextComponent("Телефон"));
+        super(Component.literal("Телефон"));
     }
 
-    private static CompoundNBT d() {
+    private static CompoundTag d() {
         return ClientAccountData.get();
     }
 
     private void send(int action, int a, int b) {
-        Network.CHANNEL.sendToServer(new ActionPacket(action, a, b));
+        Network.toServer(new ActionPacket(action, a, b));
     }
 
-    private Button btn(int x, int y, int w, String text, Button.IPressable onPress) {
-        return this.addButton(new Button(left + x, top + y, w, 16, new StringTextComponent(text), onPress));
+    private Button btn(int x, int y, int w, String text, Button.OnPress onPress) {
+        return this.addRenderableWidget(Button.builder(Component.literal(text), onPress).bounds(left + x, top + y, w, 16).build());
     }
 
     private void rebuild() {
-        this.init(this.minecraft, this.width, this.height);
+        this.rebuildWidgets();
     }
 
     @Override
@@ -94,7 +94,7 @@ public class PhoneScreen extends Screen {
                     final int t = i;
                     btn(8 + i * 52, 102, 50, (termIdx == i ? "§e" : "") + TERMS[i] + " дн.", b -> { termIdx = t; rebuild(); });
                 }
-                btn(166, 102, 74, "Макс.", b -> loanAmount = Math.max(100, (int) (d().getDouble("maxLoan") / 100) * 100));
+                btn(166, 102, 74, "Макс.", b -> loanAmount = Math.max(100, (int) (d().getDoubleOr("maxLoan", 0.0) / 100) * 100));
                 btn(8, 124, 150, "§aОформить кредит", b -> send(Actions.PHONE_LOAN, loanAmount, termIdx));
                 btn(8, 170, 110, "Внести 1000₽", b -> send(Actions.PHONE_REPAY, 1000, 0));
                 btn(122, 170, 118, "Погасить всё", b -> send(Actions.PHONE_REPAY, 0, 0));
@@ -170,32 +170,31 @@ public class PhoneScreen extends Screen {
 
     // ------------------------------------------------------------------ отрисовка
 
-    private void text(MatrixStack ms, String s, int x, int y) {
-        this.font.drawString(ms, s, left + x, top + y, 0xFFFFFF);
+    private void text(GuiGraphicsExtractor ms, String s, int x, int y) {
+        GuiUtil.text(ms, this.font, s, left + x, top + y, 0xFFFFFF);
     }
 
-    private void small(MatrixStack ms, String s, int x, int y) {
-        ms.push();
-        ms.translate(left + x, top + y, 0);
-        ms.scale(0.75F, 0.75F, 1.0F);
-        this.font.drawString(ms, s, 0, 0, 0xFFFFFF);
-        ms.pop();
+    private void small(GuiGraphicsExtractor ms, String s, int x, int y) {
+        ms.pose().pushMatrix();
+        ms.pose().translate((float) (left + x), (float) (top + y));
+        ms.pose().scale(0.75F, 0.75F);
+        GuiUtil.text(ms, this.font, s, 0, 0, 0xFFFFFF);
+        ms.pose().popMatrix();
     }
 
     @Override
-    public void render(MatrixStack ms, int mouseX, int mouseY, float partialTicks) {
-        this.renderBackground(ms);
+    public void extractRenderState(GuiGraphicsExtractor ms, int mouseX, int mouseY, float partialTicks) {
         // корпус телефона
-        fill(ms, left - 4, top - 4, left + W + 4, top + H + 4, 0xFF111111);
-        fill(ms, left - 2, top - 2, left + W + 2, top + H + 2, 0xFF2B2B2B);
-        fill(ms, left, top, left + W, top + H, 0xFF0E1A2B);
-        fill(ms, left, top, left + W, top + 14, 0xFF1F3A5F);
-        CompoundNBT t = d();
-        long time = this.minecraft != null && this.minecraft.world != null ? this.minecraft.world.getDayTime() % 24000L : 0;
+        ms.fill(left - 4, top - 4, left + W + 4, top + H + 4, 0xFF111111);
+        ms.fill(left - 2, top - 2, left + W + 2, top + H + 2, 0xFF2B2B2B);
+        ms.fill(left, top, left + W, top + H, 0xFF0E1A2B);
+        ms.fill(left, top, left + W, top + 14, 0xFF1F3A5F);
+        CompoundTag t = d();
+        long time = this.minecraft != null && this.minecraft.level != null ? this.minecraft.level.getOverworldClockTime() % 24000L : 0;
         int hh = (int) ((time / 1000 + 6) % 24), mm = (int) (time % 1000 * 60 / 1000);
         small(ms, String.format(Locale.ROOT, "§f%02d:%02d   §6Реал Банк §7онлайн", hh, mm), 6, 4);
         small(ms, "§8v" + com.baraaoi.reallife.RealLife.version() + "  §a▮▮▮▮ §f100%", W - 72, 4);
-        fill(ms, left + 4, top + 38, left + W - 4, top + 39, 0xFF335577);
+        ms.fill(left + 4, top + 38, left + W - 4, top + 39, 0xFF335577);
         switch (tab) {
             case 0: drawAccount(ms, t); break;
             case 1: drawWithdraw(ms, t); break;
@@ -204,70 +203,70 @@ public class PhoneScreen extends Screen {
             case 4: drawBusiness(ms, t); break;
             default: drawCrypto(ms, t); break;
         }
-        super.render(ms, mouseX, mouseY, partialTicks);
+        super.extractRenderState(ms, mouseX, mouseY, partialTicks);
     }
 
-    private void drawAccount(MatrixStack ms, CompoundNBT t) {
+    private void drawAccount(GuiGraphicsExtractor ms, CompoundTag t) {
         text(ms, "§6§lСчёт", 8, 44);
-        text(ms, "Баланс: §a" + Finance.money(t.getDouble("balance")), 8, 58);
-        text(ms, "Наличные в карманах: §e" + Finance.money(t.getLong("cash")), 8, 70);
-        text(ms, "Рейтинг: §e" + t.getInt("score") + " §7(" + t.getString("category") + ")", 8, 82);
+        text(ms, "Баланс: §a" + Finance.money(t.getDoubleOr("balance", 0.0)), 8, 58);
+        text(ms, "Наличные в карманах: §e" + Finance.money(t.getLongOr("cash", 0L)), 8, 70);
+        text(ms, "Рейтинг: §e" + t.getIntOr("score", 0) + " §7(" + t.getStringOr("category", "") + ")", 8, 82);
         int y = 98;
-        if (t.getDouble("loanPrincipal") > 0) {
-            small(ms, "Кредит: §c" + Finance.money(t.getDouble("loanPrincipal")) + "§f, платёж " + Finance.money(t.getDouble("loanPayment"))
-                    + "/день, осталось " + t.getInt("loanDays") + " дн.", 8, y);
+        if (t.getDoubleOr("loanPrincipal", 0.0) > 0) {
+            small(ms, "Кредит: §c" + Finance.money(t.getDoubleOr("loanPrincipal", 0.0)) + "§f, платёж " + Finance.money(t.getDoubleOr("loanPayment", 0.0))
+                    + "/день, осталось " + t.getIntOr("loanDays", 0) + " дн.", 8, y);
             y += 10;
         }
-        if (t.getDouble("mortPrincipal") > 0) {
-            small(ms, "Ипотека: §c" + Finance.money(t.getDouble("mortPrincipal")) + "§f, платёж " + Finance.money(t.getDouble("mortPayment")) + "/день", 8, y);
+        if (t.getDoubleOr("mortPrincipal", 0.0) > 0) {
+            small(ms, "Ипотека: §c" + Finance.money(t.getDoubleOr("mortPrincipal", 0.0)) + "§f, платёж " + Finance.money(t.getDoubleOr("mortPayment", 0.0)) + "/день", 8, y);
             y += 10;
         }
-        if (t.getDouble("arrears") > 0.01) {
-            small(ms, "§cПросрочка: " + Finance.money(t.getDouble("arrears")) + " (" + t.getInt("overdue") + " дн.)", 8, y);
+        if (t.getDoubleOr("arrears", 0.0) > 0.01) {
+            small(ms, "§cПросрочка: " + Finance.money(t.getDoubleOr("arrears", 0.0)) + " (" + t.getIntOr("overdue", 0) + " дн.)", 8, y);
             y += 10;
         }
-        if (t.getDouble("mfoDebt") > 0.01) {
-            small(ms, "§2МФО «Шайкин и Ко»: §c" + Finance.money(t.getDouble("mfoDebt")), 8, y);
+        if (t.getDoubleOr("mfoDebt", 0.0) > 0.01) {
+            small(ms, "§2МФО «Шайкин и Ко»: §c" + Finance.money(t.getDoubleOr("mfoDebt", 0.0)), 8, y);
             y += 10;
         }
-        double cv = t.getDouble("cryptoValue");
+        double cv = t.getDoubleOr("cryptoValue", 0.0);
         if (cv > 0.5) {
             small(ms, "§eКриптопортфель: ≈ " + Finance.money(cv), 8, y);
             y += 10;
         }
-        ListNBT biz = t.getList("bizList", 10);
+        ListTag biz = t.getListOrEmpty("bizList");
         if (!biz.isEmpty()) small(ms, "§aЗаведений: " + biz.size(), 8, y);
-        small(ms, "§8Вклад: +" + Finance.percent(t.getDouble("depositRate")) + " в день на остаток.", 8, 176);
+        small(ms, "§8Вклад: +" + Finance.percent(t.getDoubleOr("depositRate", 0.0)) + " в день на остаток.", 8, 176);
     }
 
-    private void drawWithdraw(MatrixStack ms, CompoundNBT t) {
+    private void drawWithdraw(GuiGraphicsExtractor ms, CompoundTag t) {
         text(ms, "§6§lСнять наличные", 8, 44);
-        small(ms, "На счёте: §a" + Finance.money(t.getDouble("balance")) + "§f. Купюры придут в инвентарь.", 8, 54);
+        small(ms, "На счёте: §a" + Finance.money(t.getDoubleOr("balance", 0.0)) + "§f. Купюры придут в инвентарь.", 8, 54);
         small(ms, "§7Банкомат в кармане: без комиссии.", 160, 70);
         small(ms, "§7Грабители любят наличку —", 160, 84);
         small(ms, "§7не носите всё с собой.", 160, 94);
     }
 
-    private void drawLoan(MatrixStack ms, CompoundNBT t) {
+    private void drawLoan(GuiGraphicsExtractor ms, CompoundTag t) {
         text(ms, "§6§lКредит онлайн", 8, 44);
-        double max = t.getDouble("maxLoan");
-        double rate = t.getDouble("loanRate");
-        small(ms, "Одобрено до: §a" + Finance.money(max) + "§f, ставка " + Finance.percent(rate) + "/день (рейтинг " + t.getInt("score") + ")", 8, 54);
+        double max = t.getDoubleOr("maxLoan", 0.0);
+        double rate = t.getDoubleOr("loanRate", 0.0);
+        small(ms, "Одобрено до: §a" + Finance.money(max) + "§f, ставка " + Finance.percent(rate) + "/день (рейтинг " + t.getIntOr("score", 0) + ")", 8, 54);
         double pay = Finance.annuity(loanAmount, rate, TERMS[termIdx]);
         text(ms, "Сумма: §e" + Finance.money(loanAmount) + "§f на " + TERMS[termIdx] + " дн.", 8, 66);
         small(ms, "Платёж ≈ §c" + Finance.money(pay) + "§f/день, переплата " + Finance.money(pay * TERMS[termIdx] - loanAmount), 132, 128);
-        if (t.getDouble("loanPrincipal") > 0) {
-            small(ms, "Текущий кредит: §c" + Finance.money(t.getDouble("loanPrincipal")) + "§f, платёж " + Finance.money(t.getDouble("loanPayment"))
-                    + "/день, " + t.getInt("loanDays") + " дн.", 8, 150);
+        if (t.getDoubleOr("loanPrincipal", 0.0) > 0) {
+            small(ms, "Текущий кредит: §c" + Finance.money(t.getDoubleOr("loanPrincipal", 0.0)) + "§f, платёж " + Finance.money(t.getDoubleOr("loanPayment", 0.0))
+                    + "/день, " + t.getIntOr("loanDays", 0) + " дн.", 8, 150);
         } else {
             small(ms, "§7Кредита нет. Платёж списывается со счёта каждое утро.", 8, 150);
         }
         small(ms, "§8Не платите — придут Жора, Александр, потом полиция.", 8, 192);
     }
 
-    private void drawWholesale(MatrixStack ms, CompoundNBT t) {
+    private void drawWholesale(GuiGraphicsExtractor ms, CompoundTag t) {
         text(ms, "§3§lОпт для магазинов", 8, 44);
-        if (!t.getBoolean("ownsBiz")) {
+        if (!t.getBooleanOr("ownsBiz", false)) {
             small(ms, "§cТолько для владельцев заведений. Купите заведение во вкладке «Бизнес».", 8, 54);
         } else {
             small(ms, "§7Сырьё едет прямо на полки заведения, остальное — в инвентарь.", 8, 54);
@@ -285,25 +284,25 @@ public class PhoneScreen extends Screen {
         small(ms, "§7стр. " + (page + 1) + "/" + pages, 100, 193);
     }
 
-    private void drawBusiness(MatrixStack ms, CompoundNBT t) {
+    private void drawBusiness(GuiGraphicsExtractor ms, CompoundTag t) {
         if (bizSub == 1) { drawEquip(ms, t); return; }
         if (bizSub == 2) { drawMall(ms, t); return; }
-        ListNBT biz = t.getList("bizList", 10);
+        ListTag biz = t.getListOrEmpty("bizList");
         if (biz.isEmpty()) {
             small(ms, "§7Заведений пока нет. Купите лицензию, поставьте кассу на своей земле", 8, 64);
             small(ms, "§7и расставьте вокруг неё оборудование (вкладка «Оборудование»).", 8, 73);
         }
         for (int i = 0; i < biz.size() && i < 5; i++) {
-            CompoundNBT b = biz.getCompound(i);
-            BizType bt = BizType.byId(b.getInt("type"));
+            CompoundTag b = biz.getCompoundOrEmpty(i);
+            BizType bt = BizType.byId(b.getIntOr("type", 0));
             String name = bt == null ? "?" : bt.title;
-            double lp = b.getDouble("lastProfit");
-            String reason = b.getString("reason");
-            small(ms, (reason.isEmpty() ? "§a● " : "§c● ") + "§f" + name + " §7раб. " + b.getInt("workers") + "/" + b.getInt("allowed")
-                    + " сырьё " + b.getInt("stock") + " вчера " + (lp >= 0 ? "§a+" : "§c") + Finance.money(lp)
+            double lp = b.getDoubleOr("lastProfit", 0.0);
+            String reason = b.getStringOr("reason", "");
+            small(ms, (reason.isEmpty() ? "§a● " : "§c● ") + "§f" + name + " §7раб. " + b.getIntOr("workers", 0) + "/" + b.getIntOr("allowed", 0)
+                    + " сырьё " + b.getIntOr("stock", 0) + " вчера " + (lp >= 0 ? "§a+" : "§c") + Finance.money(lp)
                     + (reason.isEmpty() ? "" : " §c(" + reason + ")"), 8, 64 + i * 10);
         }
-        fill(ms, left + 4, top + 116, left + W - 4, top + 117, 0xFF335577);
+        ms.fill(left + 4, top + 116, left + W - 4, top + 117, 0xFF335577);
         BizType bt = BizType.values()[bizType % BizType.values().length];
         text(ms, "§e" + bt.title, 32, 130);
         small(ms, "Лицензия: §e" + Finance.money(bt.price) + "§f  выручка §a" + Finance.money(bt.revenue()) + "§f/день на работника, до §e"
@@ -315,38 +314,38 @@ public class PhoneScreen extends Screen {
         small(ms, "§6Под ключ: §e" + Finance.money(bt.turnkeyPrice()) + "§7 — лицензия + здание + всё на " + bt.maxWorkers + " раб.", 8, 175);
     }
 
-    private void drawMall(MatrixStack ms, CompoundNBT t) {
+    private void drawMall(GuiGraphicsExtractor ms, CompoundTag t) {
         text(ms, "§6Торговый центр", 8, 62);
         small(ms, "Разрешение со стройкой: §e" + Finance.money(com.baraaoi.reallife.economy.Mall.PRICE), 8, 74);
         small(ms, "§7Атриум с фонтаном и 12 помещений от киоска до большого зала.", 8, 84);
         small(ms, "§7Помещения занимаете сами или продаёте игрокам: цена + §aаренда/день§7 вам.", 8, 93);
         small(ms, "§7Внутри — что угодно: жильё или любое заведение. §aПрибыль в ТЦ +50%§7,", 8, 102);
         small(ms, "§7отмыв §a25%§7. Свободные места занимают боты — платят, но конкурируют.", 8, 111);
-        ListNBT malls = t.getList("malls", 10);
-        fill(ms, left + 4, top + 122, left + W - 4, top + 123, 0xFF335577);
+        ListTag malls = t.getListOrEmpty("malls");
+        ms.fill(left + 4, top + 122, left + W - 4, top + 123, 0xFF335577);
         if (malls.isEmpty()) {
             small(ms, "§7Своих ТЦ и помещений нет. Для ТЦ нужна ровная площадка ~73×62,", 8, 128);
             small(ms, "§7вся земля — ваша или ничья. Помещение в чужом ТЦ: ПКМ по табличке.", 8, 137);
         }
         int y = 127;
         for (int i = 0; i < malls.size() && y < 186; i++) {
-            CompoundNBT m = malls.getCompound(i);
-            if (m.getBoolean("own")) {
-                small(ms, "§fТЦ №" + m.getInt("id") + " §7(" + m.getInt("x") + ", " + m.getInt("y") + ", " + m.getInt("z") + ") §fзанято §e"
-                        + m.getInt("used") + "/" + m.getInt("total") + "§f, свободно " + m.getInt("free"), 8, y);
-                small(ms, "§7аренда в день: §a" + Finance.money(m.getInt("rent")) + (m.getInt("bots") > 0 ? " §c(ботов: " + m.getInt("bots") + ")" : ""), 14, y + 9);
+            CompoundTag m = malls.getCompoundOrEmpty(i);
+            if (m.getBooleanOr("own", false)) {
+                small(ms, "§fТЦ №" + m.getIntOr("id", 0) + " §7(" + m.getIntOr("x", 0) + ", " + m.getIntOr("y", 0) + ", " + m.getIntOr("z", 0) + ") §fзанято §e"
+                        + m.getIntOr("used", 0) + "/" + m.getIntOr("total", 0) + "§f, свободно " + m.getIntOr("free", 0), 8, y);
+                small(ms, "§7аренда в день: §a" + Finance.money(m.getIntOr("rent", 0)) + (m.getIntOr("bots", 0) > 0 ? " §c(ботов: " + m.getIntOr("bots", 0) + ")" : ""), 14, y + 9);
                 y += 19;
             } else {
-                String biz = m.getString("biz");
-                small(ms, "§fПомещение №" + m.getInt("unit") + " §7в ТЦ «" + m.getString("mall") + "» " + m.getString("label")
+                String biz = m.getStringOr("biz", "");
+                small(ms, "§fПомещение №" + m.getIntOr("unit", 0) + " §7в ТЦ «" + m.getStringOr("mall", "") + "» " + m.getStringOr("label", "")
                         + (biz.isEmpty() ? "" : " §e" + biz), 8, y);
-                small(ms, "§7аренда §c" + Finance.money(m.getInt("rent")) + "/день" + (m.getInt("unpaid") > 0 ? " §c§lдолг " + m.getInt("unpaid") + " дн.!" : ""), 14, y + 9);
+                small(ms, "§7аренда §c" + Finance.money(m.getIntOr("rent", 0)) + "/день" + (m.getIntOr("unpaid", 0) > 0 ? " §c§lдолг " + m.getIntOr("unpaid", 0) + " дн.!" : ""), 14, y + 9);
                 y += 19;
             }
         }
     }
 
-    private void drawEquip(MatrixStack ms, CompoundNBT t) {
+    private void drawEquip(GuiGraphicsExtractor ms, CompoundTag t) {
         BizEquip[] eq = BizEquip.values();
         for (int i = 0; i < EQ_PAGE; i++) {
             int idx = page * EQ_PAGE + i;
@@ -371,17 +370,17 @@ public class PhoneScreen extends Screen {
         small(ms, "§7стр. " + (page + 1) + "/" + pages + "  §8ставить в зоне ±8 от главной кассы", 100, 193);
     }
 
-    private void drawCrypto(MatrixStack ms, CompoundNBT t) {
-        ListNBT coins = t.getList("coins", 10);
+    private void drawCrypto(GuiGraphicsExtractor ms, CompoundTag t) {
+        ListTag coins = t.getListOrEmpty("coins");
         Crypto.Coin c = Crypto.Coin.byId(coin);
         if (c == null || coin >= coins.size()) {
             text(ms, "§7Биржа загружается...", 8, 62);
             return;
         }
-        CompoundNBT ct = coins.getCompound(coin);
-        double rate = ct.getDouble("rate"), base = ct.getDouble("base"), held = ct.getDouble("held");
-        ListNBT hist = ct.getList("hist", 6);
-        double prev = hist.size() >= 2 ? hist.getDouble(hist.size() - 2) : rate;
+        CompoundTag ct = coins.getCompoundOrEmpty(coin);
+        double rate = ct.getDoubleOr("rate", 0.0), base = ct.getDoubleOr("base", 0.0), held = ct.getDoubleOr("held", 0.0);
+        ListTag hist = ct.getListOrEmpty("hist");
+        double prev = hist.size() >= 2 ? hist.getDoubleOr(hist.size() - 2, 0.0) : rate;
         text(ms, "§e" + c.title + ": §f" + Crypto.price(rate), 8, 60);
         small(ms, (rate >= prev ? "§a▲ " : "§c▼ ") + String.format(Locale.ROOT, "%+.2f%%", prev > 0 ? (rate / prev - 1) * 100 : 0) + " §7за 20 с", 8, 72);
         if (base > 0) small(ms, "§7к среднему " + (rate >= base ? "§a" : "§c") + String.format(Locale.ROOT, "%+.1f%%", (rate / base - 1) * 100), 8, 80);
@@ -389,23 +388,23 @@ public class PhoneScreen extends Screen {
         small(ms, "≈ §a" + Finance.money(held * rate), 8, 100);
         // график последних ~13 минут
         int gx = 118, gy = 58, gw = 122, gh = 54;
-        fill(ms, left + gx - 1, top + gy - 1, left + gx + gw + 1, top + gy + gh + 1, 0xFF33475F);
-        fill(ms, left + gx, top + gy, left + gx + gw, top + gy + gh, 0xFF0A1220);
+        ms.fill(left + gx - 1, top + gy - 1, left + gx + gw + 1, top + gy + gh + 1, 0xFF33475F);
+        ms.fill(left + gx, top + gy, left + gx + gw, top + gy + gh, 0xFF0A1220);
         int n = hist.size();
         if (n >= 2) {
             double mn = Double.MAX_VALUE, mx = -Double.MAX_VALUE;
-            for (int i = 0; i < n; i++) { mn = Math.min(mn, hist.getDouble(i)); mx = Math.max(mx, hist.getDouble(i)); }
+            for (int i = 0; i < n; i++) { mn = Math.min(mn, hist.getDoubleOr(i, 0.0)); mx = Math.max(mx, hist.getDoubleOr(i, 0.0)); }
             if (mx - mn < mx * 1e-4) { mx += mx * 0.01; mn -= mn * 0.01; }
             int px = -1, py = -1;
             for (int i = 0; i < n; i++) {
                 int x = gx + 1 + (int) Math.round(i * (gw - 3) / (double) (n - 1));
-                int y = gy + gh - 2 - (int) Math.round((hist.getDouble(i) - mn) / (mx - mn) * (gh - 4));
+                int y = gy + gh - 2 - (int) Math.round((hist.getDoubleOr(i, 0.0) - mn) / (mx - mn) * (gh - 4));
                 if (px >= 0) {
-                    int col = hist.getDouble(i) < hist.getDouble(i - 1) ? 0xFFE05050 : 0xFF50E070;
+                    int col = hist.getDoubleOr(i, 0.0) < hist.getDoubleOr(i - 1, 0.0) ? 0xFFE05050 : 0xFF50E070;
                     int last = py;
                     for (int xx = px + 1; xx <= x; xx++) {
                         int yy = py + (y - py) * (xx - px) / Math.max(1, x - px);
-                        fill(ms, left + xx, top + Math.min(yy, last), left + xx + 1, top + Math.max(yy, last) + 1, col);
+                        ms.fill(left + xx, top + Math.min(yy, last), left + xx + 1, top + Math.max(yy, last) + 1, col);
                         last = yy;
                     }
                 }
@@ -418,8 +417,8 @@ public class PhoneScreen extends Screen {
             small(ms, "§7график копится...", gx + 4, gy + gh / 2 - 3);
         }
         small(ms, "§7Купить (со счёта):", 8, 110);
-        double total = t.getDouble("cryptoValue");
-        small(ms, "Весь портфель: §a" + Finance.money(total) + "§f  на счёте §e" + Finance.money(t.getDouble("balance")), 8, 160);
+        double total = t.getDoubleOr("cryptoValue", 0.0);
+        small(ms, "Весь портфель: §a" + Finance.money(total) + "§f  на счёте §e" + Finance.money(t.getDoubleOr("balance", 0.0)), 8, 160);
         small(ms, "§7Комиссия биржи 1% на покупку и продажу. Курс меняется каждые 20 с,", 8, 170);
         small(ms, "§7бывают новости со скачками ±15–40%. BTC ещё и майнится на ферме", 8, 179);
         small(ms, "§7(материнка, процессор, память, БП, кулер, 1–4 видеокарты).", 8, 188);

@@ -3,13 +3,12 @@ package com.baraaoi.reallife.economy;
 import com.baraaoi.reallife.Config;
 import com.baraaoi.reallife.container.CasinoContainer;
 import com.baraaoi.reallife.item.CloverItem;
-import net.minecraft.entity.player.ServerPlayerEntity;
-import net.minecraft.inventory.container.SimpleNamedContainerProvider;
-import net.minecraft.item.ItemStack;
-import net.minecraft.nbt.CompoundNBT;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.text.StringTextComponent;
-import net.minecraftforge.fml.network.NetworkHooks;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.SimpleMenuProvider;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.core.BlockPos;
+import net.minecraft.network.chat.Component;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -48,7 +47,7 @@ public class CasinoService {
             "Бунт удался: x2", "Революция! x5", "МАМА — АНАРХИЯ! x8"};
 
     private static final Random RANDOM = new Random();
-    private static final Map<UUID, CompoundNBT> LAST = new HashMap<>();
+    private static final Map<UUID, CompoundTag> LAST = new HashMap<>();
 
     private static int[] buildWheel() {
         int[] counts = WHEEL_COUNTS;
@@ -113,20 +112,20 @@ public class CasinoService {
         return s / w;
     }
 
-    public static CompoundNBT last(UUID id) {
-        CompoundNBT t = LAST.get(id);
-        return t == null ? new CompoundNBT() : t;
+    public static CompoundTag last(UUID id) {
+        CompoundTag t = LAST.get(id);
+        return t == null ? new CompoundTag() : t;
     }
 
     // ------------------------------------------------------------------ открыть
 
-    public static void open(ServerPlayerEntity p, BlockPos pos, int kind) {
-        EconomyData data = EconomyData.get(p.getServer());
+    public static void open(ServerPlayer p, BlockPos pos, int kind) {
+        EconomyData data = EconomyData.get(p.level().getServer());
         Account a = data.get(p);
         if (a.captivity != Account.FREE) return;
-        NetworkHooks.openGui(p, new SimpleNamedContainerProvider(
+        p.openMenu(new SimpleMenuProvider(
                 (id, inv, pl) -> new CasinoContainer(id, inv, pos, kind),
-                new StringTextComponent(TITLES[Math.max(0, Math.min(3, kind))])), buf -> {
+                Component.literal(TITLES[Math.max(0, Math.min(3, kind))])), buf -> {
             buf.writeBlockPos(pos);
             buf.writeVarInt(kind);
         });
@@ -136,13 +135,13 @@ public class CasinoService {
     // ------------------------------------------------------------------ игра
 
     /** Найти клевер в инвентаре и потратить одну игру. */
-    private static boolean useClover(ServerPlayerEntity p) {
-        for (int i = 0; i < p.inventory.getSizeInventory(); i++) {
-            ItemStack st = p.inventory.getStackInSlot(i);
+    private static boolean useClover(ServerPlayer p) {
+        for (int i = 0; i < p.getInventory().getContainerSize(); i++) {
+            ItemStack st = p.getInventory().getItem(i);
             if (st.getItem() instanceof CloverItem) {
                 st.setDamage(st.getDamage() + 1);
                 if (st.getDamage() >= st.getMaxDamage()) {
-                    p.inventory.setInventorySlotContents(i, ItemStack.EMPTY);
+                    p.getInventory().setItem(i, ItemStack.EMPTY);
                     BankService.msg(p, CASINO + "§7Клевер завял. Удача кончилась.");
                 }
                 return true;
@@ -151,10 +150,10 @@ public class CasinoService {
         return false;
     }
 
-    public static void play(ServerPlayerEntity p, CasinoContainer c, int bet, int choice) {
-        EconomyData data = EconomyData.get(p.getServer());
+    public static void play(ServerPlayer p, CasinoContainer c, int bet, int choice) {
+        EconomyData data = EconomyData.get(p.level().getServer());
         Account a = data.get(p);
-        long now = EconomyData.overworld(p.getServer()).getGameTime();
+        long now = EconomyData.overworld(p.level().getServer()).getGameTime();
         if (a.captivity != Account.FREE) return;
         int max = Config.CASINO_MAX_BET.get();
         bet = bet / 10 * 10;
@@ -168,7 +167,7 @@ public class CasinoService {
         }
         boolean lucky = useClover(p);
         int kind = c.getKind();
-        CompoundNBT r = new CompoundNBT();
+        CompoundTag r = new CompoundTag();
         r.putInt("kind", kind);
         r.putLong("id", now * 31 + RANDOM.nextInt(1000));
         r.putInt("bet", bet);
@@ -220,7 +219,7 @@ public class CasinoService {
         double cash = Math.floor(win / 10.0) * 10.0;
         if (cash > 0) BankService.giveCash(p, cash);
         a.balance += win - cash;
-        long day = BankService.today(p.getServer());
+        long day = BankService.today(p.level().getServer());
         if (a.casinoDay != day) {
             a.casinoDay = day;
             a.casinoProfit = 0;
@@ -229,7 +228,7 @@ public class CasinoService {
         r.putDouble("mult", mult);
         r.putDouble("win", win);
         r.putString("text", text);
-        LAST.put(p.getUniqueID(), r);
+        LAST.put(p.getUUID(), r);
         if (mult > 1) {
             BankService.actionBar(p, "§a" + text + " — выигрыш " + Finance.money(win) + (lucky ? " §2(клевер)" : ""));
         } else if (mult == 1) {
@@ -238,12 +237,12 @@ public class CasinoService {
             BankService.actionBar(p, "§c" + text + " — ставка " + Finance.money(bet) + " сгорела");
         }
         if (mult >= 8) {
-            for (ServerPlayerEntity o : p.getServer().getPlayerList().getPlayers()) {
-                if (o != p && o.getDistanceSq(p) < 48 * 48) BankService.msg(o, CASINO + "§e" + p.getGameProfile().getName()
+            for (ServerPlayer o : p.level().getServer().getPlayerList().getPlayers()) {
+                if (o != p && o.distanceToSqr(p) < 48 * 48) BankService.msg(o, CASINO + "§e" + p.getGameProfile().getName()
                         + " сорвал куш: " + Finance.money(win) + "!");
             }
         }
-        data.markDirty();
+        data.setDirty();
         BankService.sync(p);
     }
 }

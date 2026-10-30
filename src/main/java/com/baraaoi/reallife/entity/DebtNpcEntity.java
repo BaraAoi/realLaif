@@ -1,28 +1,28 @@
 package com.baraaoi.reallife.entity;
 
+import com.baraaoi.reallife.util.Nbt;
 import com.baraaoi.reallife.economy.Account;
 import com.baraaoi.reallife.economy.EconomyData;
 import com.baraaoi.reallife.event.DebtManager;
-import net.minecraft.entity.CreatureEntity;
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.ai.goal.Goal;
-import net.minecraft.entity.ai.goal.LookAtGoal;
-import net.minecraft.entity.ai.goal.SwimGoal;
-import net.minecraft.entity.item.ItemEntity;
-import net.minecraft.item.ItemStack;
-import net.minecraft.potion.EffectInstance;
-import net.minecraft.potion.Effects;
-import net.minecraft.util.DamageSource;
+import net.minecraft.world.entity.PathfinderMob;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.ai.goal.Goal;
+import net.minecraft.world.entity.ai.goal.LookAtPlayerGoal;
+import net.minecraft.world.entity.ai.goal.FloatGoal;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.effect.MobEffects;
+import net.minecraft.world.damagesource.DamageSource;
 import com.baraaoi.reallife.economy.ItemValues;
 import com.baraaoi.reallife.registry.ModItems;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.entity.player.ServerPlayerEntity;
-import net.minecraft.nbt.CompoundNBT;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.util.text.StringTextComponent;
-import net.minecraft.world.World;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.level.Level;
 
-import javax.annotation.Nullable;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.UUID;
@@ -30,27 +30,27 @@ import java.util.UUID;
 /**
  * Базовый NPC, пришедший к конкретному должнику.
  */
-public abstract class DebtNpcEntity extends CreatureEntity {
-    @Nullable
+public abstract class DebtNpcEntity extends PathfinderMob {
+    
     protected UUID targetId;
 
-    protected DebtNpcEntity(EntityType<? extends CreatureEntity> type, World world) {
-        super(type, world);
-        this.enablePersistence();
+    protected DebtNpcEntity(EntityType<? extends PathfinderMob> type, Level level) {
+        super(type, level);
+        this.setPersistenceRequired();
     }
 
-    public void setTarget(PlayerEntity player) {
-        this.targetId = player.getUniqueID();
+    public void setTarget(Player player) {
+        this.targetId = player.getUUID();
     }
 
-    @Nullable
+    
     public UUID getTargetId() {
         return targetId;
     }
 
-    @Nullable
-    public PlayerEntity getTargetPlayer() {
-        return targetId == null ? null : world.getPlayerByUuid(targetId);
+    
+    public Player getTargetPlayer() {
+        return targetId == null ? null : this.level().getPlayerByUUID(targetId);
     }
 
     /** Имя над головой и в чате. */
@@ -60,16 +60,16 @@ public abstract class DebtNpcEntity extends CreatureEntity {
     public abstract boolean isStillNeeded(Account a);
 
     /** Серверная логика раз в секунду. */
-    protected void serverSecond(ServerPlayerEntity target, Account a) {}
+    protected void serverSecond(ServerPlayer target, Account a) {}
 
     @Override
     protected void registerGoals() {
-        this.goalSelector.addGoal(0, new SwimGoal(this));
-        this.goalSelector.addGoal(8, new LookAtGoal(this, PlayerEntity.class, 8.0F));
+        this.goalSelector.addGoal(0, new FloatGoal(this));
+        this.goalSelector.addGoal(8, new LookAtPlayerGoal(this, Player.class, 8.0F));
     }
 
-    public void say(PlayerEntity p, String text) {
-        p.sendStatusMessage(new StringTextComponent("§7<" + npcName() + "§7> §f" + text), false);
+    public void say(Player p, String text) {
+        p.sendSystemMessage(Component.literal("§7<" + npcName() + "§7> §f" + text));
     }
 
     /** Сколько десяток (купюр по 10₽) может выпасть при смерти. */
@@ -78,12 +78,12 @@ public abstract class DebtNpcEntity extends CreatureEntity {
     }
 
     @Override
-    protected void dropSpecialItems(DamageSource source, int looting, boolean recentlyHitIn) {
-        super.dropSpecialItems(source, looting, recentlyHitIn);
+    protected void dropCustomDeathLoot(net.minecraft.server.level.ServerLevel level, DamageSource source, boolean recentlyHitIn) {
+        super.dropCustomDeathLoot(level, source, recentlyHitIn);
         int max = moneyDrop();
         if (max > 0) {
-            int n = 1 + this.rand.nextInt(max);
-            this.entityDropItem(new ItemStack(ModItems.BANKNOTE_10.get(), n));
+            int n = 1 + this.random.nextInt(max);
+            this.spawnAtLocation(level, new ItemStack(ModItems.BANKNOTE_10.get(), n));
         }
     }
 
@@ -98,53 +98,53 @@ public abstract class DebtNpcEntity extends CreatureEntity {
     @Override
     public void tick() {
         super.tick();
-        if (world.isRemote || this.ticksExisted % 20 != 0) return;
+        if (this.level().isClientSide() || this.tickCount % 20 != 0) return;
         // постоянная Сила I — дубинкой бьют больно
-        EffectInstance str = this.getActivePotionEffect(Effects.STRENGTH);
+        MobEffectInstance str = this.getEffect(MobEffects.STRENGTH);
         if (str == null || str.getDuration() < 100) {
-            this.addPotionEffect(new EffectInstance(Effects.STRENGTH, 600, 0, false, false));
+            this.addEffect(new MobEffectInstance(MobEffects.STRENGTH, 600, 0, false, false));
         }
-        MinecraftServer server = world.getServer();
+        MinecraftServer server = this.level().getServer();
         if (server == null) return;
-        PlayerEntity t = getTargetPlayer();
-        if (!(t instanceof ServerPlayerEntity) || !t.isAlive()) {
-            if (t == null) this.remove();
+        Player t = getTargetPlayer();
+        if (!(t instanceof ServerPlayer) || !t.isAlive()) {
+            if (t == null) this.discard();
             return;
         }
-        if (this.getDistanceSq(t) > 128 * 128) {
-            this.remove();
+        if (this.distanceToSqr(t) > 128 * 128) {
+            this.discard();
             return;
         }
         Account a = EconomyData.get(server).get(t);
         if (!isStillNeeded(a)) {
-            onDismissed((ServerPlayerEntity) t);
-            this.remove();
+            onDismissed((ServerPlayer) t);
+            this.discard();
             return;
         }
         // отстал — «подъехал на машине»
-        if (this.getDistanceSq(t) > 40 * 40) {
+        if (this.distanceToSqr(t) > 40 * 40) {
             DebtManager.teleportNear(this, t, 6);
         }
-        serverSecond((ServerPlayerEntity) t, a);
+        serverSecond((ServerPlayer) t, a);
     }
 
-    protected void onDismissed(ServerPlayerEntity target) {}
+    protected void onDismissed(ServerPlayer target) {}
 
     @Override
-    public boolean canDespawn(double distanceToClosestPlayer) {
+    public boolean removeWhenFarAway(double distanceToClosestPlayer) {
         return false;
     }
 
     @Override
-    public void writeAdditional(CompoundNBT nbt) {
-        super.writeAdditional(nbt);
-        if (targetId != null) nbt.putUniqueId("DebtTarget", targetId);
+    protected void addAdditionalSaveData(net.minecraft.world.level.storage.ValueOutput nbt) {
+        super.addAdditionalSaveData(nbt);
+        if (targetId != null) Nbt.putUUID(nbt, "DebtTarget", targetId);
     }
 
     @Override
-    public void readAdditional(CompoundNBT nbt) {
-        super.readAdditional(nbt);
-        if (nbt.hasUniqueId("DebtTarget")) targetId = nbt.getUniqueId("DebtTarget");
+    protected void readAdditionalSaveData(net.minecraft.world.level.storage.ValueInput nbt) {
+        super.readAdditionalSaveData(nbt);
+        if (Nbt.hasUUID(nbt, "DebtTarget")) targetId = Nbt.getUUID(nbt, "DebtTarget");
     }
 
     /** Ходит за должником на дистанции. */
@@ -157,24 +157,24 @@ public abstract class DebtNpcEntity extends CreatureEntity {
             this.mob = mob;
             this.speed = speed;
             this.minDist = minDist;
-            this.setMutexFlags(EnumSet.of(Goal.Flag.MOVE, Goal.Flag.LOOK));
+            this.setFlags(EnumSet.of(Goal.Flag.MOVE, Goal.Flag.LOOK));
         }
 
         @Override
-        public boolean shouldExecute() {
-            PlayerEntity p = mob.getTargetPlayer();
-            return p != null && p.isAlive() && mob.getAttackTarget() == null;
+        public boolean canUse() {
+            Player p = mob.getTargetPlayer();
+            return p != null && p.isAlive() && mob.getTarget() == null;
         }
 
         @Override
         public void tick() {
-            PlayerEntity p = mob.getTargetPlayer();
+            Player p = mob.getTargetPlayer();
             if (p == null) return;
-            mob.getLookController().setLookPositionWithEntity(p, 10.0F, (float) mob.getVerticalFaceSpeed());
-            if (mob.getDistanceSq(p) > minDist * minDist) {
-                mob.getNavigator().tryMoveToEntityLiving(p, speed);
+            mob.getLookControl().setLookAt(p, 10.0F, (float) mob.getMaxHeadXRot());
+            if (mob.distanceToSqr(p) > minDist * minDist) {
+                mob.getNavigation().moveTo(p, speed);
             } else {
-                mob.getNavigator().clearPath();
+                mob.getNavigation().stop();
             }
         }
     }
@@ -185,33 +185,33 @@ public abstract class DebtNpcEntity extends CreatureEntity {
 
         public HuntTargetGoal(DebtNpcEntity mob) {
             this.mob = mob;
-            this.setMutexFlags(EnumSet.of(Goal.Flag.TARGET));
+            this.setFlags(EnumSet.of(Goal.Flag.TARGET));
         }
 
         @Override
-        public boolean shouldExecute() {
-            PlayerEntity p = mob.getTargetPlayer();
+        public boolean canUse() {
+            Player p = mob.getTargetPlayer();
             return p != null && p.isAlive() && !p.isCreative() && !p.isSpectator() && mob.wantsToFight();
         }
 
         @Override
-        public void startExecuting() {
-            mob.setAttackTarget(mob.getTargetPlayer());
+        public void start() {
+            mob.setTarget(mob.getTargetPlayer());
         }
 
         @Override
-        public boolean shouldContinueExecuting() {
-            return shouldExecute();
+        public boolean canContinueToUse() {
+            return canUse();
         }
 
         @Override
         public void tick() {
-            if (mob.getAttackTarget() == null) mob.setAttackTarget(mob.getTargetPlayer());
+            if (mob.getTarget() == null) mob.setTarget(mob.getTargetPlayer());
         }
 
         @Override
-        public void resetTask() {
-            mob.setAttackTarget(null);
+        public void stop() {
+            mob.setTarget(null);
         }
     }
 
@@ -224,57 +224,57 @@ public abstract class DebtNpcEntity extends CreatureEntity {
         public PickupMoneyGoal(DebtNpcEntity mob, double speed) {
             this.mob = mob;
             this.speed = speed;
-            this.setMutexFlags(EnumSet.of(Goal.Flag.MOVE, Goal.Flag.LOOK));
+            this.setFlags(EnumSet.of(Goal.Flag.MOVE, Goal.Flag.LOOK));
         }
 
         private ItemEntity find() {
-            List<ItemEntity> list = mob.world.getEntitiesWithinAABB(ItemEntity.class, mob.getBoundingBox().grow(10.0D, 4.0D, 10.0D),
+            List<ItemEntity> list = mob.level().getEntitiesOfClass(ItemEntity.class, mob.getBoundingBox().inflate(10.0D, 4.0D, 10.0D),
                     e -> e.isAlive() && ItemValues.isCash(e.getItem()));
             ItemEntity best = null;
             double bd = Double.MAX_VALUE;
             for (ItemEntity e : list) {
-                double d = mob.getDistanceSq(e);
+                double d = mob.distanceToSqr(e);
                 if (d < bd) { bd = d; best = e; }
             }
             return best;
         }
 
         @Override
-        public boolean shouldExecute() {
-            if (!mob.likesMoney() || mob.ticksExisted % 5 != 0) return false;
+        public boolean canUse() {
+            if (!mob.likesMoney() || mob.tickCount % 5 != 0) return false;
             item = find();
             return item != null;
         }
 
         @Override
-        public boolean shouldContinueExecuting() {
-            return item != null && item.isAlive() && mob.getDistanceSq(item) < 14 * 14;
+        public boolean canContinueToUse() {
+            return item != null && item.isAlive() && mob.distanceToSqr(item) < 14 * 14;
         }
 
         @Override
-        public void startExecuting() {
-            mob.setAttackTarget(null);
-            mob.getNavigator().tryMoveToEntityLiving(item, speed);
+        public void start() {
+            mob.setTarget(null);
+            mob.getNavigation().moveTo(item, speed);
         }
 
         @Override
         public void tick() {
             if (item == null) return;
-            mob.getLookController().setLookPositionWithEntity(item, 30.0F, 30.0F);
-            if (mob.getDistanceSq(item) < 2.0D * 2.0D) {
+            mob.getLookControl().setLookAt(item, 30.0F, 30.0F);
+            if (mob.distanceToSqr(item) < 2.0D * 2.0D) {
                 double v = ItemValues.stackValue(item.getItem());
-                item.remove();
+                item.discard();
                 item = null;
                 mob.onMoneyPicked(v);
-            } else if (mob.ticksExisted % 10 == 0) {
-                mob.getNavigator().tryMoveToEntityLiving(item, speed);
+            } else if (mob.tickCount % 10 == 0) {
+                mob.getNavigation().moveTo(item, speed);
             }
         }
 
         @Override
-        public void resetTask() {
+        public void stop() {
             item = null;
-            mob.getNavigator().clearPath();
+            mob.getNavigation().stop();
         }
     }
 

@@ -7,6 +7,6 @@ public final class ClientHooks {
     private ClientHooks() {}
 
     public static void openPhone() {
-        Minecraft.getInstance().displayGuiScreen(new PhoneScreen());
+        Minecraft.getInstance().gui.setScreen(new PhoneScreen());
     }
 }

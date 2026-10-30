@@ -6,11 +6,11 @@ import com.baraaoi.reallife.economy.EconomyData;
 import com.baraaoi.reallife.economy.Finance;
 import com.baraaoi.reallife.economy.ItemValues;
 import com.baraaoi.reallife.event.DebtManager;
-import net.minecraft.entity.CreatureEntity;
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.player.ServerPlayerEntity;
-import net.minecraft.item.ItemStack;
-import net.minecraft.world.World;
+import net.minecraft.world.entity.PathfinderMob;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.Level;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -21,8 +21,8 @@ import java.util.List;
 public class VovanEntity extends DebtNpcEntity {
     private int talk;
 
-    public VovanEntity(EntityType<? extends CreatureEntity> type, World world) {
-        super(type, world);
+    public VovanEntity(EntityType<? extends PathfinderMob> type, Level level) {
+        super(type, level);
     }
 
     @Override
@@ -42,7 +42,7 @@ public class VovanEntity extends DebtNpcEntity {
     }
 
     @Override
-    protected void serverSecond(ServerPlayerEntity p, Account a) {
+    protected void serverSecond(ServerPlayer p, Account a) {
         talk++;
         if (talk % 20 == 1) {
             String[] lines = {
@@ -55,21 +55,21 @@ public class VovanEntity extends DebtNpcEntity {
             say(p, String.format(lines[(talk / 20) % lines.length], Finance.money(a.mfoDebt)));
         }
         // каждые 45 секунд — «изъятие» из карманов, если рядом
-        if (talk % 45 == 0 && this.getDistanceSq(p) < 9.0) {
+        if (talk % 45 == 0 && this.distanceToSqr(p) < 9.0) {
             List<Integer> slots = new ArrayList<>();
-            for (int i = 0; i < p.inventory.mainInventory.size(); i++) {
-                if (ItemValues.valueOf(p.inventory.mainInventory.get(i)) > 0) slots.add(i);
+            for (int i = 0; i < p.getInventory().getNonEquipmentItems().size(); i++) {
+                if (ItemValues.valueOf(p.getInventory().getNonEquipmentItems().get(i)) > 0) slots.add(i);
             }
             if (!slots.isEmpty()) {
-                int slot = slots.get(this.rand.nextInt(slots.size()));
-                ItemStack st = p.inventory.mainInventory.get(slot);
-                int take = Math.max(1, Math.min(st.getCount(), 1 + this.rand.nextInt(8)));
+                int slot = slots.get(this.random.nextInt(slots.size()));
+                ItemStack st = p.getInventory().getNonEquipmentItems().get(slot);
+                int take = Math.max(1, Math.min(st.getCount(), 1 + this.random.nextInt(8)));
                 double value = ItemValues.valueOf(st) * take * 0.5;
-                String name = st.getDisplayName().getString();
+                String name = st.getHoverName().getString();
                 st.shrink(take);
                 say(p, "§cЭто я забираю: " + name + " x" + take + "§f. Зачтём " + Finance.money(value) + ", не благодари.");
                 BankService.payMfo(p, a, value, " (изъято коллектором)");
-                EconomyData.get(world.getServer()).markDirty();
+                EconomyData.get(this.level().getServer()).setDirty();
             } else {
                 say(p, "Карманы пустые? Ну-ну. Братва с тобой по-другому поговорит.");
             }
@@ -77,7 +77,7 @@ public class VovanEntity extends DebtNpcEntity {
     }
 
     @Override
-    protected void onDismissed(ServerPlayerEntity p) {
+    protected void onDismissed(ServerPlayer p) {
         say(p, "Вот так бы сразу. Обращайся ещё, хе-хе.");
     }
 }

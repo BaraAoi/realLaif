@@ -1,24 +1,23 @@
 package com.baraaoi.reallife.item;
 
+import com.baraaoi.reallife.util.Nbt;
 import com.baraaoi.reallife.economy.Account;
 import com.baraaoi.reallife.economy.EconomyData;
 import com.baraaoi.reallife.economy.HouseType;
 import com.baraaoi.reallife.structure.Buildings;
 import com.baraaoi.reallife.structure.Blueprint;
-import net.minecraft.client.util.ITooltipFlag;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.ItemUseContext;
-import net.minecraft.nbt.CompoundNBT;
-import net.minecraft.util.ActionResultType;
-import net.minecraft.util.Direction;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.text.ITextComponent;
-import net.minecraft.util.text.StringTextComponent;
-import net.minecraft.world.World;
+import net.minecraft.world.item.TooltipFlag;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.context.UseOnContext;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.core.Direction;
+import net.minecraft.core.BlockPos;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.level.Level;
 
-import javax.annotation.Nullable;
 import java.util.List;
 import java.util.UUID;
 
@@ -32,53 +31,54 @@ public class HouseOrderItem extends Item {
 
     public static ItemStack create(Item item, UUID owner, int house, long orderId) {
         ItemStack s = new ItemStack(item);
-        CompoundNBT t = s.getOrCreateTag();
-        t.putUniqueId("owner", owner);
+        CompoundTag t = new CompoundTag();
+        Nbt.putUUID(t, "owner", owner);
         t.putInt("house", house);
         t.putLong("order", orderId);
+        Nbt.setItemTag(s, t);
         return s;
     }
 
     /** v1.10: ордер на дом, купленный сразу (paid — без залога банка). */
     public static ItemStack create(Item item, UUID owner, int house, long orderId, boolean paid) {
         ItemStack s = create(item, owner, house, orderId);
-        if (paid) s.getOrCreateTag().putBoolean("paid", true);
+        if (paid) com.baraaoi.reallife.util.Nbt.editItem(s, _t -> _t.putBoolean("paid", true));
         return s;
     }
 
     @Override
-    public ActionResultType onItemUse(ItemUseContext ctx) {
-        World world = ctx.getWorld();
-        PlayerEntity player = ctx.getPlayer();
-        if (world.isRemote || player == null) return ActionResultType.SUCCESS;
-        ItemStack stack = ctx.getItem();
-        CompoundNBT t = stack.getTag();
-        if (t == null || !t.hasUniqueId("owner")) {
-            player.sendStatusMessage(new StringTextComponent("§cОрдер недействителен."), false);
-            return ActionResultType.FAIL;
+    public InteractionResult useOn(UseOnContext ctx) {
+        Level world = ctx.getLevel();
+        Player player = ctx.getPlayer();
+        if (world.isClientSide() || player == null) return InteractionResult.SUCCESS;
+        ItemStack stack = ctx.getItemInHand();
+        CompoundTag t = com.baraaoi.reallife.util.Nbt.itemTag(stack);
+        if (t == null || !Nbt.hasUUID(t, "owner")) {
+            player.sendSystemMessage(Component.literal("§cОрдер недействителен."));
+            return InteractionResult.FAIL;
         }
-        if (!t.getUniqueId("owner").equals(player.getUniqueID())) {
-            player.sendStatusMessage(new StringTextComponent("§cЭто чужой ордер! Банк строит только владельцу ипотеки."), false);
-            return ActionResultType.FAIL;
+        if (!Nbt.getUUID(t, "owner").equals(player.getUUID())) {
+            player.sendSystemMessage(Component.literal("§cЭто чужой ордер! Банк строит только владельцу ипотеки."));
+            return InteractionResult.FAIL;
         }
-        if (world.getDimensionKey() != World.OVERWORLD) {
-            player.sendStatusMessage(new StringTextComponent("§cБанк строит только в обычном мире."), false);
-            return ActionResultType.FAIL;
+        if (world.dimension() != Level.OVERWORLD) {
+            player.sendSystemMessage(Component.literal("§cБанк строит только в обычном мире."));
+            return InteractionResult.FAIL;
         }
         EconomyData data = EconomyData.get(world.getServer());
         Account a = data.get(player);
-        HouseType type = HouseType.byId(t.getInt("house"));
-        if (type == null || a.pendingHouse != type.ordinal() || a.houseOrderId != t.getLong("order")) {
-            player.sendStatusMessage(new StringTextComponent("§cОрдер аннулирован банком."), false);
+        HouseType type = HouseType.byId(t.getIntOr("house", 0));
+        if (type == null || a.pendingHouse != type.ordinal() || a.houseOrderId != t.getLongOr("order", 0L)) {
+            player.sendSystemMessage(Component.literal("§cОрдер аннулирован банком."));
             stack.shrink(1);
-            return ActionResultType.FAIL;
+            return InteractionResult.FAIL;
         }
-        Direction facing = ctx.getPlacementHorizontalFacing();
-        BlockPos origin = ctx.getPos().up().offset(facing, 2);
-        String problem = Buildings.checkHouseSite(world, origin, facing, type, data, player.getUniqueID());
+        Direction facing = ctx.getHorizontalDirection();
+        BlockPos origin = ctx.getClickedPos().above().relative(facing, 2);
+        String problem = Buildings.checkHouseSite(world, origin, facing, type, data, player.getUUID());
         if (problem != null) {
-            player.sendStatusMessage(new StringTextComponent("§6[Реал Банк] §cБригада отказалась строить: §f" + problem), false);
-            return ActionResultType.FAIL;
+            player.sendSystemMessage(Component.literal("§6[Реал Банк] §cБригада отказалась строить: §f" + problem));
+            return InteractionResult.FAIL;
         }
         Blueprint bp = Buildings.buildHouse(world, origin, facing, type);
         a.hasHouse = true;
@@ -87,31 +87,31 @@ public class HouseOrderItem extends Item {
         a.houseMax = bp.max();
         a.houseBuilt = true;
         a.pendingHouse = -1;
-        int claimed = Buildings.claimArea(data, player.getUniqueID(), bp.min().add(-8, 0, -8), bp.max().add(8, 0, 8), true);
-        if (a.landCase && player.getUniqueID().equals(data.owner(a.landChunk))) a.landCase = false;
-        data.markDirty();
+        int claimed = Buildings.claimArea(data, player.getUUID(), bp.min().offset(-8, 0, -8), bp.max().offset(8, 0, 8), true);
+        if (a.landCase && player.getUUID().equals(data.owner(a.landChunk))) a.landCase = false;
+        data.setDirty();
         stack.shrink(1);
-        if (claimed > 0) player.sendStatusMessage(new StringTextComponent("§3[Администрация] §fЗемля под домом и вокруг оформлена на вас: §e"
-                + claimed + "§f участк(а/ов). Стройте спокойно."), false);
-        player.sendStatusMessage(new StringTextComponent("§6[Реал Банк] §fБригада построила вам: §e" + type.title
-                + (a.hasMortgage() ? "§f. Не забывайте платить по ипотеке — иначе дом изымут." : "§f. Дом полностью ваш — с новосельем!")), false);
-        return ActionResultType.SUCCESS;
+        if (claimed > 0) player.sendSystemMessage(Component.literal("§3[Администрация] §fЗемля под домом и вокруг оформлена на вас: §e"
+                + claimed + "§f участк(а/ов). Стройте спокойно."));
+        player.sendSystemMessage(Component.literal("§6[Реал Банк] §fБригада построила вам: §e" + type.title
+                + (a.hasMortgage() ? "§f. Не забывайте платить по ипотеке — иначе дом изымут." : "§f. Дом полностью ваш — с новосельем!")));
+        return InteractionResult.SUCCESS;
     }
 
     @Override
-    public void addInformation(ItemStack stack, @Nullable World world, List<ITextComponent> tooltip, ITooltipFlag flag) {
-        CompoundNBT t = stack.getTag();
+    public void appendHoverText(ItemStack stack, Item.TooltipContext context, net.minecraft.world.item.component.TooltipDisplay display, java.util.function.Consumer<Component> tooltip, TooltipFlag flag) {
+        CompoundTag t = com.baraaoi.reallife.util.Nbt.itemTag(stack);
         if (t != null) {
-            HouseType type = HouseType.byId(t.getInt("house"));
-            if (type != null) tooltip.add(new StringTextComponent("§eДом: " + type.title));
+            HouseType type = HouseType.byId(t.getIntOr("house", 0));
+            if (type != null) tooltip.accept(Component.literal("§eДом: " + type.title));
         }
-        tooltip.add(new StringTextComponent("§7ПКМ по земле — бригада банка построит дом перед вами."));
-        tooltip.add(new StringTextComponent("§7Нужна ровная площадка без чужих построек."));
-        if (t != null && t.getBoolean("paid")) {
-            tooltip.add(new StringTextComponent("§aОплачен полностью — дом ваш, не в залоге."));
+        tooltip.accept(Component.literal("§7ПКМ по земле — бригада банка построит дом перед вами."));
+        tooltip.accept(Component.literal("§7Нужна ровная площадка без чужих построек."));
+        if (t != null && t.getBooleanOr("paid", false)) {
+            tooltip.accept(Component.literal("§aОплачен полностью — дом ваш, не в залоге."));
         } else {
-            tooltip.add(new StringTextComponent("§8Ордер действует, даже если ипотека уже погашена."));
-            tooltip.add(new StringTextComponent("§8Залог банка. При неуплате дом изымается."));
+            tooltip.accept(Component.literal("§8Ордер действует, даже если ипотека уже погашена."));
+            tooltip.accept(Component.literal("§8Залог банка. При неуплате дом изымается."));
         }
     }
 }

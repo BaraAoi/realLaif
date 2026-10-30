@@ -1,37 +1,34 @@
 package com.baraaoi.reallife.economy;
 
-import net.minecraft.entity.merchant.IMerchant;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.MerchantOffer;
-import net.minecraft.item.MerchantOffers;
-import net.minecraft.util.SoundEvent;
-import net.minecraft.util.SoundEvents;
-import net.minecraft.world.World;
+import net.minecraft.world.item.trading.Merchant;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.trading.MerchantOffer;
+import net.minecraft.world.item.trading.MerchantOffers;
+import net.minecraft.sounds.SoundEvent;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.world.level.Level;
 
-import javax.annotation.Nullable;
 
 /** «Торговец» без сущности — для торговых автоматов. */
-public class VendingMerchant implements IMerchant {
-    private final World world;
-    @Nullable
-    private PlayerEntity customer;
+public class VendingMerchant implements Merchant {
+    private final Level world;
+    private Player customer;
     private MerchantOffers offers;
     private int xp;
 
-    public VendingMerchant(PlayerEntity player, MerchantOffers offers) {
-        this.world = player.world;
+    public VendingMerchant(Player player, MerchantOffers offers) {
+        this.world = player.level();
         this.offers = offers;
     }
 
     @Override
-    public void setCustomer(@Nullable PlayerEntity player) {
+    public void setTradingPlayer(Player player) {
         this.customer = player;
     }
 
-    @Nullable
     @Override
-    public PlayerEntity getCustomer() {
+    public Player getTradingPlayer() {
         return customer;
     }
 
@@ -41,41 +38,50 @@ public class VendingMerchant implements IMerchant {
     }
 
     @Override
-    public void setClientSideOffers(@Nullable MerchantOffers offers) {
+    public void overrideOffers(MerchantOffers offers) {
         this.offers = offers;
     }
 
     @Override
-    public void onTrade(MerchantOffer offer) {
+    public void notifyTrade(MerchantOffer offer) {
         offer.increaseUses();
     }
 
     @Override
-    public void verifySellingItem(ItemStack stack) {
+    public void notifyTradeUpdated(ItemStack stack) {
     }
 
-    @Override
-    public World getWorld() {
+    public Level getWorld() {
         return world;
     }
 
     @Override
-    public int getXp() {
+    public int getVillagerXp() {
         return xp;
     }
 
     @Override
-    public void setXP(int xpIn) {
+    public void overrideXp(int xpIn) {
         this.xp = xpIn;
     }
 
     @Override
-    public boolean hasXPBar() {
+    public boolean showProgressBar() {
         return false;
     }
 
     @Override
-    public SoundEvent getYesSound() {
-        return SoundEvents.BLOCK_NOTE_BLOCK_CHIME;
+    public SoundEvent getNotifyTradeSound() {
+        return SoundEvents.NOTE_BLOCK_CHIME.value();
+    }
+
+    @Override
+    public boolean isClientSide() {
+        return world.isClientSide();
+    }
+
+    @Override
+    public boolean stillValid(Player player) {
+        return this.customer == player;
     }
 }

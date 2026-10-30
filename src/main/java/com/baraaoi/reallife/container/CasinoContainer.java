@@ -1,18 +1,18 @@
 package com.baraaoi.reallife.container;
 
 import com.baraaoi.reallife.registry.ModContainers;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.entity.player.PlayerInventory;
-import net.minecraft.inventory.container.Container;
-import net.minecraft.item.ItemStack;
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.core.BlockPos;
 
 /** Окно игры в казино (без слотов: ставки — со счёта, затем наличными). */
-public class CasinoContainer extends Container {
+public class CasinoContainer extends AbstractContainerMenu {
     private final BlockPos pos;
     private final int kind;
 
-    public CasinoContainer(int id, PlayerInventory inv, BlockPos pos, int kind) {
+    public CasinoContainer(int id, Inventory inv, BlockPos pos, int kind) {
         super(ModContainers.CASINO.get(), id);
         this.pos = pos;
         this.kind = kind;
@@ -27,12 +27,12 @@ public class CasinoContainer extends Container {
     }
 
     @Override
-    public boolean canInteractWith(PlayerEntity player) {
-        return player.getDistanceSq(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5) <= 64.0;
+    public boolean stillValid(Player player) {
+        return player.distanceToSqr(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5) <= 64.0;
     }
 
     @Override
-    public ItemStack transferStackInSlot(PlayerEntity player, int index) {
+    public ItemStack quickMoveStack(Player player, int index) {
         return ItemStack.EMPTY;
     }
 }

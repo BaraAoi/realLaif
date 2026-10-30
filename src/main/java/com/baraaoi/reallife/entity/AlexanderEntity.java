@@ -3,13 +3,13 @@ package com.baraaoi.reallife.entity;
 import com.baraaoi.reallife.economy.Account;
 import com.baraaoi.reallife.economy.EconomyData;
 import com.baraaoi.reallife.event.DebtManager;
-import net.minecraft.entity.CreatureEntity;
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.player.ServerPlayerEntity;
-import net.minecraft.potion.EffectInstance;
-import net.minecraft.potion.Effects;
-import net.minecraft.util.DamageSource;
-import net.minecraft.world.World;
+import net.minecraft.world.entity.PathfinderMob;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.effect.MobEffects;
+import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.level.Level;
 
 /**
  * Александр — сотрудник службы взыскания. Заставляет копать: каждый выкопанный блок идёт в счёт долга.
@@ -19,8 +19,8 @@ public class AlexanderEntity extends DebtNpcEntity {
     private int talk;
     private int idleStrikes;
 
-    public AlexanderEntity(EntityType<? extends CreatureEntity> type, World world) {
-        super(type, world);
+    public AlexanderEntity(EntityType<? extends PathfinderMob> type, Level level) {
+        super(type, level);
     }
 
     @Override
@@ -40,21 +40,21 @@ public class AlexanderEntity extends DebtNpcEntity {
     }
 
     @Override
-    protected void serverSecond(ServerPlayerEntity p, Account a) {
+    protected void serverSecond(ServerPlayer p, Account a) {
         talk++;
-        long now = world.getGameTime();
-        double dist = this.getDistanceSq(p);
+        long now = this.level().getGameTime();
+        double dist = this.distanceToSqr(p);
         if (dist > 24 * 24) {
-            p.setPositionAndUpdate(this.getPosX(), this.getPosY(), this.getPosZ());
-            p.attackEntityFrom(DamageSource.causeMobDamage(this), 2.0F);
-            p.addPotionEffect(new EffectInstance(Effects.SLOWNESS, 200, 1));
+            p.teleportTo(this.getX(), this.getY(), this.getZ());
+            p.hurtServer((net.minecraft.server.level.ServerLevel) p.level(), this.damageSources().mobAttack(this), 2.0F);
+            p.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, 200, 1));
             say(p, "§cКуда собрался?! Работать! Осталось блоков: " + a.laborBlocksLeft);
             return;
         }
         if (a.lastLaborTick > 0 && now - a.lastLaborTick > 1200) {
             a.lastLaborTick = now;
-            EconomyData.get(world.getServer()).markDirty();
-            p.attackEntityFrom(DamageSource.causeMobDamage(this), 3.0F);
+            EconomyData.get(this.level().getServer()).setDirty();
+            p.hurtServer((net.minecraft.server.level.ServerLevel) p.level(), this.damageSources().mobAttack(this), 3.0F);
             if (++idleStrikes >= 5) {
                 a.wanted = true;
                 say(p, "§4Всё, моё терпение кончилось. Я вызываю полицию.");
@@ -76,7 +76,7 @@ public class AlexanderEntity extends DebtNpcEntity {
     }
 
     @Override
-    protected void onDismissed(ServerPlayerEntity p) {
+    protected void onDismissed(ServerPlayer p) {
         say(p, "Ну вот. Можешь же, когда хочешь. Свободен. Кирку оставь себе — пригодится.");
     }
 }

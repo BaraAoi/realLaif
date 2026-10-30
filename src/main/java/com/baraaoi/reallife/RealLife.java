@@ -1,6 +1,5 @@
 package com.baraaoi.reallife;
 
-import com.baraaoi.reallife.client.ClientSetup;
 import com.baraaoi.reallife.event.ForgeEvents;
 import com.baraaoi.reallife.network.Network;
 import com.baraaoi.reallife.registry.ModBlocks;
@@ -8,23 +7,19 @@ import com.baraaoi.reallife.registry.ModContainers;
 import com.baraaoi.reallife.registry.ModEntities;
 import com.baraaoi.reallife.registry.ModItems;
 import com.baraaoi.reallife.registry.ModTileEntities;
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.common.MinecraftForge;
-import net.minecraftforge.eventbus.api.IEventBus;
-import net.minecraftforge.fml.DistExecutor;
-import net.minecraftforge.fml.ModLoadingContext;
+import net.minecraftforge.event.entity.EntityAttributeCreationEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.config.ModConfig;
-import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 
 /**
  * Real Life — суровая реальная жизнь: банк, кредиты, ипотека, коллекторы, полиция, МФО.
+ * Версия 2.x — порт на Minecraft 26.3 / Forge 26.3.
  */
 @Mod(RealLife.MODID)
-public class RealLife {
+public final class RealLife {
     public static final String MODID = "reallife";
-    public static final org.apache.logging.log4j.Logger LOG = org.apache.logging.log4j.LogManager.getLogger("RealLife");
+    public static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger("RealLife");
 
     /** Версия мода (из mods.toml / gradle.properties: mod_version). */
     public static String version() {
@@ -32,23 +27,22 @@ public class RealLife {
                 .map(c -> c.getModInfo().getVersion().toString()).orElse("?");
     }
 
-    public RealLife() {
-        IEventBus bus = FMLJavaModLoadingContext.get().getModEventBus();
-        ModBlocks.BLOCKS.register(bus);
-        ModItems.ITEMS.register(bus);
-        ModEntities.ENTITIES.register(bus);
-        ModTileEntities.TILES.register(bus);
-        ModContainers.CONTAINERS.register(bus);
-        bus.addListener(this::commonSetup);
-        DistExecutor.unsafeRunWhenOn(Dist.CLIENT, () -> () -> bus.addListener(ClientSetup::init));
-
-        ModLoadingContext.get().registerConfig(ModConfig.Type.COMMON, Config.SPEC);
-        MinecraftForge.EVENT_BUS.register(new ForgeEvents());
-        MinecraftForge.EVENT_BUS.register(new SelfTest());
-    }
-
-    private void commonSetup(FMLCommonSetupEvent event) {
+    public RealLife(FMLJavaModLoadingContext context) {
+        var modBus = context.getModBusGroup();
+        ModBlocks.BLOCKS.register(modBus);
+        ModItems.ITEMS.register(modBus);
+        ModItems.TABS.register(modBus);
+        ModEntities.ENTITIES.register(modBus);
+        ModTileEntities.TILES.register(modBus);
+        ModContainers.CONTAINERS.register(modBus);
         Network.register();
-        event.enqueueWork(ModEntities::registerAttributes);
+        EntityAttributeCreationEvent.BUS.addListener(ModEntities::registerAttributes);
+
+        context.registerConfig(ModConfig.Type.COMMON, Config.SPEC);
+        if (net.minecraftforge.fml.loading.FMLEnvironment.dist == net.minecraftforge.api.distmarker.Dist.CLIENT) {
+            com.baraaoi.reallife.client.ClientSetup.register(modBus);
+        }
+        ForgeEvents.register();
+        SelfTest.register();
     }
 }

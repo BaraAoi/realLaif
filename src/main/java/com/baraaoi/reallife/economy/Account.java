@@ -1,8 +1,9 @@
 package com.baraaoi.reallife.economy;
 
-import net.minecraft.nbt.CompoundNBT;
-import net.minecraft.nbt.ListNBT;
-import net.minecraft.util.math.BlockPos;
+import com.baraaoi.reallife.util.Nbt;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.core.BlockPos;
 
 import java.util.UUID;
 
@@ -72,7 +73,7 @@ public class Account {
     /** Временная камера (СИЗО в небе / подвал под МФО) и снимок блоков, которые она заменила. */
     public boolean cellActive;
     public BlockPos cellCenter = BlockPos.ZERO;
-    public ListNBT cellSnapshot = new ListNBT();
+    public ListTag cellSnapshot = new ListTag();
 
     // --- рейтинг (ручная поправка админом / финмониторинг) ---
     public int ratingBonus;
@@ -144,9 +145,9 @@ public class Account {
     public void clearMfo() { mfoDebt = 0; mfoPrincipal = 0; mfoDays = 0; mfoOverdueDays = 0; mfoLethal = false; mfoBurned = false; nextBratkiTick = 0; }
     public void clearArrears() { arrears = 0; overdueDays = 0; laborBlocksLeft = 0; laborPerBlock = 0; }
 
-    public CompoundNBT write() {
-        CompoundNBT t = new CompoundNBT();
-        t.putUniqueId("id", id);
+    public CompoundTag write() {
+        CompoundTag t = new CompoundTag();
+        Nbt.putUUID(t, "id", id);
         t.putString("name", name);
         t.putDouble("balance", balance);
         t.putDouble("lifetimeDeposited", lifetimeDeposited);
@@ -165,8 +166,8 @@ public class Account {
         t.putBoolean("houseBuilt", houseBuilt);
         t.putBoolean("hasHouse", hasHouse);
         t.putInt("houseType", houseType);
-        t.putLong("houseMin", houseMin.toLong());
-        t.putLong("houseMax", houseMax.toLong());
+        t.putLong("houseMin", houseMin.asLong());
+        t.putLong("houseMax", houseMax.asLong());
         t.putDouble("arrears", arrears);
         t.putInt("overdueDays", overdueDays);
         t.putBoolean("wanted", wanted);
@@ -188,18 +189,18 @@ public class Account {
         t.putLong("jailUntil", jailUntil);
         t.putInt("pitBlocksLeft", pitBlocksLeft);
         t.putBoolean("cellActive", cellActive);
-        t.putLong("cellCenter", cellCenter.toLong());
+        t.putLong("cellCenter", cellCenter.asLong());
         t.put("cellSnapshot", cellSnapshot);
         t.putInt("ratingBonus", ratingBonus);
         t.putInt("pendingHouse", pendingHouse);
         t.putDouble("pitDebtLeft", pitDebtLeft);
         t.putInt("printers", printers);
         long[] pl = new long[printerList.size()];
-        for (int i = 0; i < pl.length; i++) pl[i] = printerList.get(i).toLong();
+        for (int i = 0; i < pl.length; i++) pl[i] = printerList.get(i).asLong();
         t.putLongArray("printerList", pl);
         t.putBoolean("chestGiven", chestGiven);
         t.putInt("bizVersion", 4);
-        t.putLong("launderPos", launderPos.toLong());
+        t.putLong("launderPos", launderPos.asLong());
         t.putBoolean("robber", robber);
         t.putLong("robberyUntil", robberyUntil);
         t.putLong("casinoBanUntil", casinoBanUntil);
@@ -208,9 +209,9 @@ public class Account {
         t.putBoolean("casinoKick", casinoKick);
         t.putDouble("policeBribe", policeBribe);
         t.putBoolean("hasBusiness", hasBusiness);
-        t.putLong("businessChest", businessChest.toLong());
-        t.putLong("businessMin", businessMin.toLong());
-        t.putLong("businessMax", businessMax.toLong());
+        t.putLong("businessChest", businessChest.asLong());
+        t.putLong("businessMin", businessMin.asLong());
+        t.putLong("businessMax", businessMax.asLong());
         t.putBoolean("hasLaundering", hasLaundering);
         t.putDouble("crypto", crypto);
         for (int i = 1; i < coins.length; i++) if (coins[i] != 0) t.putDouble("coin" + i, coins[i]);
@@ -222,85 +223,85 @@ public class Account {
         return t;
     }
 
-    public static Account read(CompoundNBT t) {
-        Account a = new Account(t.getUniqueId("id"));
-        a.name = t.getString("name");
-        a.balance = t.getDouble("balance");
-        a.lifetimeDeposited = t.getDouble("lifetimeDeposited");
-        a.createdDay = t.getLong("createdDay");
-        a.onTimePayments = t.getInt("onTime");
-        a.lateDaysTotal = t.getInt("lateDays");
-        a.defaults = t.getInt("defaults");
-        a.loanPrincipal = t.getDouble("loanPrincipal");
-        a.loanRate = t.getDouble("loanRate");
-        a.loanDays = t.getInt("loanDays");
-        a.mortPrincipal = t.getDouble("mortPrincipal");
-        a.mortRate = t.getDouble("mortRate");
-        a.mortDays = t.getInt("mortDays");
-        a.mortHouse = t.getInt("mortHouse");
-        a.houseOrderId = t.getLong("houseOrderId");
-        a.houseBuilt = t.getBoolean("houseBuilt");
-        a.hasHouse = t.getBoolean("hasHouse");
-        a.houseType = t.getInt("houseType");
-        a.houseMin = BlockPos.fromLong(t.getLong("houseMin"));
-        a.houseMax = BlockPos.fromLong(t.getLong("houseMax"));
-        a.arrears = t.getDouble("arrears");
-        a.overdueDays = t.getInt("overdueDays");
-        a.wanted = t.getBoolean("wanted");
-        a.policeWave = t.getInt("policeWave");
-        a.nextPoliceTick = t.getLong("nextPoliceTick");
-        a.laborBlocksLeft = t.getInt("laborBlocksLeft");
-        a.laborPerBlock = t.getDouble("laborPerBlock");
-        a.lastLaborTick = t.getLong("lastLaborTick");
-        a.mfoDebt = t.getDouble("mfoDebt");
-        a.mfoPrincipal = t.getDouble("mfoPrincipal");
-        a.mfoDays = t.getInt("mfoDays");
-        a.mfoOverdueDays = t.getInt("mfoOverdueDays");
-        a.mfoLethal = t.getBoolean("mfoLethal");
-        a.mfoBurned = t.getBoolean("mfoBurned");
-        a.nextBratkiTick = t.getLong("nextBratkiTick");
-        a.lastSms = t.getLong("lastSms");
-        a.mfoLoansTaken = t.getInt("mfoLoansTaken");
-        a.captivity = t.getInt("captivity");
-        a.jailUntil = t.getLong("jailUntil");
-        a.pitBlocksLeft = t.getInt("pitBlocksLeft");
-        a.cellActive = t.getBoolean("cellActive");
-        a.cellCenter = BlockPos.fromLong(t.getLong("cellCenter"));
-        a.cellSnapshot = t.getList("cellSnapshot", 10);
-        a.ratingBonus = t.getInt("ratingBonus");
+    public static Account read(CompoundTag t) {
+        Account a = new Account(Nbt.getUUID(t, "id"));
+        a.name = t.getStringOr("name", "");
+        a.balance = t.getDoubleOr("balance", 0.0);
+        a.lifetimeDeposited = t.getDoubleOr("lifetimeDeposited", 0.0);
+        a.createdDay = t.getLongOr("createdDay", 0L);
+        a.onTimePayments = t.getIntOr("onTime", 0);
+        a.lateDaysTotal = t.getIntOr("lateDays", 0);
+        a.defaults = t.getIntOr("defaults", 0);
+        a.loanPrincipal = t.getDoubleOr("loanPrincipal", 0.0);
+        a.loanRate = t.getDoubleOr("loanRate", 0.0);
+        a.loanDays = t.getIntOr("loanDays", 0);
+        a.mortPrincipal = t.getDoubleOr("mortPrincipal", 0.0);
+        a.mortRate = t.getDoubleOr("mortRate", 0.0);
+        a.mortDays = t.getIntOr("mortDays", 0);
+        a.mortHouse = t.getIntOr("mortHouse", 0);
+        a.houseOrderId = t.getLongOr("houseOrderId", 0L);
+        a.houseBuilt = t.getBooleanOr("houseBuilt", false);
+        a.hasHouse = t.getBooleanOr("hasHouse", false);
+        a.houseType = t.getIntOr("houseType", 0);
+        a.houseMin = BlockPos.of(t.getLongOr("houseMin", 0L));
+        a.houseMax = BlockPos.of(t.getLongOr("houseMax", 0L));
+        a.arrears = t.getDoubleOr("arrears", 0.0);
+        a.overdueDays = t.getIntOr("overdueDays", 0);
+        a.wanted = t.getBooleanOr("wanted", false);
+        a.policeWave = t.getIntOr("policeWave", 0);
+        a.nextPoliceTick = t.getLongOr("nextPoliceTick", 0L);
+        a.laborBlocksLeft = t.getIntOr("laborBlocksLeft", 0);
+        a.laborPerBlock = t.getDoubleOr("laborPerBlock", 0.0);
+        a.lastLaborTick = t.getLongOr("lastLaborTick", 0L);
+        a.mfoDebt = t.getDoubleOr("mfoDebt", 0.0);
+        a.mfoPrincipal = t.getDoubleOr("mfoPrincipal", 0.0);
+        a.mfoDays = t.getIntOr("mfoDays", 0);
+        a.mfoOverdueDays = t.getIntOr("mfoOverdueDays", 0);
+        a.mfoLethal = t.getBooleanOr("mfoLethal", false);
+        a.mfoBurned = t.getBooleanOr("mfoBurned", false);
+        a.nextBratkiTick = t.getLongOr("nextBratkiTick", 0L);
+        a.lastSms = t.getLongOr("lastSms", 0L);
+        a.mfoLoansTaken = t.getIntOr("mfoLoansTaken", 0);
+        a.captivity = t.getIntOr("captivity", 0);
+        a.jailUntil = t.getLongOr("jailUntil", 0L);
+        a.pitBlocksLeft = t.getIntOr("pitBlocksLeft", 0);
+        a.cellActive = t.getBooleanOr("cellActive", false);
+        a.cellCenter = BlockPos.of(t.getLongOr("cellCenter", 0L));
+        a.cellSnapshot = t.getListOrEmpty("cellSnapshot");
+        a.ratingBonus = t.getIntOr("ratingBonus", 0);
         if (t.contains("pendingHouse")) {
-            a.pendingHouse = t.getInt("pendingHouse");
+            a.pendingHouse = t.getIntOr("pendingHouse", 0);
         } else if (a.mortHouse >= 0 && !a.houseBuilt) {
             a.pendingHouse = a.mortHouse; // версия 2
         }
-        a.pitDebtLeft = t.getDouble("pitDebtLeft");
+        a.pitDebtLeft = t.getDoubleOr("pitDebtLeft", 0.0);
         if (a.pitDebtLeft <= 0 && a.pitBlocksLeft > 0) a.pitDebtLeft = a.pitBlocksLeft * 8.0; // версия 2
-        a.printers = t.getInt("printers");
-        a.launderPos = BlockPos.fromLong(t.getLong("launderPos"));
-        a.robber = t.getBoolean("robber");
-        a.robberyUntil = t.getLong("robberyUntil");
-        a.casinoBanUntil = t.getLong("casinoBanUntil");
-        a.casinoDay = t.contains("casinoDay") ? t.getLong("casinoDay") : -1;
-        a.casinoProfit = t.getDouble("casinoProfit");
+        a.printers = t.getIntOr("printers", 0);
+        a.launderPos = BlockPos.of(t.getLongOr("launderPos", 0L));
+        a.robber = t.getBooleanOr("robber", false);
+        a.robberyUntil = t.getLongOr("robberyUntil", 0L);
+        a.casinoBanUntil = t.getLongOr("casinoBanUntil", 0L);
+        a.casinoDay = t.contains("casinoDay") ? t.getLongOr("casinoDay", 0L) : -1;
+        a.casinoProfit = t.getDoubleOr("casinoProfit", 0.0);
         a.casinoKick = false; // наказание за везение отменено (v4)
         a.casinoBanUntil = 0;
-        a.policeBribe = t.getDouble("policeBribe");
-        a.hasBusiness = t.getBoolean("hasBusiness");
+        a.policeBribe = t.getDoubleOr("policeBribe", 0.0);
+        a.hasBusiness = t.getBooleanOr("hasBusiness", false);
         if (a.hasBusiness && !t.contains("printers")) a.printers = 2; // версия 2
-        for (long l : t.getLongArray("printerList")) a.printerList.add(BlockPos.fromLong(l));
-        a.chestGiven = t.getBoolean("chestGiven");
-        if (a.hasBusiness && t.getInt("bizVersion") < 4) { a.chestGiven = true; a.needPrinters = true; } // старый подвал: сундук уже есть
-        a.businessChest = BlockPos.fromLong(t.getLong("businessChest"));
-        a.businessMin = BlockPos.fromLong(t.getLong("businessMin"));
-        a.businessMax = BlockPos.fromLong(t.getLong("businessMax"));
-        a.hasLaundering = t.getBoolean("hasLaundering");
-        a.crypto = t.getDouble("crypto");
-        for (int i = 1; i < a.coins.length; i++) a.coins[i] = t.getDouble("coin" + i);
-        a.peakBalance = t.contains("peakBalance") ? t.getDouble("peakBalance") : Math.max(0, a.balance);
-        a.bizDays = t.getInt("bizDays");
-        a.landCase = t.getBoolean("landCase");
-        a.landChunk = t.getLong("landChunk");
-        a.landDeadline = t.getLong("landDeadline");
+        for (long l : t.getLongArray("printerList").orElse(new long[0])) a.printerList.add(BlockPos.of(l));
+        a.chestGiven = t.getBooleanOr("chestGiven", false);
+        if (a.hasBusiness && t.getIntOr("bizVersion", 0) < 4) { a.chestGiven = true; a.needPrinters = true; } // старый подвал: сундук уже есть
+        a.businessChest = BlockPos.of(t.getLongOr("businessChest", 0L));
+        a.businessMin = BlockPos.of(t.getLongOr("businessMin", 0L));
+        a.businessMax = BlockPos.of(t.getLongOr("businessMax", 0L));
+        a.hasLaundering = t.getBooleanOr("hasLaundering", false);
+        a.crypto = t.getDoubleOr("crypto", 0.0);
+        for (int i = 1; i < a.coins.length; i++) a.coins[i] = t.getDoubleOr("coin" + i, 0.0);
+        a.peakBalance = t.contains("peakBalance") ? t.getDoubleOr("peakBalance", 0.0) : Math.max(0, a.balance);
+        a.bizDays = t.getIntOr("bizDays", 0);
+        a.landCase = t.getBooleanOr("landCase", false);
+        a.landChunk = t.getLongOr("landChunk", 0L);
+        a.landDeadline = t.getLongOr("landDeadline", 0L);
         return a;
     }
 }

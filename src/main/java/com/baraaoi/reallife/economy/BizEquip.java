@@ -1,7 +1,7 @@
 package com.baraaoi.reallife.economy;
 
 import com.baraaoi.reallife.registry.ModBlocks;
-import net.minecraft.block.Block;
+import net.minecraft.world.level.block.Block;
 
 import java.util.function.Supplier;
 

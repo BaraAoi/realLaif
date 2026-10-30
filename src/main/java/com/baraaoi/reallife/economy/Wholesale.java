@@ -2,11 +2,11 @@ package com.baraaoi.reallife.economy;
 
 import com.baraaoi.reallife.item.BanknoteItem;
 import com.baraaoi.reallife.registry.ModItems;
-import net.minecraft.entity.player.ServerPlayerEntity;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.item.MerchantOffer;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.item.trading.MerchantOffer;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -44,7 +44,7 @@ public final class Wholesale {
         }
 
         public String name() {
-            return new ItemStack(item.get()).getDisplayName().getString();
+            return new ItemStack(item.get()).getHoverName().getString();
         }
     }
 
@@ -64,9 +64,9 @@ public final class Wholesale {
         all.addAll(Trades.vending(Trades.VENDING_FOOD));
         all.addAll(Trades.vending(Trades.VENDING_RESOURCES));
         for (MerchantOffer o : all) {
-            ItemStack buy = o.getBuyingStackFirst();
-            ItemStack sell = o.getSellingStack();
-            if (!(buy.getItem() instanceof BanknoteItem) || sell.isEmpty() || !o.getBuyingStackSecond().isEmpty()) continue;
+            ItemStack buy = o.getCostA();
+            ItemStack sell = o.getResult();
+            if (!(buy.getItem() instanceof BanknoteItem) || sell.isEmpty() || !o.getCostB().isEmpty()) continue;
             double unit = ItemValues.stackValue(buy) / sell.getCount();
             Double old = m.get(sell.getItem());
             if (old == null || unit < old) m.put(sell.getItem(), unit);
@@ -111,18 +111,18 @@ public final class Wholesale {
         return l;
     }
 
-    static void buy(ServerPlayerEntity p, Account a, EconomyData data, int idx) {
+    static void buy(ServerPlayer p, Account a, EconomyData data, int idx) {
         List<Lot> l = lots();
         if (idx < 0 || idx >= l.size()) return;
         if (a.captivity != Account.FREE) return;
-        if (!data.ownsBusiness(p.getUniqueID())) {
+        if (!data.ownsBusiness(p.getUUID())) {
             BankService.msg(p, "§3[Опт] §cОптовые закупки — только для владельцев заведений. Купи заведение: телефон → Бизнес.");
             return;
         }
         Lot lot = l.get(idx);
         LegalBusiness target = null;
         if (lot.supply != null) {
-            for (LegalBusiness b : data.bizOf(p.getUniqueID())) if (b.type == lot.supply) { target = b; break; }
+            for (LegalBusiness b : data.bizOf(p.getUUID())) if (b.type == lot.supply) { target = b; break; }
             if (target == null) {
                 BankService.msg(p, "§3[Опт] §c«" + lot.supply.supplyName + "» — сырьё для «" + lot.supply.title + "». У вас нет такого заведения.");
                 return;
@@ -134,7 +134,7 @@ public final class Wholesale {
         }
         Item item = lot.item.get();
         if (target != null) {
-            net.minecraft.world.server.ServerWorld ow = EconomyData.overworld(p.getServer());
+            net.minecraft.server.level.ServerLevel ow = EconomyData.overworld(p.level().getServer());
             ItemStack rest = LegalBiz.deliver(ow, target, new ItemStack(item, lot.count));
             int placed = lot.count - rest.getCount();
             if (!rest.isEmpty()) BankService.give(p, rest);
@@ -150,9 +150,9 @@ public final class Wholesale {
             BankService.give(p, new ItemStack(item, n));
             left -= n;
         }
-        p.sendStatusMessage(new net.minecraft.util.text.StringTextComponent("§3[Опт] §fПартия доставлена: §e" + lot.count + "× ")
-                .append(new net.minecraft.util.text.TranslationTextComponent(item.getTranslationKey()))
-                .appendString("§f за §a" + Finance.money(lot.price)
-                        + (lot.retail > 0 ? "§f (в рознице " + Finance.money(lot.retail) + ")" : "") + "."), false);
+        p.sendSystemMessage(new net.minecraft.network.chat.Component("§3[Опт] §fПартия доставлена: §e" + lot.count + "× ")
+                .append(new net.minecraft.network.chat.Component(item.getDescriptionId()))
+                .append("§f за §a" + Finance.money(lot.price)
+                        + (lot.retail > 0 ? "§f (в рознице " + Finance.money(lot.retail) + ")" : "") + "."));
     }
 }

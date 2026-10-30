@@ -1,30 +1,28 @@
 package com.baraaoi.reallife.network;
 
-import com.baraaoi.reallife.client.ClientAccountData;
-import net.minecraft.nbt.CompoundNBT;
-import net.minecraft.network.PacketBuffer;
-import net.minecraftforge.fml.network.NetworkEvent;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.FriendlyByteBuf;
+import net.minecraftforge.event.network.CustomPayloadEvent;
 
-import java.util.function.Supplier;
-
-/** Сервер -> клиент: состояние счёта для интерфейса. */
+/** Сервер → клиент: снимок данных счёта для интерфейсов. */
 public class SyncPacket {
-    private final CompoundNBT data;
+    private final CompoundTag data;
 
-    public SyncPacket(CompoundNBT data) {
+    public SyncPacket(CompoundTag data) {
         this.data = data;
     }
 
-    public static void encode(SyncPacket m, PacketBuffer buf) {
-        buf.writeCompoundTag(m.data);
+    public static void encode(SyncPacket m, FriendlyByteBuf buf) {
+        buf.writeNbt(m.data);
     }
 
-    public static SyncPacket decode(PacketBuffer buf) {
-        return new SyncPacket(buf.readCompoundTag());
+    public static SyncPacket decode(FriendlyByteBuf buf) {
+        CompoundTag t = buf.readNbt();
+        return new SyncPacket(t == null ? new CompoundTag() : t);
     }
 
-    public static void handle(SyncPacket m, Supplier<NetworkEvent.Context> ctx) {
-        ctx.get().enqueueWork(() -> ClientAccountData.set(m.data));
-        ctx.get().setPacketHandled(true);
+    public static void handle(SyncPacket m, CustomPayloadEvent.Context ctx) {
+        com.baraaoi.reallife.client.ClientAccountData.set(m.data);
+        ctx.setPacketHandled(true);
     }
 }

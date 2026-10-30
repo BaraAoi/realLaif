@@ -1,11 +1,12 @@
 package com.baraaoi.reallife.economy;
 
 import com.google.gson.JsonPrimitive;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.nbt.CompoundNBT;
-import net.minecraft.nbt.ListNBT;
-import net.minecraft.nbt.StringNBT;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.item.Items;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.StringTag;
 
 /** Справочник «Суровая реальная жизнь» — обычная подписанная книга, продаётся в торговых автоматах. */
 public final class Guide {
@@ -55,14 +56,15 @@ public final class Guide {
 
     public static ItemStack book() {
         ItemStack st = new ItemStack(Items.WRITTEN_BOOK);
-        CompoundNBT tag = st.getOrCreateTag();
-        tag.putString("title", TITLE);
-        tag.putString("author", "Реал Банк");
-        tag.putInt("generation", 0);
-        tag.putBoolean("resolved", true);
-        ListNBT pages = new ListNBT();
-        for (String p : PAGES) pages.add(StringNBT.valueOf(new JsonPrimitive(p).toString()));
-        tag.put("pages", pages);
+        java.util.List<net.minecraft.server.network.Filterable<Component>> pages = new java.util.ArrayList<>();
+        for (String p : PAGES) pages.add(net.minecraft.server.network.Filterable.passThrough(Component.literal(p)));
+        st.set(net.minecraft.core.component.DataComponents.WRITTEN_BOOK_CONTENT, new net.minecraft.world.item.component.WrittenBookContent(
+                net.minecraft.server.network.Filterable.passThrough(TITLE.length() > 32 ? TITLE.substring(0, 32) : TITLE), "Реал Банк", 0, pages, true));
         return st;
+    }
+
+    public static int pageCount(ItemStack st) {
+        net.minecraft.world.item.component.WrittenBookContent c = st.get(net.minecraft.core.component.DataComponents.WRITTEN_BOOK_CONTENT);
+        return c == null ? 0 : c.pages().size();
     }
 }

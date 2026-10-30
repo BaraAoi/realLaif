@@ -5,12 +5,11 @@ import com.baraaoi.reallife.registry.ModItems;
 import com.baraaoi.reallife.structure.Blueprint;
 import com.baraaoi.reallife.structure.BizBuildings;
 import com.baraaoi.reallife.structure.Buildings;
-import net.minecraft.entity.player.ServerPlayerEntity;
-import net.minecraft.util.Direction;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.world.World;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.core.Direction;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.Level;
 
-import javax.annotation.Nullable;
 import java.util.UUID;
 
 /**
@@ -23,7 +22,7 @@ public final class BizBuild {
 
     // ------------------------------------------------------------------ покупка в телефоне
 
-    public static void buyTurnkey(ServerPlayerEntity p, Account a, int typeIdx) {
+    public static void buyTurnkey(ServerPlayer p, Account a, int typeIdx) {
         BizType t = BizType.byId(typeIdx);
         if (t == null) return;
         if (a.captivity != Account.FREE) return;
@@ -40,7 +39,7 @@ public final class BizBuild {
                 + ". Останется закупить сырьё (Опт) и нанять людей в кассе.");
     }
 
-    public static void buyMallPermit(ServerPlayerEntity p, Account a) {
+    public static void buyMallPermit(ServerPlayer p, Account a) {
         if (a.captivity != Account.FREE) return;
         if (!BankService.charge(p, a, Mall.PRICE)) {
             BankService.msg(p, BUILD + "§cРазрешение на торговый центр со стройкой стоит " + Finance.money(Mall.PRICE) + ". Не хватает.");
@@ -57,9 +56,9 @@ public final class BizBuild {
     // ------------------------------------------------------------------ проверка площадки
 
     /** Свободна ли коробка под стройку. null — можно, иначе причина. */
-    @Nullable
-    public static String boxProblem(World w, Blueprint b, int x1, int y1, int z1, int x2, int y2, int z2, EconomyData data, UUID owner) {
-        if (w.getDimensionKey() != World.OVERWORLD) return "строить можно только в обычном мире";
+    
+    public static String boxProblem(Level w, Blueprint b, int x1, int y1, int z1, int x2, int y2, int z2, EconomyData data, UUID owner) {
+        if (w.dimension() != Level.OVERWORLD) return "строить можно только в обычном мире";
         BlockPos p1 = b.pos(x1, y1, z1), p2 = b.pos(x2, y2, z2);
         BlockPos min = new BlockPos(Math.min(p1.getX(), p2.getX()), Math.min(p1.getY(), p2.getY()), Math.min(p1.getZ(), p2.getZ()));
         BlockPos max = new BlockPos(Math.max(p1.getX(), p2.getX()), Math.max(p1.getY(), p2.getY()), Math.max(p1.getZ(), p2.getZ()));
@@ -79,25 +78,25 @@ public final class BizBuild {
         }
         String occ = Buildings.checkOccupied(min, max, data, owner);
         if (occ != null) return occ;
-        for (BlockPos p : BlockPos.getAllInBoxMutable(min.up(), max)) {
-            if (w.getTileEntity(p) != null) {
-                return "на месте стройки чьё-то имущество (" + new net.minecraft.item.ItemStack(w.getBlockState(p).getBlock()).getDisplayName().getString()
+        for (BlockPos p : BlockPos.betweenClosed(min.above(), max)) {
+            if (w.getBlockEntity(p) != null) {
+                return "на месте стройки чьё-то имущество (" + new net.minecraft.world.item.ItemStack(w.getBlockState(p).getBlock()).getHoverName().getString()
                         + " на " + p.getX() + ", " + p.getY() + ", " + p.getZ() + ")";
             }
         }
         return null;
     }
 
-    @Nullable
-    public static String turnkeyProblem(World w, BlockPos origin, Direction facing, EconomyData data, UUID owner) {
+    
+    public static String turnkeyProblem(Level w, BlockPos origin, Direction facing, EconomyData data, UUID owner) {
         Blueprint b = new Blueprint(w, origin, facing);
         String box = boxProblem(w, b, -BizBuildings.SHOP_X, -1, BizBuildings.SHOP_FRONT_MIN, BizBuildings.SHOP_X, BizBuildings.SHOP_H + 2, BizBuildings.SHOP_Z, data, owner);
         if (box != null) return box;
         return LegalBiz.checkSite(w, BizBuildings.shopCounter(b), data, owner);
     }
 
-    @Nullable
-    public static String mallProblem(World w, BlockPos origin, Direction facing, EconomyData data, UUID owner) {
+    
+    public static String mallProblem(Level w, BlockPos origin, Direction facing, EconomyData data, UUID owner) {
         Blueprint b = new Blueprint(w, origin, facing);
         String box = boxProblem(w, b, Mall.X1, -1, Mall.Z1 - 5, Mall.X2, Mall.H + 1, Mall.Z2, data, owner);
         if (box != null) return box;
@@ -117,27 +116,27 @@ public final class BizBuild {
     // ------------------------------------------------------------------ стройка «под ключ»
 
     /** Построить здание и открыть в нём заведение (без проверок и денег — их делает вызывающий). */
-    public static LegalBusiness buildTurnkeyAt(EconomyData data, World w, BlockPos origin, Direction facing, BizType type, UUID owner, String ownerName) {
+    public static LegalBusiness buildTurnkeyAt(EconomyData data, Level w, BlockPos origin, Direction facing, BizType type, UUID owner, String ownerName) {
         Blueprint b = BizBuildings.buildShop(w, origin, facing, type, ownerName);
         BlockPos c = BizBuildings.shopCounter(b);
         LegalBusiness lb = LegalBiz.register(data, w, c, b.dir(Direction.NORTH), type, owner, ownerName);
         Buildings.claimArea(data, owner, b.min(), b.max(), true);
-        data.markDirty();
+        data.setDirty();
         return lb;
     }
 
     /** ПКМ договором «под ключ». */
-    public static boolean buildTurnkey(ServerPlayerEntity p, BlockPos clicked, Direction facing, BizType type) {
-        if (p.getServer() == null) return false;
-        EconomyData data = EconomyData.get(p.getServer());
-        BlockPos origin = clicked.up().offset(facing, 4);
-        String problem = turnkeyProblem(p.world, origin, facing, data, p.getUniqueID());
+    public static boolean buildTurnkey(ServerPlayer p, BlockPos clicked, Direction facing, BizType type) {
+        if (p.level().getServer() == null) return false;
+        EconomyData data = EconomyData.get(p.level().getServer());
+        BlockPos origin = clicked.above().relative(facing, 4);
+        String problem = turnkeyProblem(p.level(), origin, facing, data, p.getUUID());
         if (problem != null) {
             BankService.msg(p, BUILD + "§cБригада отказалась строить: §f" + problem + ". §7Здание 15×18 встаёт перед вами, вход — к вам.");
             return false;
         }
-        LegalBusiness lb = buildTurnkeyAt(data, p.world, origin, facing, type, p.getUniqueID(), p.getGameProfile().getName());
-        LegalBiz.Scan s = LegalBiz.scan(p.world, lb);
+        LegalBusiness lb = buildTurnkeyAt(data, p.level(), origin, facing, type, p.getUUID(), p.getGameProfile().getName());
+        LegalBiz.Scan s = LegalBiz.scan(p.level(), lb);
         BankService.msg(p, BUILD + "§a§lГотово! §r§f«" + type.title + "» построено и оборудовано: комплектов §e" + s.sets + "§f из "
                 + type.maxWorkers + ", склад " + (s.warehouse ? "§aесть" : "§cнет") + "§f. Касса — в центре зала.");
         BankService.msg(p, LegalBiz.BIZ + "Дальше: сырьё в телефоне (§eОпт → «" + type.supplyName + "»§f) — положите на склад, "
@@ -147,7 +146,7 @@ public final class BizBuild {
 
     // ------------------------------------------------------------------ торговый центр
 
-    public static Mall buildMallAt(EconomyData data, World w, BlockPos origin, Direction facing, UUID owner, String ownerName) {
+    public static Mall buildMallAt(EconomyData data, Level w, BlockPos origin, Direction facing, UUID owner, String ownerName) {
         Blueprint b = BizBuildings.buildMall(w, origin, facing, ownerName);
         Mall m = new Mall();
         m.id = data.nextMallId++;
@@ -163,9 +162,9 @@ public final class BizBuild {
             u.idx = i;
             u.min = bx[0];
             u.max = bx[1];
-            u.entrance = b.pos(g.ex, 1, g.ez).toImmutable();
+            u.entrance = b.pos(g.ex, 1, g.ez).immutable();
             u.facing = b.dir(g.into);
-            u.sign = b.pos(g.sx, 5, g.sz).toImmutable();
+            u.sign = b.pos(g.sx, 5, g.sz).immutable();
             u.width = g.width;
             u.depth = g.depth;
             u.price = Mall.unitPrice(u.area());
@@ -173,9 +172,9 @@ public final class BizBuild {
             m.units.add(u);
         }
         data.malls.add(m);
-        Buildings.claimArea(data, owner, b.min().add(-2, 0, -2), b.max().add(2, 0, 2), true);
+        Buildings.claimArea(data, owner, b.min().offset(-2, 0, -2), b.max().offset(2, 0, 2), true);
         for (Mall.Unit u : m.units) Malls.updateSign(w, data, m, u);
-        data.markDirty();
+        data.setDirty();
         return m;
     }
 
@@ -186,17 +185,17 @@ public final class BizBuild {
                 new BlockPos(Math.max(p1.getX(), p2.getX()), Math.max(p1.getY(), p2.getY()), Math.max(p1.getZ(), p2.getZ()))};
     }
 
-    public static boolean buildMall(ServerPlayerEntity p, BlockPos clicked, Direction facing) {
-        if (p.getServer() == null) return false;
-        EconomyData data = EconomyData.get(p.getServer());
-        BlockPos origin = clicked.up().offset(facing, 6);
-        String problem = mallProblem(p.world, origin, facing, data, p.getUniqueID());
+    public static boolean buildMall(ServerPlayer p, BlockPos clicked, Direction facing) {
+        if (p.level().getServer() == null) return false;
+        EconomyData data = EconomyData.get(p.level().getServer());
+        BlockPos origin = clicked.above().relative(facing, 6);
+        String problem = mallProblem(p.level(), origin, facing, data, p.getUUID());
         if (problem != null) {
             BankService.msg(p, BUILD + "§cТЦ здесь не построить: §f" + problem
                     + ". §7Здание 73×57 встаёт перед вами (вход к вам, по 36 блоков влево и вправо, 57 вглубь).");
             return false;
         }
-        Mall m = buildMallAt(data, p.world, origin, facing, p.getUniqueID(), p.getGameProfile().getName());
+        Mall m = buildMallAt(data, p.level(), origin, facing, p.getUUID(), p.getGameProfile().getName());
         BankService.msg(p, BUILD + "§a§lТорговый центр построен! §r§fАтриум с фонтаном и §e" + m.units.size()
                 + "§f помещений разного размера — от киоска до большого зала.");
         BankService.msg(p, BUILD + "Над входом каждого помещения табличка: §eПКМ§f — цена, аренда, кнопки. Своё помещение можно §aзанять бесплатно§f, "

@@ -3,10 +3,10 @@ package com.baraaoi.reallife.entity;
 import com.baraaoi.reallife.economy.Account;
 import com.baraaoi.reallife.economy.Finance;
 import com.baraaoi.reallife.event.DebtManager;
-import net.minecraft.entity.CreatureEntity;
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.player.ServerPlayerEntity;
-import net.minecraft.world.World;
+import net.minecraft.world.entity.PathfinderMob;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.level.Level;
 
 /**
  * Жора — вежливый сотрудник банка. Просит по-хорошему.
@@ -22,8 +22,8 @@ public class ZhoraEntity extends DebtNpcEntity {
     };
     private int talk;
 
-    public ZhoraEntity(EntityType<? extends CreatureEntity> type, World world) {
-        super(type, world);
+    public ZhoraEntity(EntityType<? extends PathfinderMob> type, Level level) {
+        super(type, level);
     }
 
     @Override
@@ -43,14 +43,14 @@ public class ZhoraEntity extends DebtNpcEntity {
     }
 
     @Override
-    protected void serverSecond(ServerPlayerEntity p, Account a) {
+    protected void serverSecond(ServerPlayer p, Account a) {
         if (++talk % 25 == 1) {
             say(p, String.format(LINES[(talk / 25) % LINES.length], Finance.money(a.arrears)));
         }
     }
 
     @Override
-    protected void onDismissed(ServerPlayerEntity p) {
+    protected void onDismissed(ServerPlayer p) {
         say(p, "Спасибо огромное! Хорошего вам дня!");
     }
 }

@@ -1,7 +1,7 @@
 package com.baraaoi.reallife.economy;
 
-import net.minecraft.nbt.CompoundNBT;
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.core.BlockPos;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -42,29 +42,29 @@ public class Structure {
                 && a.getY() <= max.getY() + 2 && b.getY() >= min.getY() - 2;
     }
 
-    public CompoundNBT write() {
-        CompoundNBT t = new CompoundNBT();
+    public CompoundTag write() {
+        CompoundTag t = new CompoundTag();
         t.putString("type", type);
-        t.putLong("min", min.toLong());
-        t.putLong("max", max.toLong());
+        t.putLong("min", min.asLong());
+        t.putLong("max", max.asLong());
         t.putBoolean("protect", protect);
-        t.putLong("exit", exit.toLong());
+        t.putLong("exit", exit.asLong());
         long[] c = new long[cashiers.size()];
-        for (int i = 0; i < c.length; i++) c[i] = cashiers.get(i).toLong();
+        for (int i = 0; i < c.length; i++) c[i] = cashiers.get(i).asLong();
         t.putLongArray("cashiers", c);
         t.putLong("cashierRespawn", cashierRespawn);
         return t;
     }
 
-    public static Structure read(CompoundNBT t) {
+    public static Structure read(CompoundTag t) {
         Structure s = new Structure();
-        s.type = t.getString("type");
-        s.min = BlockPos.fromLong(t.getLong("min"));
-        s.max = BlockPos.fromLong(t.getLong("max"));
-        s.protect = t.getBoolean("protect");
-        s.exit = BlockPos.fromLong(t.getLong("exit"));
-        for (long l : t.getLongArray("cashiers")) s.cashiers.add(BlockPos.fromLong(l));
-        s.cashierRespawn = t.getLong("cashierRespawn");
+        s.type = t.getStringOr("type", "");
+        s.min = BlockPos.of(t.getLongOr("min", 0L));
+        s.max = BlockPos.of(t.getLongOr("max", 0L));
+        s.protect = t.getBooleanOr("protect", false);
+        s.exit = BlockPos.of(t.getLongOr("exit", 0L));
+        for (long l : t.getLongArray("cashiers").orElse(new long[0])) s.cashiers.add(BlockPos.of(l));
+        s.cashierRespawn = t.getLongOr("cashierRespawn", 0L);
         return s;
     }
 }

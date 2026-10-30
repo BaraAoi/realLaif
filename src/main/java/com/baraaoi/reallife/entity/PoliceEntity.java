@@ -2,14 +2,14 @@ package com.baraaoi.reallife.entity;
 
 import com.baraaoi.reallife.economy.Account;
 import com.baraaoi.reallife.event.DebtManager;
-import net.minecraft.entity.CreatureEntity;
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.ai.goal.MeleeAttackGoal;
-import net.minecraft.entity.player.ServerPlayerEntity;
-import net.minecraft.inventory.EquipmentSlotType;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.world.World;
+import net.minecraft.world.entity.PathfinderMob;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.ai.goal.MeleeAttackGoal;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.level.Level;
 
 /**
  * Полицейский. Бьёт должника, пока тот не умрёт. После смерти — арест.
@@ -17,10 +17,10 @@ import net.minecraft.world.World;
 public class PoliceEntity extends DebtNpcEntity {
     private int talk;
 
-    public PoliceEntity(EntityType<? extends CreatureEntity> type, World world) {
-        super(type, world);
-        this.setItemStackToSlot(EquipmentSlotType.MAINHAND, new ItemStack(Items.STICK));
-        this.setDropChance(EquipmentSlotType.MAINHAND, 0.0F);
+    public PoliceEntity(EntityType<? extends PathfinderMob> type, Level level) {
+        super(type, level);
+        this.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.STICK));
+        this.setDropChance(EquipmentSlot.MAINHAND, 0.0F);
     }
 
     @Override
@@ -58,11 +58,11 @@ public class PoliceEntity extends DebtNpcEntity {
     }
 
     @Override
-    protected void serverSecond(ServerPlayerEntity p, Account a) {
-        if (++talk % 15 == 1 && this.rand.nextInt(3) == 0) {
+    protected void serverSecond(ServerPlayer p, Account a) {
+        if (++talk % 15 == 1 && this.random.nextInt(3) == 0) {
             String[] lines = {"Стоять! Полиция!", "Руки за голову!", "Сопротивление бесполезно!",
                     "Вы задержаны за злостную неуплату!", "Лицом в землю!"};
-            say(p, "§c" + lines[this.rand.nextInt(lines.length)]);
+            say(p, "§c" + lines[this.random.nextInt(lines.length)]);
         }
     }
 }

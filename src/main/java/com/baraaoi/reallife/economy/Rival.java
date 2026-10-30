@@ -1,8 +1,8 @@
 package com.baraaoi.reallife.economy;
 
-import net.minecraft.nbt.CompoundNBT;
-import net.minecraft.nbt.ListNBT;
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.core.BlockPos;
 
 /** v1.11: бот-конкурент — ларёк рядом с заведением игрока или арендатор свободного помещения в ТЦ. */
 public class Rival {
@@ -17,7 +17,7 @@ public class Rival {
     /** День, когда «разорится» и закроется сам. */
     public long until;
     /** Что стояло на месте постройки — вернётся, когда конкурент закроется. */
-    public ListNBT snapshot = new ListNBT();
+    public ListTag snapshot = new ListTag();
 
     public boolean inMall() {
         return mallId >= 0;
@@ -27,14 +27,14 @@ public class Rival {
         return new BlockPos((min.getX() + max.getX()) / 2, min.getY(), (min.getZ() + max.getZ()) / 2);
     }
 
-    public CompoundNBT write() {
-        CompoundNBT t = new CompoundNBT();
+    public CompoundTag write() {
+        CompoundTag t = new CompoundTag();
         t.putInt("id", id);
         t.putInt("type", type.ordinal());
         t.putString("name", name);
-        t.putLong("sign", sign.toLong());
-        t.putLong("min", min.toLong());
-        t.putLong("max", max.toLong());
+        t.putLong("sign", sign.asLong());
+        t.putLong("min", min.asLong());
+        t.putLong("max", max.asLong());
         t.putInt("mall", mallId);
         t.putInt("unit", unit);
         t.putLong("until", until);
@@ -42,19 +42,19 @@ public class Rival {
         return t;
     }
 
-    public static Rival read(CompoundNBT t) {
+    public static Rival read(CompoundTag t) {
         Rival r = new Rival();
-        r.id = t.getInt("id");
-        BizType bt = BizType.byId(t.getInt("type"));
+        r.id = t.getIntOr("id", 0);
+        BizType bt = BizType.byId(t.getIntOr("type", 0));
         r.type = bt == null ? BizType.SHAWARMA : bt;
-        r.name = t.getString("name");
-        r.sign = BlockPos.fromLong(t.getLong("sign"));
-        r.min = BlockPos.fromLong(t.getLong("min"));
-        r.max = BlockPos.fromLong(t.getLong("max"));
-        r.mallId = t.getInt("mall");
-        r.unit = t.getInt("unit");
-        r.until = t.getLong("until");
-        r.snapshot = t.getList("snap", 10);
+        r.name = t.getStringOr("name", "");
+        r.sign = BlockPos.of(t.getLongOr("sign", 0L));
+        r.min = BlockPos.of(t.getLongOr("min", 0L));
+        r.max = BlockPos.of(t.getLongOr("max", 0L));
+        r.mallId = t.getIntOr("mall", 0);
+        r.unit = t.getIntOr("unit", 0);
+        r.until = t.getLongOr("until", 0L);
+        r.snapshot = t.getListOrEmpty("snap");
         return r;
     }
 }

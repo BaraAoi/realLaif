@@ -1,22 +1,55 @@
 package com.baraaoi.reallife.client;
 
 import com.baraaoi.reallife.RealLife;
-import net.minecraft.client.renderer.entity.BipedRenderer;
-import net.minecraft.client.renderer.entity.EntityRendererManager;
-import net.minecraft.client.renderer.entity.model.PlayerModel;
-import net.minecraft.entity.MobEntity;
-import net.minecraft.util.ResourceLocation;
+import net.minecraft.client.model.geom.ModelLayers;
+import net.minecraft.client.model.player.PlayerModel;
+import net.minecraft.client.renderer.entity.EntityRendererProvider;
+import net.minecraft.client.renderer.entity.HumanoidMobRenderer;
+import net.minecraft.client.renderer.entity.state.AvatarRenderState;
+import net.minecraft.resources.Identifier;
+import net.minecraft.world.entity.Mob;
 
-public class NpcRenderer<T extends MobEntity> extends BipedRenderer<T, PlayerModel<T>> {
-    private final ResourceLocation texture;
+import java.util.function.Function;
 
-    public NpcRenderer(EntityRendererManager manager, String name) {
-        super(manager, new PlayerModel<>(0.0F, false), 0.5F);
-        this.texture = new ResourceLocation(RealLife.MODID, "textures/entity/" + name + ".png");
+/** Все люди мода рисуются моделью игрока со своим скином (64×64). */
+public class NpcRenderer<T extends Mob> extends HumanoidMobRenderer<T, NpcRenderer.State, PlayerModel> {
+    public static class State extends AvatarRenderState {
+        public Identifier texture;
+    }
+
+    private final Function<T, Identifier> texture;
+
+    public NpcRenderer(EntityRendererProvider.Context ctx, Function<T, Identifier> texture) {
+        super(ctx, new PlayerModel(ctx.bakeLayer(ModelLayers.PLAYER), false), 0.5F);
+        this.texture = texture;
+    }
+
+    public NpcRenderer(EntityRendererProvider.Context ctx, String name) {
+        this(ctx, fixed(name));
+    }
+
+    private static <T> Function<T, Identifier> fixed(String name) {
+        Identifier id = tex(name);
+        return e -> id;
+    }
+
+    public static Identifier tex(String path) {
+        return Identifier.fromNamespaceAndPath(RealLife.MODID, "textures/entity/" + path + ".png");
     }
 
     @Override
-    public ResourceLocation getEntityTexture(T entity) {
-        return texture;
+    public State createRenderState() {
+        return new State();
+    }
+
+    @Override
+    public void extractRenderState(T entity, State state, float partialTicks) {
+        super.extractRenderState(entity, state, partialTicks);
+        state.texture = texture.apply(entity);
+    }
+
+    @Override
+    public Identifier getTextureLocation(State state) {
+        return state.texture != null ? state.texture : tex("zhora");
     }
 }

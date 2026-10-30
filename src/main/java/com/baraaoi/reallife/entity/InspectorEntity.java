@@ -3,13 +3,13 @@ package com.baraaoi.reallife.entity;
 import com.baraaoi.reallife.Config;
 import com.baraaoi.reallife.economy.Account;
 import com.baraaoi.reallife.economy.Finance;
-import net.minecraft.entity.CreatureEntity;
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.player.ServerPlayerEntity;
-import net.minecraft.inventory.EquipmentSlotType;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.world.World;
+import net.minecraft.world.entity.PathfinderMob;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.level.Level;
 
 /**
  * Инспектор отдела по борьбе с самостроем. Ходит за нарушителем, выписывает штраф,
@@ -18,10 +18,10 @@ import net.minecraft.world.World;
 public class InspectorEntity extends DebtNpcEntity {
     private int talk;
 
-    public InspectorEntity(EntityType<? extends CreatureEntity> type, World world) {
-        super(type, world);
-        this.setItemStackToSlot(EquipmentSlotType.MAINHAND, new ItemStack(Items.WRITABLE_BOOK));
-        this.setDropChance(EquipmentSlotType.MAINHAND, 0.0F);
+    public InspectorEntity(EntityType<? extends PathfinderMob> type, Level level) {
+        super(type, level);
+        this.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.WRITABLE_BOOK));
+        this.setDropChance(EquipmentSlot.MAINHAND, 0.0F);
     }
 
     @Override
@@ -46,12 +46,12 @@ public class InspectorEntity extends DebtNpcEntity {
     }
 
     @Override
-    protected void serverSecond(ServerPlayerEntity p, Account a) {
+    protected void serverSecond(ServerPlayer p, Account a) {
         if (++talk % 40 == 1) {
-            long left = Math.max(0, a.landDeadline - world.getGameTime()) / 20;
+            long left = Math.max(0, a.landDeadline - this.level().getGameTime()) / 20;
             say(p, String.format("§fГражданин, постройка без документов! Снесите её или купите участок за §e%s§f "
                     + "(ПКМ по мне). Иначе через §c%d:%02d§f — снос всего участка до коренной породы.",
-                    com.baraaoi.reallife.event.DebtManager.landQuote(p.getServer(), p.getUniqueID(), a.landChunk), left / 60, left % 60));
+                    com.baraaoi.reallife.event.DebtManager.landQuote(p.level().getServer(), p.getUUID(), a.landChunk), left / 60, left % 60));
         }
     }
 }

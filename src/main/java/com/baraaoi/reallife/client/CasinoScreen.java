@@ -6,20 +6,19 @@ import com.baraaoi.reallife.economy.CasinoService;
 import com.baraaoi.reallife.economy.Finance;
 import com.baraaoi.reallife.network.ActionPacket;
 import com.baraaoi.reallife.network.Network;
-import com.mojang.blaze3d.matrix.MatrixStack;
-import net.minecraft.client.gui.screen.inventory.ContainerScreen;
-import net.minecraft.client.gui.widget.button.Button;
-import net.minecraft.entity.player.PlayerInventory;
-import net.minecraft.nbt.CompoundNBT;
-import net.minecraft.util.text.ITextComponent;
-import net.minecraft.util.text.StringTextComponent;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.chat.Component;
 
 import java.util.Random;
 
 /**
  * Экран игры в казино: ставка, кнопка «Крутить» (или «Орёл»/«Решка»), анимация и результат.
  */
-public class CasinoScreen extends ContainerScreen<CasinoContainer> {
+public class CasinoScreen extends AbstractContainerScreen<CasinoContainer> {
     private static final int SPIN_TICKS = 64;
     /** Через сколько тиков до конца анимации останавливается каждый барабан. */
     private static final int[] REEL_STOP = {34, 17, 0};
@@ -34,31 +33,29 @@ public class CasinoScreen extends ContainerScreen<CasinoContainer> {
     private final int[] reelSym = {0, 1, 2};
     private int anarchyIdx;
 
-    public CasinoScreen(CasinoContainer container, PlayerInventory inv, ITextComponent title) {
-        super(container, inv, title);
-        this.kind = container.getKind();
-        this.xSize = 240;
-        this.ySize = 176;
-        CompoundNBT last = ClientAccountData.get().getCompound("casino");
-        if (last.contains("id")) seenId = last.getLong("id");
+    public CasinoScreen(CasinoContainer container, Inventory inv, Component title) {
+        super(container, inv, title, 240, 176);
+        this.kind = menu.getKind();
+        CompoundTag last = ClientAccountData.get().getCompoundOrEmpty("casino");
+        if (last.contains("id")) seenId = last.getLongOr("id", 0L);
     }
 
-    private static CompoundNBT d() {
+    private static CompoundTag d() {
         return ClientAccountData.get();
     }
 
-    private Button btn(int x, int y, int w, String text, Button.IPressable onPress) {
-        return this.addButton(new Button(guiLeft + x, guiTop + y, w, 16, new StringTextComponent(text), onPress));
+    private Button btn(int x, int y, int w, String text, Button.OnPress onPress) {
+        return this.addRenderableWidget(Button.builder(Component.literal(text), onPress).bounds(leftPos + x, topPos + y, w, 16).build());
     }
 
     private int maxBet() {
-        int m = d().getInt("casinoMaxBet");
+        int m = d().getIntOr("casinoMaxBet", 0);
         return m > 0 ? m : 1000;
     }
 
     private void play(int choice) {
         if (spin > 0) return;
-        Network.CHANNEL.sendToServer(new ActionPacket(Actions.CASINO_PLAY, bet, choice));
+        Network.toServer(new ActionPacket(Actions.CASINO_PLAY, bet, choice));
     }
 
     @Override
@@ -81,12 +78,11 @@ public class CasinoScreen extends ContainerScreen<CasinoContainer> {
     }
 
     @Override
-    public void tick() {
-        super.tick();
+    protected void containerTick() {
         ticks++;
-        CompoundNBT last = d().getCompound("casino");
-        if (last.contains("id") && last.getLong("id") != seenId && last.getInt("kind") == kind) {
-            seenId = last.getLong("id");
+        CompoundTag last = d().getCompoundOrEmpty("casino");
+        if (last.contains("id") && last.getLongOr("id", 0L) != seenId && last.getIntOr("kind", 0) == kind) {
+            seenId = last.getLongOr("id", 0L);
             spin = SPIN_TICKS;
         }
         if (spin > 0) {
@@ -102,52 +98,47 @@ public class CasinoScreen extends ContainerScreen<CasinoContainer> {
         }
     }
 
-    @Override
-    public void render(MatrixStack ms, int mouseX, int mouseY, float partialTicks) {
-        this.renderBackground(ms);
-        super.render(ms, mouseX, mouseY, partialTicks);
-        this.renderHoveredTooltip(ms, mouseX, mouseY);
-    }
 
     @Override
-    protected void drawGuiContainerBackgroundLayer(MatrixStack ms, float partialTicks, int mouseX, int mouseY) {
-        int x = guiLeft, y = guiTop;
+    public void extractBackground(GuiGraphicsExtractor ms, int mouseX, int mouseY, float partialTicks) {
+        super.extractBackground(ms, mouseX, mouseY, partialTicks);
+        int x = leftPos, y = topPos;
         int border = kind == CasinoService.ANARCHY ? 0xFFB71C1C : 0xFFC9A227;
-        fill(ms, x - 2, y - 2, x + xSize + 2, y + ySize + 2, border);
-        fill(ms, x, y, x + xSize, y + ySize, 0xFF140B1E);
-        fill(ms, x + 4, y + 30, x + xSize - 4, y + 92, kind == CasinoService.ANARCHY ? 0xFF2A0A0A : 0xFF0D3B1E);
+        ms.fill(x - 2, y - 2, x + imageWidth + 2, y + imageHeight + 2, border);
+        ms.fill(x, y, x + imageWidth, y + imageHeight, 0xFF140B1E);
+        ms.fill(x + 4, y + 30, x + imageWidth - 4, y + 92, kind == CasinoService.ANARCHY ? 0xFF2A0A0A : 0xFF0D3B1E);
     }
 
-    private void text(MatrixStack ms, String s, int x, int y, int color) {
-        this.font.drawString(ms, s, x, y, color);
+    private void text(GuiGraphicsExtractor ms, String s, int x, int y, int color) {
+        GuiUtil.text(ms, this.font, s, x, y, color);
     }
 
-    private void center(MatrixStack ms, String s, int cx, int y, int color) {
-        this.font.drawString(ms, s, cx - this.font.getStringWidth(s) / 2f, y, color);
+    private void center(GuiGraphicsExtractor ms, String s, int cx, int y, int color) {
+        GuiUtil.text(ms, this.font, s, cx - this.font.width(s) / 2f, y, color);
     }
 
-    private void small(MatrixStack ms, String s, int x, int y, int color) {
-        ms.push();
-        ms.translate(x, y, 0);
-        ms.scale(0.75F, 0.75F, 1.0F);
-        this.font.drawString(ms, s, 0, 0, color);
-        ms.pop();
+    private void small(GuiGraphicsExtractor ms, String s, int x, int y, int color) {
+        ms.pose().pushMatrix();
+        ms.pose().translate((float) (x), (float) (y));
+        ms.pose().scale(0.75F, 0.75F);
+        GuiUtil.text(ms, this.font, s, 0, 0, color);
+        ms.pose().popMatrix();
     }
 
-    private void box(MatrixStack ms, int x, int y, int w, int h, int color) {
-        fill(ms, x - 1, y - 1, x + w + 1, y + h + 1, 0xFFC9A227);
-        fill(ms, x, y, x + w, y + h, color);
+    private void box(GuiGraphicsExtractor ms, int x, int y, int w, int h, int color) {
+        ms.fill(x - 1, y - 1, x + w + 1, y + h + 1, 0xFFC9A227);
+        ms.fill(x, y, x + w, y + h, color);
     }
 
     @Override
-    protected void drawGuiContainerForegroundLayer(MatrixStack ms, int mouseX, int mouseY) {
-        CompoundNBT t = d();
-        CompoundNBT last = t.getCompound("casino");
-        boolean mine = last.contains("id") && last.getInt("kind") == kind;
-        center(ms, "§6§l" + CasinoService.TITLES[Math.max(0, Math.min(3, kind))], xSize / 2, 6, 0xFFFFFF);
-        small(ms, "Счёт: §e" + Finance.money(t.getDouble("balance")) + "§r   Наличные: §e" + Finance.money(t.getLong("cash"))
-                + "§r   Сегодня: " + (t.getDouble("casinoProfit") >= 0 ? "§a+" : "§c") + Finance.money(t.getDouble("casinoProfit")), 8, 19, 0xCCCCCC);
-        int cx = xSize / 2;
+    protected void extractLabels(GuiGraphicsExtractor ms, int mouseX, int mouseY) {
+        CompoundTag t = d();
+        CompoundTag last = t.getCompoundOrEmpty("casino");
+        boolean mine = last.contains("id") && last.getIntOr("kind", 0) == kind;
+        center(ms, "§6§l" + CasinoService.TITLES[Math.max(0, Math.min(3, kind))], imageWidth / 2, 6, 0xFFFFFF);
+        small(ms, "Счёт: §e" + Finance.money(t.getDoubleOr("balance", 0.0)) + "§r   Наличные: §e" + Finance.money(t.getLongOr("cash", 0L))
+                + "§r   Сегодня: " + (t.getDoubleOr("casinoProfit", 0.0) >= 0 ? "§a+" : "§c") + Finance.money(t.getDoubleOr("casinoProfit", 0.0)), 8, 19, 0xCCCCCC);
+        int cx = imageWidth / 2;
         switch (kind) {
             case CasinoService.COIN: drawCoin(ms, last, mine, cx); break;
             case CasinoService.SLOTS: drawSlots(ms, last, mine, cx); break;
@@ -156,10 +147,10 @@ public class CasinoScreen extends ContainerScreen<CasinoContainer> {
         }
         // итог последней игры
         if (mine && spin == 0) {
-            double mult = last.getDouble("mult");
-            String res = mult > 1 ? "§a§lВЫИГРЫШ " + Finance.money(last.getDouble("win")) + " (x" + fmt(mult) + ")"
-                    : mult == 1 ? "§eСтавка возвращена" : "§cПроигрыш " + Finance.money(last.getInt("bet"));
-            center(ms, res + (last.getBoolean("clover") ? " §2(клевер)" : ""), cx, 94, 0xFFFFFF);
+            double mult = last.getDoubleOr("mult", 0.0);
+            String res = mult > 1 ? "§a§lВЫИГРЫШ " + Finance.money(last.getDoubleOr("win", 0.0)) + " (x" + fmt(mult) + ")"
+                    : mult == 1 ? "§eСтавка возвращена" : "§cПроигрыш " + Finance.money(last.getIntOr("bet", 0));
+            center(ms, res + (last.getBooleanOr("clover", false) ? " §2(клевер)" : ""), cx, 94, 0xFFFFFF);
         } else if (spin > 0) {
             center(ms, "§7. . .", cx, 94, 0xFFFFFF);
         }
@@ -175,11 +166,11 @@ public class CasinoScreen extends ContainerScreen<CasinoContainer> {
 
     // ------------------------------------------------------------------ игры
 
-    private void drawCoin(MatrixStack ms, CompoundNBT last, boolean mine, int cx) {
+    private void drawCoin(GuiGraphicsExtractor ms, CompoundTag last, boolean mine, int cx) {
         int side;
         int elapsed = SPIN_TICKS - spin;
         if (spin > 0) side = ((int) (Math.sqrt(elapsed) * 1.7)) % 2; // монета вертится всё медленнее
-        else side = mine ? last.getInt("side") : -1;
+        else side = mine ? last.getIntOr("side", 0) : -1;
         int color = side == 0 ? 0xFFD4AF37 : side == 1 ? 0xFFC0C0C0 : 0xFF555555;
         int r = spin > 0 ? 14 + (int) (8 * Math.abs(Math.cos(Math.sqrt(elapsed) * 1.7 * Math.PI))) : 22;
         box(ms, cx - r, 40, r * 2, 44, color);
@@ -187,8 +178,8 @@ public class CasinoScreen extends ContainerScreen<CasinoContainer> {
         small(ms, "§7Угадал — x2. Шанс 49%", 8, 84, 0xAAAAAA);
     }
 
-    private void drawSlots(MatrixStack ms, CompoundNBT last, boolean mine, int cx) {
-        int[] reels = mine ? last.getIntArray("reels") : new int[0];
+    private void drawSlots(GuiGraphicsExtractor ms, CompoundTag last, boolean mine, int cx) {
+        int[] reels = mine ? last.getIntArray("reels").orElse(new int[0]) : new int[0];
         for (int i = 0; i < 3; i++) {
             int bx = cx - 75 + i * 52;
             box(ms, bx, 38, 46, 40, 0xFF1A1A1A);
@@ -206,9 +197,9 @@ public class CasinoScreen extends ContainerScreen<CasinoContainer> {
         small(ms, "§7777 — x25, три одинаковых — x8, два — ставка. Троек 7%!", 8, 84, 0xAAAAAA);
     }
 
-    private void drawAnarchy(MatrixStack ms, CompoundNBT last, boolean mine, int cx) {
+    private void drawAnarchy(GuiGraphicsExtractor ms, CompoundTag last, boolean mine, int cx) {
         int n = CasinoService.ANARCHY_MULT.length;
-        int idx = spin > 0 ? anarchyIdx : (mine ? last.getInt("sector") : -1);
+        int idx = spin > 0 ? anarchyIdx : (mine ? last.getIntOr("sector", 0) : -1);
         for (int i = 0; i < n; i++) {
             int bx = cx - 108 + i * 36;
             boolean on = i == idx;
@@ -226,9 +217,9 @@ public class CasinoScreen extends ContainerScreen<CasinoContainer> {
         small(ms, "§8Мама — анархия. Казино — папа.", 8, 84, 0x777777);
     }
 
-    private void drawRoulette(MatrixStack ms, CompoundNBT last, boolean mine, int cx) {
+    private void drawRoulette(GuiGraphicsExtractor ms, CompoundTag last, boolean mine, int cx) {
         int len = CasinoService.WHEEL.length;
-        int sector = mine ? last.getInt("sector") : 0;
+        int sector = mine ? last.getIntOr("sector", 0) : 0;
         // колесо плавно тормозит: путь до остановки = spin² / 64 секторов (старт ~2 сектора за тик)
         int offset = spin > 0 ? sector - (spin * spin) / 64 : sector;
         for (int k = -3; k <= 3; k++) {

@@ -3,19 +3,18 @@ package com.baraaoi.reallife.economy;
 import com.baraaoi.reallife.Config;
 import com.baraaoi.reallife.structure.BizBuildings;
 import com.baraaoi.reallife.structure.Blueprint;
-import net.minecraft.block.BlockState;
-import net.minecraft.entity.player.ServerPlayerEntity;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.util.Direction;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.text.StringTextComponent;
-import net.minecraft.util.text.Style;
-import net.minecraft.util.text.event.ClickEvent;
-import net.minecraft.world.World;
-import net.minecraft.world.gen.Heightmap;
-import net.minecraft.world.server.ServerWorld;
+import net.minecraft.core.Direction;
+import net.minecraft.core.BlockPos;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.Style;
+import net.minecraft.network.chat.ClickEvent;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.levelgen.Heightmap;
+import net.minecraft.server.level.ServerLevel;
 
-import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
@@ -54,7 +53,7 @@ public final class Rivals {
     // ------------------------------------------------------------------ влияние на прибыль
 
     /** Сколько конкурентов того же вида отбивают покупателей у заведения. */
-    public static int count(@Nullable EconomyData data, LegalBusiness b) {
+    public static int count(EconomyData data, LegalBusiness b) {
         if (data == null) return 0;
         int n = 0;
         for (Rival r : data.rivals) {
@@ -66,7 +65,7 @@ public final class Rivals {
         return n;
     }
 
-    public static double factor(@Nullable EconomyData data, LegalBusiness b) {
+    public static double factor(EconomyData data, LegalBusiness b) {
         int n = count(data, b);
         return n <= 0 ? 1.0 : Math.max(MIN_FACTOR, 1.0 - PER_RIVAL * n);
     }
@@ -80,21 +79,21 @@ public final class Rivals {
     public static void tick(MinecraftServer server) {
         if (++ticker % 6000 != 0) return;
         if (!Config.RIVALS_ENABLED.get()) return;
-        ServerWorld ow = EconomyData.overworld(server);
+        ServerLevel ow = EconomyData.overworld(server);
         EconomyData data = EconomyData.get(server);
         long today = BankService.today(server);
-        for (ServerPlayerEntity p : new ArrayList<>(server.getPlayerList().getPlayers())) {
-            if (p.world != ow || p.isSpectator()) continue;
+        for (ServerPlayer p : new ArrayList<>(server.getPlayerList().getPlayers())) {
+            if (p.level() != ow || p.isSpectator()) continue;
             Account a = data.get(p);
             if (a.captivity != Account.FREE) continue;
             for (Mall m : data.malls) {
                 BlockPos c = m.center();
-                if (p.getDistanceSq(c.getX(), c.getY(), c.getZ()) > 120 * 120 || !ow.isBlockLoaded(c)) continue;
+                if (p.distanceToSqr(c.getX(), c.getY(), c.getZ()) > 120 * 120 || !ow.isLoaded(c)) continue;
                 if (R.nextDouble() < 0.2) tryMall(ow, data, m, today);
             }
             for (LegalBusiness b : new ArrayList<>(data.businesses)) {
-                if (!p.getUniqueID().equals(b.owner) || b.inMall() || b.days < 2) continue;
-                if (p.getDistanceSq(b.counter.getX(), b.counter.getY(), b.counter.getZ()) > 96 * 96) continue;
+                if (!p.getUUID().equals(b.owner) || b.inMall() || b.days < 2) continue;
+                if (p.distanceToSqr(b.counter.getX(), b.counter.getY(), b.counter.getZ()) > 96 * 96) continue;
                 if (count(data, b) >= MAX_NEAR || R.nextDouble() >= Config.RIVAL_CHANCE.get()) continue;
                 Rival r = spawnNear(ow, data, b, today);
                 if (r != null) {
@@ -108,13 +107,13 @@ public final class Rivals {
     }
 
     /** Админ-команда: конкурент прямо сейчас (в ТЦ, где стоит игрок, или у его ближайшего заведения). */
-    public static void forceSpawn(ServerPlayerEntity p) {
-        MinecraftServer server = p.getServer();
+    public static void forceSpawn(ServerPlayer p) {
+        MinecraftServer server = p.level().getServer();
         if (server == null) return;
-        ServerWorld ow = EconomyData.overworld(server);
+        ServerLevel ow = EconomyData.overworld(server);
         EconomyData data = EconomyData.get(server);
         long today = BankService.today(server);
-        Mall m = data.mallAt(p.getPosition(), 4);
+        Mall m = data.mallAt(p.blockPosition(), 4);
         if (m != null) {
             Rival r = tryMall(ow, data, m, today);
             BankService.msg(p, RIV + (r != null ? "В ТЦ заехал «" + r.name + "»." : "Свободных помещений нет или ботов уже " + MAX_PER_MALL + "."));
@@ -122,7 +121,7 @@ public final class Rivals {
         }
         LegalBusiness best = null;
         for (LegalBusiness b : data.businesses)
-            if (!b.inMall() && (best == null || b.counter.distanceSq(p.getPosition()) < best.counter.distanceSq(p.getPosition()))) best = b;
+            if (!b.inMall() && (best == null || b.counter.distanceSq(p.blockPosition()) < best.counter.distanceSq(p.blockPosition()))) best = b;
         if (best == null) {
             BankService.msg(p, RIV + "Рядом нет уличных заведений.");
             return;
@@ -133,13 +132,13 @@ public final class Rivals {
     }
 
     /** Бот занимает свободное помещение ТЦ. */
-    @Nullable
-    static Rival tryMall(ServerWorld ow, EconomyData data, Mall m, long today) {
+    
+    static Rival tryMall(ServerLevel ow, EconomyData data, Mall m, long today) {
         int bots = 0;
         List<Mall.Unit> free = new ArrayList<>();
         for (Mall.Unit u : m.units) {
             if (u.rival != 0) bots++;
-            else if (u.free() && !u.sign.equals(BlockPos.ZERO) && ow.isBlockLoaded(u.entrance)) free.add(u);
+            else if (u.free() && !u.sign.equals(BlockPos.ZERO) && ow.isLoaded(u.entrance)) free.add(u);
         }
         if (bots >= MAX_PER_MALL || free.isEmpty()) return null;
         Mall.Unit u = free.get(R.nextInt(free.size()));
@@ -154,7 +153,7 @@ public final class Rivals {
     }
 
     /** Открыть бота в помещении (без проверок). Используется и самотестом. */
-    public static Rival openInMall(World w, EconomyData data, Mall m, Mall.Unit u, BizType t, long today) {
+    public static Rival openInMall(Level w, EconomyData data, Mall m, Mall.Unit u, BizType t, long today) {
         Rival r = new Rival();
         r.id = data.nextRivalId++;
         r.type = t;
@@ -170,26 +169,26 @@ public final class Rivals {
         u.rival = r.id;
         data.rivals.add(r);
         Malls.updateSign(w, data, m, u);
-        data.markDirty();
+        data.setDirty();
         return r;
     }
 
-    static void notifyMall(@Nullable MinecraftServer server, EconomyData data, Mall m, Mall.Unit u, Rival r) {
+    static void notifyMall(MinecraftServer server, EconomyData data, Mall m, Mall.Unit u, Rival r) {
         if (server == null) return;
-        ServerPlayerEntity op = m.owner == null ? null : server.getPlayerList().getPlayerByUUID(m.owner);
+        ServerPlayer op = m.owner == null ? null : server.getPlayerList().getPlayer(m.owner);
         if (op != null) BankService.msg(op, Malls.TC + "В помещение №" + (u.idx + 1) + " вашего ТЦ заехал арендатор-бот «" + r.name
                 + "». Аренду §a" + Finance.money(u.rent) + "/день§f он платит вам, но отбивает покупателей у «" + BizBuild.shortTitle(r.type) + "».");
         for (LegalBusiness b : data.businesses) {
             if (b.mallId != m.id || b.type != r.type) continue;
-            ServerPlayerEntity bp = server.getPlayerList().getPlayerByUUID(b.owner);
+            ServerPlayer bp = server.getPlayerList().getPlayer(b.owner);
             if (bp != null && bp != op) BankService.msg(bp, RIV + "§cВ ТЦ открылся конкурент «" + r.name + "» (помещение №" + (u.idx + 1)
                     + ")§f: выручка «" + b.type.title + "» −" + Math.round(PER_RIVAL * 100) + "%. Можно выкупить: ПКМ по его табличке.");
         }
     }
 
     /** Ларёк конкурента на улице в 20–40 блоках от заведения. */
-    @Nullable
-    static Rival spawnNear(ServerWorld w, EconomyData data, LegalBusiness b, long today) {
+    
+    static Rival spawnNear(ServerLevel w, EconomyData data, LegalBusiness b, long today) {
         UUID nobody = UUID.randomUUID();
         for (int attempt = 0; attempt < 24; attempt++) {
             double ang = R.nextDouble() * Math.PI * 2;
@@ -197,12 +196,12 @@ public final class Rivals {
             int x = b.counter.getX() + (int) Math.round(Math.cos(ang) * dist);
             int z = b.counter.getZ() + (int) Math.round(Math.sin(ang) * dist);
             BlockPos probe = new BlockPos(x, 64, z);
-            if (!w.isBlockLoaded(probe) || !w.isBlockLoaded(probe.add(8, 0, 8)) || !w.isBlockLoaded(probe.add(-8, 0, -8))) continue;
-            int h = w.getHeight(Heightmap.Type.MOTION_BLOCKING_NO_LEAVES, x, z);
+            if (!w.isLoaded(probe) || !w.isLoaded(probe.offset(8, 0, 8)) || !w.isLoaded(probe.offset(-8, 0, -8))) continue;
+            int h = w.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
             if (Math.abs(h - b.counter.getY()) > 12) continue;
             BlockPos origin = new BlockPos(x, h, z);
-            BlockState ground = w.getBlockState(origin.down());
-            if (ground.getMaterial().isLiquid() || !ground.getMaterial().isSolid()) continue;
+            BlockState ground = w.getBlockState(origin.below());
+            if (ground.liquid() || !ground.isSolid()) continue;
             // лицом к заведению игрока
             Direction fwd = Direction.getFacingFromVector(x - b.counter.getX(), 0, z - b.counter.getZ());
             if (fwd.getAxis().isVertical()) fwd = Direction.NORTH;
@@ -215,12 +214,12 @@ public final class Rivals {
         return null;
     }
 
-    static boolean flat(World w, Blueprint b, int h) {
+    static boolean flat(Level w, Blueprint b, int h) {
         for (int[] c : new int[][]{{-3, 0}, {3, 0}, {-3, 6}, {3, 6}, {0, 3}}) {
             BlockPos p = b.pos(c[0], 0, c[1]);
-            int y = w.getHeight(Heightmap.Type.MOTION_BLOCKING_NO_LEAVES, p.getX(), p.getZ());
+            int y = w.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, p.getX(), p.getZ());
             if (Math.abs(y - h) > 2) return false;
-            if (w.getBlockState(new BlockPos(p.getX(), y - 1, p.getZ())).getMaterial().isLiquid()) return false;
+            if (w.getBlockState(new BlockPos(p.getX(), y - 1, p.getZ())).liquid()) return false;
         }
         return true;
     }
@@ -234,7 +233,7 @@ public final class Rivals {
     }
 
     /** Построить уличный ларёк (без проверок). Используется и самотестом. */
-    public static Rival build(World w, EconomyData data, BlockPos origin, Direction fwd, BizType t, long today) {
+    public static Rival build(Level w, EconomyData data, BlockPos origin, Direction fwd, BizType t, long today) {
         Rival r = new Rival();
         r.id = data.nextRivalId++;
         r.type = t;
@@ -243,10 +242,10 @@ public final class Rivals {
         r.snapshot = bp.snapshot();
         r.min = bp.min();
         r.max = bp.max();
-        r.sign = bp.pos(0, 3, -1).toImmutable();
+        r.sign = bp.pos(0, 3, -1).immutable();
         r.until = today + 4 + R.nextInt(6);
         data.rivals.add(r);
-        data.markDirty();
+        data.setDirty();
         return r;
     }
 
@@ -265,7 +264,7 @@ public final class Rivals {
         close(EconomyData.overworld(server), data, r);
     }
 
-    public static void close(World w, EconomyData data, Rival r) {
+    public static void close(Level w, EconomyData data, Rival r) {
         Blueprint.restore(w, r.snapshot);
         data.rivals.remove(r);
         if (r.inMall()) {
@@ -276,7 +275,7 @@ public final class Rivals {
                 Malls.updateSign(w, data, m, u);
             }
         }
-        data.markDirty();
+        data.setDirty();
     }
 
     static void notifyClosed(MinecraftServer server, EconomyData data, Rival r, String how) {
@@ -284,14 +283,14 @@ public final class Rivals {
             if (b.type != r.type) continue;
             boolean affected = r.inMall() ? b.mallId == r.mallId : !b.inMall() && r.center().distanceSq(b.counter) <= (double) RADIUS * RADIUS;
             if (!affected) continue;
-            ServerPlayerEntity p = server.getPlayerList().getPlayerByUUID(b.owner);
+            ServerPlayer p = server.getPlayerList().getPlayer(b.owner);
             if (p != null) BankService.msg(p, RIV + "§aКонкурент «" + r.name + "» " + how + ".§f Покупатели возвращаются в «" + b.type.title + "».");
         }
     }
 
-    public static boolean onSignClick(ServerPlayerEntity p, BlockPos pos) {
-        if (p.getServer() == null) return false;
-        EconomyData data = EconomyData.get(p.getServer());
+    public static boolean onSignClick(ServerPlayer p, BlockPos pos) {
+        if (p.level().getServer() == null) return false;
+        EconomyData data = EconomyData.get(p.level().getServer());
         for (Rival r : data.rivals) {
             if (!r.sign.equals(pos)) continue;
             info(p, data, r);
@@ -300,18 +299,18 @@ public final class Rivals {
         return false;
     }
 
-    public static void info(ServerPlayerEntity p, EconomyData data, Rival r) {
-        long left = Math.max(0, r.until - BankService.today(p.getServer()));
+    public static void info(ServerPlayer p, EconomyData data, Rival r) {
+        long left = Math.max(0, r.until - BankService.today(p.level().getServer()));
         BankService.msg(p, RIV + "«" + r.name + "» — " + BizBuild.shortTitle(r.type) + ", бот-конкурент. Отбивает "
                 + Math.round(PER_RIVAL * 100) + "% выручки у заведений того же вида " + (r.inMall() ? "в этом ТЦ" : "в радиусе " + RADIUS + " блоков")
                 + ". Разорится примерно через " + left + " дн.");
-        StringTextComponent b = new StringTextComponent("§c§l[Выкупить и закрыть за " + Finance.money(buyoutPrice(r)) + "]");
-        b.setStyle(Style.EMPTY.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/reallife rival buyout " + r.id)));
-        p.sendMessage(new StringTextComponent("§c  ").append(b), p.getUniqueID());
+        StringTextComponent b = Component.literal("§c§l[Выкупить и закрыть за " + Finance.money(buyoutPrice(r)) + "]");
+        b.setStyle(Style.EMPTY.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/reallife rival buyout " + r.id)));
+        p.sendMessage(Component.literal("§c  ").append(b), p.getUUID());
     }
 
-    public static void buyout(ServerPlayerEntity p, int id) {
-        MinecraftServer server = p.getServer();
+    public static void buyout(ServerPlayer p, int id) {
+        MinecraftServer server = p.level().getServer();
         if (server == null) return;
         EconomyData data = EconomyData.get(server);
         Rival r = data.rivalById(id);
@@ -321,7 +320,7 @@ public final class Rivals {
         }
         Account a = data.get(p);
         if (a.captivity != Account.FREE) return;
-        if (p.getDistanceSq(r.sign.getX(), r.sign.getY(), r.sign.getZ()) > 48 * 48) {
+        if (p.distanceToSqr(r.sign.getX(), r.sign.getY(), r.sign.getZ()) > 48 * 48) {
             BankService.msg(p, RIV + "§cПодойдите к конкуренту — сделку оформляют на месте.");
             return;
         }

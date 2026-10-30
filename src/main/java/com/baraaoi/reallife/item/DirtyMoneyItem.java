@@ -1,15 +1,13 @@
 package com.baraaoi.reallife.item;
 
 import com.baraaoi.reallife.registry.ModItems;
-import net.minecraft.client.util.ITooltipFlag;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.nbt.CompoundNBT;
-import net.minecraft.util.text.ITextComponent;
-import net.minecraft.util.text.StringTextComponent;
-import net.minecraft.world.World;
+import net.minecraft.world.item.TooltipFlag;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.level.Level;
 
-import javax.annotation.Nullable;
 import java.util.List;
 
 /**
@@ -26,9 +24,9 @@ public class DirtyMoneyItem extends Item {
     }
 
     public static int denom(ItemStack stack) {
-        CompoundNBT t = stack.getTag();
+        CompoundTag t = com.baraaoi.reallife.util.Nbt.itemTag(stack);
         if (t != null && t.contains("Denom")) {
-            int d = t.getInt("Denom");
+            int d = t.getIntOr("Denom", 0);
             if (d > 0) return d;
         }
         return VALUE;
@@ -36,22 +34,22 @@ public class DirtyMoneyItem extends Item {
 
     public static ItemStack of(int denom, int count) {
         ItemStack st = new ItemStack(ModItems.DIRTY_MONEY.get(), count);
-        if (denom != VALUE) st.getOrCreateTag().putInt("Denom", denom);
+        if (denom != VALUE) com.baraaoi.reallife.util.Nbt.editItem(st, _t -> _t.putInt("Denom", denom));
         return st;
     }
 
     @Override
-    public ITextComponent getDisplayName(ItemStack stack) {
-        return new StringTextComponent("Грязные деньги " + denom(stack) + "₽");
+    public Component getName(ItemStack stack) {
+        return Component.literal("Грязные деньги " + denom(stack) + "₽");
     }
 
     @Override
-    public void addInformation(ItemStack stack, @Nullable World world, List<ITextComponent> tooltip, ITooltipFlag flag) {
+    public void appendHoverText(ItemStack stack, Item.TooltipContext context, net.minecraft.world.item.component.TooltipDisplay display, java.util.function.Consumer<Component> tooltip, TooltipFlag flag) {
         int v = denom(stack);
-        tooltip.add(new StringTextComponent("§7Пачка: §2" + v + "₽ §8(происхождение неясно)"));
-        if (stack.getCount() > 1) tooltip.add(new StringTextComponent("§7Всего: §2" + ((long) v * stack.getCount()) + "₽"));
-        tooltip.add(new StringTextComponent("§8Банк чаще всего изымет. Отмыть: касса своего"));
-        tooltip.add(new StringTextComponent("§8заведения (дёшево, но налоговая не дремлет)"));
-        tooltip.add(new StringTextComponent("§8или контора МФО (−50%). Братки берут по номиналу."));
+        tooltip.accept(Component.literal("§7Пачка: §2" + v + "₽ §8(происхождение неясно)"));
+        if (stack.getCount() > 1) tooltip.accept(Component.literal("§7Всего: §2" + ((long) v * stack.getCount()) + "₽"));
+        tooltip.accept(Component.literal("§8Банк чаще всего изымет. Отмыть: касса своего"));
+        tooltip.accept(Component.literal("§8заведения (дёшево, но налоговая не дремлет)"));
+        tooltip.accept(Component.literal("§8или контора МФО (−50%). Братки берут по номиналу."));
     }
 }
