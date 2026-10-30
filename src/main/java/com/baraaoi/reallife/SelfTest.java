@@ -120,15 +120,16 @@ public class SelfTest {
         check(mProblem == null, "mall site is free: " + mProblem);
         com.baraaoi.reallife.economy.Mall mall = com.baraaoi.reallife.economy.BizBuild.buildMallAt(data, ow, mAt, Direction.SOUTH, mallOwner, "MallTest");
         check(mall.slots.size() == 8 && data.mallAt(mall.slots.get(3), 0) == mall && data.mallsOf(mallOwner).size() == 1, "mall has 8 slots");
-        boolean slotsOk = true;
+        String slotsBad = "";
         for (int i = 0; i < mall.slots.size(); i++) {
             BlockPos sp = mall.slots.get(i);
-            if (!ow.isAirBlock(sp) || ow.isAirBlock(sp.down()) || ow.canSeeSky(sp)) slotsOk = false;
+            if (!ow.isAirBlock(sp) || ow.isAirBlock(sp.down()) || ow.isAirBlock(sp.up(com.baraaoi.reallife.economy.Mall.H - 1))) slotsBad += " #" + i + " blocks";
             for (int j = i + 1; j < mall.slots.size(); j++)
-                if (com.baraaoi.reallife.economy.LegalBusiness.zonesOverlap(sp, mall.slots.get(j))) slotsOk = false;
-            if (com.baraaoi.reallife.economy.LegalBiz.checkSite(ow, sp, data, mallOwner) != null) slotsOk = false;
+                if (com.baraaoi.reallife.economy.LegalBusiness.zonesOverlap(sp, mall.slots.get(j))) slotsBad += " #" + i + "~#" + j;
+            String sp0 = com.baraaoi.reallife.economy.LegalBiz.checkSite(ow, sp, data, mallOwner);
+            if (sp0 != null) slotsBad += " #" + i + " " + sp0;
         }
-        check(slotsOk, "mall slots: empty, roofed, zones apart, site ok");
+        check(slotsBad.isEmpty(), "mall slots: empty, roofed, zones apart, site ok" + slotsBad);
         BlockPos hall = new BlockPos((mall.min.getX() + mall.max.getX()) / 2, mall.slots.get(0).getY(), (mall.min.getZ() + mall.max.getZ()) / 2);
         check(com.baraaoi.reallife.economy.LegalBiz.checkSite(ow, hall, data, mallOwner) != null, "inside a mall only marked slots are allowed");
         check(com.baraaoi.reallife.economy.BizBuild.mallProblem(ow, mAt.add(20, 0, 0), Direction.SOUTH, data, UUID.randomUUID()) != null, "no mall on top of a mall");
