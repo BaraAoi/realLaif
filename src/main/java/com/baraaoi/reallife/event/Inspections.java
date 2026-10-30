@@ -67,7 +67,7 @@ public final class Inspections {
 
     /** Опечатано ли заведение в этот день. */
     public static boolean sealed(LegalBusiness b, long day) {
-        return day < b.sealedUntil;
+        return b.sealedUntil > 0 && day < b.sealedUntil;
     }
 
     public static void seal(LegalBusiness b, long today, int days, String reason) {
