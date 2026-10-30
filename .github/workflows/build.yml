@@ -17,39 +17,64 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '8'
-      - uses: actions/setup-java@v4
+          java-version: '25'
+      - uses: actions/cache@v4
         with:
-          distribution: temurin
-          java-version: '17'
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            ~/.mavenizer
+            ~/.minecraftforge
+          key: gradle-26.3-${{ hashFiles('build.gradle', 'settings.gradle', 'gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: gradle-26.3-
+      - name: Pick newest Forge 26.3 build
+        run: |
+          FV=$(curl -fsSL https://maven.minecraftforge.net/net/minecraftforge/forge/maven-metadata.xml \
+                | grep -oE '<version>26\.3-[^<]+</version>' | sed -E 's#</?version>##g; s#^26\.3-##' \
+                | sort -V | tail -1)
+          if [ -z "$FV" ]; then FV=$(grep '^forge_version=' gradle.properties | cut -d= -f2); fi
+          echo "Forge for 26.3: $FV"
+          echo "FORGE_VERSION=$FV" >> $GITHUB_ENV
       - name: Build
         run: |
           chmod +x gradlew
           set -o pipefail
-          ./gradlew build --no-daemon --stacktrace 2>&1 | tee build.log
+          ./gradlew build --no-daemon --stacktrace -Pforge_version=$FORGE_VERSION 2>&1 | tee build.log
       - name: Server self-test
         id: selftest
         run: |
           mkdir -p run
           echo "eula=true" > run/eula.txt
           printf "online-mode=false\nspawn-protection=0\nlevel-seed=reallife\n" > run/server.properties
-          REALLIFE_SELFTEST=1 timeout 900 ./gradlew runServer --no-daemon > server.log 2>&1 || true
-          grep -E "SELFTEST|RealLifeSelfTest|Exception|ERROR" server.log | head -200 > selftest.txt || true
+          REALLIFE_SELFTEST=1 timeout 1200 ./gradlew runServer --no-daemon -Pforge_version=$FORGE_VERSION > server.log 2>&1 || true
+          grep -E "SELFTEST|RealLifeSelfTest|Exception|ERROR" server.log | head -300 > selftest.txt || true
           grep -q "REALLIFE SELFTEST PASSED" server.log
-      - name: Publish build log as check run
+      - name: Publish build log as check runs
         if: always() && github.event_name == 'push'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          { echo "=== SELFTEST ==="; cat selftest.txt 2>/dev/null | head -c 30000; echo; echo "=== ERRORS ==="; grep -E -A3 "error:|FAILED|What went wrong" build.log | head -c 15000; echo; echo "=== TAIL ==="; tail -c 8000 build.log; echo '=== SERVER TAIL ==='; tail -c 8000 server.log 2>/dev/null; } > report.txt || true
+          touch build.log
+          # Compact list of compiler errors: "path:line: error: message" + the next code line
+          grep -E -A2 "\.java:[0-9]+: error:" build.log | sed -E 's#^.*/src/main/java/com/baraaoi/reallife/##' > errors.txt || true
+          ERRN=$(grep -cE "\.java:[0-9]+: error:" build.log || true)
+          { echo "Forge: $FORGE_VERSION  compile errors: $ERRN"; echo "=== SELFTEST ==="; cat selftest.txt 2>/dev/null | head -c 30000; echo; echo "=== WHAT WENT WRONG ==="; grep -E -A8 "What went wrong|FAILED" build.log | head -c 8000; echo; echo "=== TAIL ==="; tail -c 8000 build.log; echo '=== SERVER TAIL ==='; tail -c 10000 server.log 2>/dev/null; } > report.txt || true
           gh api repos/${{ github.repository }}/check-runs \
             -f name="build-log" -f head_sha="${{ github.sha }}" -f status=completed -f conclusion=neutral \
             -f "output[title]=Build log" -f "output[summary]=Gradle build output" -F "output[text]=@report.txt" > /dev/null
+          if [ -s errors.txt ]; then
+            split -b 60000 -d -a 2 errors.txt errpart_
+            for f in $(ls errpart_* | head -15); do
+              gh api repos/${{ github.repository }}/check-runs \
+                -f name="compile-errors-${f#errpart_}" -f head_sha="${{ github.sha }}" -f status=completed -f conclusion=neutral \
+                -f "output[title]=Compile errors ${f#errpart_}" -f "output[summary]=$ERRN errors" -F "output[text]=@$f" > /dev/null || true
+            done
+          fi
       - name: Read mod version
         if: success()
         run: echo "MOD_VERSION=$(grep '^mod_version=' gradle.properties | cut -d= -f2)" >> $GITHUB_ENV
       - uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: reallife-mod-${{ env.MOD_VERSION }}
+          name: reallife-mod-${{ env.MOD_VERSION }}-mc26.3
           path: build/libs/*.jar

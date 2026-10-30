@@ -1,5 +1,5 @@
 modLoader="javafml"
-loaderVersion="[33,)"
+loaderVersion="${loader_version_range}"
 license="${mod_license}"
 issueTrackerURL="https://github.com/BaraAoi/realLaif/issues"
 
@@ -17,13 +17,13 @@ description='''
 [[dependencies.${mod_id}]]
     modId="forge"
     mandatory=true
-    versionRange="[33,)"
+    versionRange="${loader_version_range}"
     ordering="NONE"
     side="BOTH"
 
 [[dependencies.${mod_id}]]
     modId="minecraft"
     mandatory=true
-    versionRange="[1.16.2,1.17)"
+    versionRange="${minecraft_version_range}"
     ordering="NONE"
     side="BOTH"
