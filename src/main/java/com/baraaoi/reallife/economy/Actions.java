@@ -15,4 +15,7 @@ public class Actions {
     public static final int MFO_BUY_BUSINESS = 23;
     public static final int MFO_BUY_LAUNDER = 24;
     public static final int MFO_LAUNDER = 25;
+    public static final int MFO_BUY_PRINTER = 26;
+
+    public static final int CASINO_PLAY = 40;
 }

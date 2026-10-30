@@ -29,7 +29,8 @@ public class SellerEntity extends WanderingTraderEntity {
     public void setVariant(int v) {
         this.variant = v;
         this.offers = null;
-        this.setCustomName(new StringTextComponent(v == Trades.SELLER_FOOD ? "§aПродавец: продукты" : "§6Продавец: хозтовары"));
+        this.setCustomName(new StringTextComponent(v == Trades.SELLER_FOOD ? "§aПродавец: продукты"
+                : v == Trades.SELLER_CASINO ? "§5Бармен казино" : "§6Продавец: хозтовары"));
         this.setCustomNameVisible(true);
     }
 

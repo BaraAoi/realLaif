@@ -1,5 +1,7 @@
 package com.baraaoi.reallife.registry;
 
+import com.baraaoi.reallife.item.CloverItem;
+
 import com.baraaoi.reallife.RealLife;
 import com.baraaoi.reallife.item.BanknoteItem;
 import com.baraaoi.reallife.item.BuildPermitItem;
@@ -63,4 +65,21 @@ public class ModItems {
             () -> new BlockItem(ModBlocks.VENDING_RESOURCES.get(), props()));
     public static final RegistryObject<Item> MONEY_PRINTER = ITEMS.register("money_printer",
             () -> new BlockItem(ModBlocks.MONEY_PRINTER.get(), props()));
+
+    public static final RegistryObject<Item> CASINO_PERMIT = ITEMS.register("casino_permit",
+            () -> new BuildPermitItem(BuildPermitItem.Kind.CASINO, props().maxStackSize(1).rarity(Rarity.EPIC)));
+    public static final RegistryObject<Item> CLOVER = ITEMS.register("clover",
+            () -> new CloverItem(props().rarity(Rarity.EPIC)));
+    public static final RegistryObject<Item> PIT_RECEIVER = ITEMS.register("pit_receiver",
+            () -> new BlockItem(ModBlocks.PIT_RECEIVER.get(), props()));
+    public static final RegistryObject<Item> LAUNDER_MACHINE = ITEMS.register("launder_machine",
+            () -> new BlockItem(ModBlocks.LAUNDER_MACHINE.get(), props()));
+    public static final RegistryObject<Item> COIN_TABLE = ITEMS.register("coin_table",
+            () -> new BlockItem(ModBlocks.COIN_TABLE.get(), props()));
+    public static final RegistryObject<Item> SLOT_MACHINE = ITEMS.register("slot_machine",
+            () -> new BlockItem(ModBlocks.SLOT_MACHINE.get(), props()));
+    public static final RegistryObject<Item> ANARCHY_MACHINE = ITEMS.register("anarchy_machine",
+            () -> new BlockItem(ModBlocks.ANARCHY_MACHINE.get(), props()));
+    public static final RegistryObject<Item> ROULETTE_TABLE = ITEMS.register("roulette_table",
+            () -> new BlockItem(ModBlocks.ROULETTE_TABLE.get(), props()));
 }

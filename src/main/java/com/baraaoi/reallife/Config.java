@@ -44,7 +44,25 @@ public class Config {
     public static final ForgeConfigSpec.IntValue BUSINESS_DAILY;
     public static final ForgeConfigSpec.IntValue LAUNDER_PRICE;
     public static final ForgeConfigSpec.DoubleValue LAUNDER_COMMISSION;
-    public static final ForgeConfigSpec.DoubleValue DIRTY_ACCEPT_CHANCE;
+    public static final ForgeConfigSpec.DoubleValue DIRTY_CAUGHT_CHANCE;
+    public static final ForgeConfigSpec.DoubleValue MFO_LAUNDER_COMMISSION;
+    public static final ForgeConfigSpec.IntValue PRINTER_PRICE;
+    public static final ForgeConfigSpec.IntValue PRINTER_DAILY;
+    public static final ForgeConfigSpec.IntValue MAX_PRINTERS;
+
+    // ===== Казино =====
+    public static final ForgeConfigSpec.BooleanValue SPAWN_CASINO;
+    public static final ForgeConfigSpec.IntValue CASINO_MAX_BET;
+    public static final ForgeConfigSpec.IntValue CASINO_LUCK_LIMIT;
+    public static final ForgeConfigSpec.IntValue CASINO_BAN_TICKS;
+
+    // ===== Ограбление банка =====
+    public static final ForgeConfigSpec.IntValue ALARM_DELAY;
+    public static final ForgeConfigSpec.IntValue CASHIER_LOOT_MIN;
+    public static final ForgeConfigSpec.IntValue CASHIER_LOOT_MAX;
+
+    // ===== Стройка домов =====
+    public static final ForgeConfigSpec.IntValue HOUSE_FLATNESS;
 
     // ===== Мир =====
     public static final ForgeConfigSpec.BooleanValue SPAWN_BUILDINGS;
@@ -112,19 +130,46 @@ public class Config {
         b.comment("Подпольный бизнес и отмывание").push("business");
         BUSINESS_PRICE = b.comment("Цена подпольного цеха (подвал под домом)")
                 .defineInRange("businessPrice", 5000, 0, 10000000);
-        BUSINESS_DAILY = b.comment("Сколько грязных денег цех печатает за игровой день")
+        BUSINESS_DAILY = b.comment("Устарело (версия 2). Доход теперь считается по станкам: printerDaily")
                 .defineInRange("dailyDirtyMoney", 500, 0, 10000000);
+        PRINTER_DAILY = b.comment("Сколько грязных денег печатает один станок за игровой день (кратно 100)")
+                .defineInRange("printerDaily", 300, 0, 10000000);
+        PRINTER_PRICE = b.comment("Цена дополнительного печатного станка (при покупке цеха даётся 2)")
+                .defineInRange("printerPrice", 3000, 0, 10000000);
+        MAX_PRINTERS = b.comment("Максимум станков в цехе")
+                .defineInRange("maxPrinters", 8, 1, 12);
         LAUNDER_PRICE = b.comment("Цена ООО «Отмыв»")
                 .defineInRange("launderPrice", 8000, 0, 10000000);
-        LAUNDER_COMMISSION = b.comment("Комиссия ООО за отмывание")
+        LAUNDER_COMMISSION = b.comment("Комиссия ООО «Отмыв» (блок в подвале цеха)")
                 .defineInRange("launderCommission", 0.3, 0.0, 1.0);
-        DIRTY_ACCEPT_CHANCE = b.comment("Шанс, что банк примет грязные деньги (иначе изымет)")
-                .defineInRange("dirtyAcceptChance", 0.5, 0.0, 1.0);
+        MFO_LAUNDER_COMMISSION = b.comment("Комиссия, если отмывать прямо в конторе МФО")
+                .defineInRange("mfoLaunderCommission", 0.5, 0.0, 1.0);
+        DIRTY_CAUGHT_CHANCE = b.comment("Шанс, что банк «спалит» грязные деньги при внесении и изымет их")
+                .defineInRange("dirtyCaughtChance", 0.8, 0.0, 1.0);
         b.pop();
 
         b.comment("Мир").push("world");
         SPAWN_BUILDINGS = b.comment("Построить банк и МФО на точке спавна при первом запуске мира")
                 .define("spawnBuildings", true);
+        SPAWN_CASINO = b.comment("Построить казино недалеко от спавна (в пределах 12 чанков)")
+                .define("spawnCasino", true);
+        HOUSE_FLATNESS = b.comment("Допустимый перепад высот под ипотечным домом (блоков)")
+                .defineInRange("houseFlatness", 4, 0, 64);
+        b.pop();
+
+        b.comment("Казино").push("casino");
+        CASINO_MAX_BET = b.comment("Максимальная ставка").defineInRange("maxBet", 1000, 10, 10000000);
+        CASINO_LUCK_LIMIT = b.comment("Если игрок за игровой день выиграл больше этого (чистыми) — приходят амбалы и выкидывают")
+                .defineInRange("luckLimit", 3000, 10, 100000000);
+        CASINO_BAN_TICKS = b.comment("На сколько тиков закрыт вход после выкидывания (24000 = игровые сутки)")
+                .defineInRange("banTicks", 24000, 20, 10000000);
+        b.pop();
+
+        b.comment("Ограбление банка").push("robbery");
+        ALARM_DELAY = b.comment("Через сколько тиков после удара по кассиру приезжает полиция (600 = 30 сек)")
+                .defineInRange("alarmDelay", 600, 20, 100000);
+        CASHIER_LOOT_MIN = b.comment("Сколько денег минимум выпадает из кассы убитого кассира").defineInRange("cashierLootMin", 800, 0, 10000000);
+        CASHIER_LOOT_MAX = b.comment("Сколько денег максимум").defineInRange("cashierLootMax", 2500, 0, 10000000);
         b.pop();
         SPEC = b.build();
     }

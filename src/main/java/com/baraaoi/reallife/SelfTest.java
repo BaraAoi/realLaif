@@ -1,5 +1,11 @@
 package com.baraaoi.reallife;
 
+import com.baraaoi.reallife.economy.Structure;
+import com.baraaoi.reallife.economy.CasinoService;
+import com.baraaoi.reallife.entity.CashierEntity;
+import net.minecraft.item.Items;
+import net.minecraft.nbt.CompoundNBT;
+
 import com.baraaoi.reallife.economy.Account;
 import com.baraaoi.reallife.economy.BankService;
 import com.baraaoi.reallife.economy.CreditRating;
@@ -67,19 +73,66 @@ public class SelfTest {
         EconomyData data = EconomyData.get(s);
 
         // ---- банк и МФО на спавне
-        check(data.spawnBuilt, "bank and mfo built at spawn");
+        check(data.spawnBuilt && data.spawnVersion == 3, "bank and mfo built at spawn (v" + data.spawnVersion + ")");
         check(!data.mfoCenters.isEmpty(), "spawn mfo registered (" + data.mfoCenters + ")");
+        int sx0 = ow.getWorldInfo().getSpawnX(), sz0 = ow.getWorldInfo().getSpawnZ();
+        Structure spawnBank = null, spawnMfo = null, casino = null;
+        for (Structure st : data.structures) {
+            LOG.info("structure " + st.type + " " + st.min + " -> " + st.max + " protect=" + st.protect + " cashiers=" + st.cashiers.size());
+            if (st.protect && Structure.BANK.equals(st.type)) spawnBank = st;
+            if (st.protect && Structure.MFO.equals(st.type)) spawnMfo = st;
+            if (Structure.CASINO.equals(st.type)) casino = st;
+        }
+        check(spawnBank != null && spawnMfo != null, "spawn bank and mfo are registered as protected");
+        check(spawnBank.cashiers.size() == 3, "spawn bank has 3 cashier spots");
+        BlockPos sbc = new BlockPos(sx0, spawnBank.cashiers.get(0).getY(), sz0 + 12);
+        check(ow.getBlockState(sbc).getBlock() == ModBlocks.BANK_COUNTER.get() && data.isProtected(sbc), "spawn bank counter is protected at " + sbc);
+        check(!ow.getEntitiesWithinAABB(CashierEntity.class, new AxisAlignedBB(spawnBank.min, spawnBank.max.add(1, 1, 1))).isEmpty(), "spawn bank cashiers present");
+
+        // ---- казино возле спавна
+        check(data.casinoBuilt && casino != null && casino.protect, "casino built near spawn");
+        double cd = Math.sqrt(Math.pow((casino.min.getX() + casino.max.getX()) / 2.0 - sx0, 2) + Math.pow((casino.min.getZ() + casino.max.getZ()) / 2.0 - sz0, 2));
+        check(cd >= 80 && cd <= 192, "casino is not next to spawn but within 12 chunks: " + (int) cd);
+        int slots = 0, coins = 0, roul = 0, anarchy = 0;
+        for (BlockPos p : BlockPos.getAllInBoxMutable(casino.min, casino.max)) {
+            net.minecraft.block.Block b = ow.getBlockState(p).getBlock();
+            if (b == ModBlocks.SLOT_MACHINE.get()) slots++;
+            else if (b == ModBlocks.COIN_TABLE.get()) coins++;
+            else if (b == ModBlocks.ROULETTE_TABLE.get()) roul++;
+            else if (b == ModBlocks.ANARCHY_MACHINE.get()) anarchy++;
+        }
+        check(slots == 24 && coins == 6 && roul == 6 && anarchy == 6, "casino games: slots " + slots + ", coin " + coins + ", roulette " + roul + ", anarchy " + anarchy);
+        BlockPos ce = casino.exit;
+        boolean outside = ce.getX() < casino.min.getX() || ce.getX() > casino.max.getX() || ce.getZ() < casino.min.getZ() || ce.getZ() > casino.max.getZ();
+        boolean near = ce.getX() >= casino.min.getX() - 6 && ce.getX() <= casino.max.getX() + 6 && ce.getZ() >= casino.min.getZ() - 6 && ce.getZ() <= casino.max.getZ() + 6;
+        check(outside && near, "casino exit is just outside: " + ce);
+        check(!ow.getEntitiesWithinAABB(SellerEntity.class, new AxisAlignedBB(casino.min, casino.max.add(1, 1, 1))).isEmpty(), "casino bartender");
+        // все игры — в пользу казино
+        int wheelSum = 0;
+        for (int m : CasinoService.WHEEL) wheelSum += m;
+        check(CasinoService.WHEEL.length == 100 && wheelSum == 93, "roulette return 93% (" + wheelSum + ")");
+        double slotEv = 0;
+        for (int i = 0; i < 5; i++) for (int j = 0; j < 5; j++) for (int k = 0; k < 5; k++) slotEv += CasinoService.slotMult(new int[]{i, j, k}) / 125.0;
+        check(slotEv < 1 && slotEv > 0.85 && CasinoService.slotMult(new int[]{0, 0, 0}) == 25, "slots return " + slotEv);
+        double anEv = 0;
+        for (int i = 0; i < CasinoService.ANARCHY_MULT.length; i++) anEv += CasinoService.ANARCHY_MULT[i] * CasinoService.ANARCHY_WEIGHT[i] / 100.0;
+        check(anEv < 1 && anEv > 0.8, "anarchy return " + anEv);
 
         Blueprint bank = Buildings.buildBank(ow, base, Direction.SOUTH);
-        check(ow.getBlockState(bank.pos(0, 1, 5)).getBlock() == ModBlocks.BANK_COUNTER.get(), "bank counter placed");
+        check(ow.getBlockState(bank.pos(0, 1, 6)).getBlock() == ModBlocks.BANK_COUNTER.get(), "bank counter placed");
         check(ow.getBlockState(bank.pos(-2, 1, 1)).getBlock() == ModBlocks.ATM.get(), "bank atm placed");
-        check(ow.getBlockState(bank.pos(-5, 1, 3)).getBlock() == ModBlocks.VENDING_FOOD.get(), "bank vending placed");
+        check(ow.getBlockState(bank.pos(-8, 1, 3)).getBlock() == ModBlocks.VENDING_FOOD.get(), "bank vending placed");
+        check(!data.isProtected(bank.pos(0, 1, 6)), "permit-built bank is not protected");
+        List<CashierEntity> cashiers = ow.getEntitiesWithinAABB(CashierEntity.class, new AxisAlignedBB(bank.min(), bank.max().add(1, 1, 1)));
+        check(cashiers.size() == 3, "3 cashiers in bank (" + cashiers.size() + ")");
+        check(cashiers.get(0).getAttributeValue(Attributes.MAX_HEALTH) > 0, "cashier has hp");
         List<SellerEntity> sellers = ow.getEntitiesWithinAABB(SellerEntity.class, new AxisAlignedBB(bank.min(), bank.max().add(1, 1, 1)));
         check(sellers.size() == 2, "2 sellers in bank (" + sellers.size() + ")");
         for (SellerEntity se : sellers) check(se.getOffers().size() >= 10, "seller " + se.getVariant() + " has offers: " + se.getOffers().size());
         check(Trades.vending(Trades.VENDING_FOOD).size() > 5 && Trades.vending(Trades.VENDING_RESOURCES).size() > 5, "vending offers");
         // перекупка невыгодна: каждый товар стоит дороже, чем за него даст банк
-        for (int v = 0; v < 2; v++) {
+        check(Trades.seller(Trades.SELLER_CASINO).size() >= 8, "casino bar offers");
+        for (int v = 0; v < 3; v++) {
             for (net.minecraft.item.MerchantOffer o : Trades.seller(v)) {
                 double price = ItemValues.stackValue(o.getBuyingStackFirst());
                 double back = ItemValues.stackValue(o.getSellingStack());
@@ -115,7 +168,16 @@ public class SelfTest {
                 check(ow.getBlockState(b.pos(-3, 0, 6)).getBlock() instanceof net.minecraft.block.BedBlock, "stone house bed is whole");
             }
             if (h == HouseType.MANSION) check(ow.getBlockState(b.pos(-6, 0, 1)).getBlock() == ModBlocks.ATM.get(), "mansion atm");
-            if (h == HouseType.PENTHOUSE) check(ow.getBlockState(b.pos(5, 0, 5)).getBlock() == ModBlocks.ATM.get(), "penthouse atm");
+            if (h == HouseType.PENTHOUSE) {
+                check(ow.getBlockState(b.pos(5, 0, 5)).getBlock() == ModBlocks.ATM.get(), "penthouse atm");
+                check(ow.getBlockState(b.pos(1, 13, -3)).getBlock() == Blocks.WATER && ow.getBlockState(b.pos(1, 11, -3)).getBlock() == Blocks.GLASS,
+                        "penthouse cantilevered glass pool");
+                check(ow.isAirBlock(b.pos(1, 15, 0)) && ow.isAirBlock(b.pos(1, 16, 0)) && ow.isAirBlock(b.pos(0, 15, 3)), "terrace opens into the pool");
+                TileEntity stand = ow.getTileEntity(b.pos(5, 15, 3));
+                TileEntity bar = ow.getTileEntity(b.pos(5, 15, 1));
+                check(stand instanceof IInventory && ((IInventory) stand).getStackInSlot(0).getItem() == Items.POTION, "bar brewing stand has drinks");
+                check(bar instanceof IInventory && ((IInventory) bar).count(Items.POTION) >= 5, "bar barrel has drinks");
+            }
         }
 
         // ---- СИЗО в небе со снимком
@@ -141,6 +203,9 @@ public class SelfTest {
         DebtManager.buildCell(s, data, pit, mfoCenter);
         BlockPos pc = pit.cellCenter;
         check(ow.getBlockState(pc).getBlock() == ModBlocks.JAIL_WALL.get(), "pit built at " + pc);
+        check(ow.getBlockState(pc.add(0, 1, 3)).getBlock() == ModBlocks.PIT_RECEIVER.get(), "pit receiver");
+        check(Buildings.pitValue(new ItemStack(Items.DIAMOND)) == 200 && Buildings.pitValue(new ItemStack(Items.DIRT)) == 3
+                && Buildings.pitValue(new ItemStack(Items.DIAMOND_SWORD)) == 0, "pit loot values");
         check(pc.getX() == mfoCenter.getX() && pc.getZ() == mfoCenter.getZ() && pc.getY() + 5 < mfoCenter.getY(), "pit is under the mfo");
         Account pit2 = data.getOrCreate(UUID.randomUUID());
         pit2.captivity = Account.PIT;
@@ -161,16 +226,59 @@ public class SelfTest {
         check(ow.getBlockState(bm.hatch.down()).getBlock() instanceof net.minecraft.block.TrapDoorBlock, "hatch in floor at " + bm.hatch);
         check(ow.getBlockState(bm.hatch.down(2)).getBlock() == Blocks.LADDER, "ladder under hatch");
         biz.hasBusiness = true;
+        biz.printers = 2;
         biz.businessChest = bm.chest;
         biz.businessMin = bm.bp.min();
         biz.businessMax = bm.bp.max();
+        check(Buildings.countPrinters(ow, biz) == 2, "business starts with 2 printers");
+        int perPrinter = Config.PRINTER_DAILY.get() / 100;
         int made = BankService.produceDirty(s, biz);
-        check(made == 5, "business printed 5 packs of dirty money");
+        check(made == 2 * perPrinter, "business printed " + made + " packs of dirty money");
+        check(Buildings.placePrinter(ow, biz), "extra printer placed");
+        biz.printers++;
+        check(Buildings.countPrinters(ow, biz) == 3 && BankService.produceDirty(s, biz) == 3 * perPrinter, "3 printers print more");
         TileEntity chest = ow.getTileEntity(bm.chest);
-        check(chest instanceof IInventory && ((IInventory) chest).count(ModItems.DIRTY_MONEY.get()) == 5, "dirty money in chest");
+        check(chest instanceof IInventory && ((IInventory) chest).count(ModItems.DIRTY_MONEY.get()) == 5 * perPrinter, "dirty money in chest");
+        BlockPos lm = Buildings.placeLaunderMachine(ow, biz);
+        check(lm != null && ow.getBlockState(lm).getBlock() == ModBlocks.LAUNDER_MACHINE.get() && biz.businessMin.getY() < lm.getY()
+                && lm.getY() < bm.hatch.getY(), "launder machine in the basement at " + lm);
         check(ItemValues.valueOf(new ItemStack(ModItems.DIRTY_MONEY.get())) == 100, "dirty money worth 100");
         DebtManager.demolishHouse(ow, biz);
         check(!biz.hasBusiness && ow.getBlockState(bm.chest).getBlock() == Blocks.STONE, "business confiscated with the house");
+
+        // ---- ипотека: погашение до постройки не аннулирует ордер
+        Account mo = data.getOrCreate(UUID.randomUUID());
+        mo.mortHouse = HouseType.STONE_HOUSE.ordinal();
+        mo.mortPrincipal = 1000;
+        mo.mortDays = 10;
+        mo.mortRate = 0.01;
+        mo.pendingHouse = HouseType.STONE_HOUSE.ordinal();
+        mo.houseOrderId = 12345L;
+        mo.clearMortgage();
+        check(!mo.hasMortgage() && mo.pendingHouse == HouseType.STONE_HOUSE.ordinal() && mo.houseOrderId == 12345L, "paid-off mortgage keeps the house order");
+        check(!BankService.mortgageRefusal(mo, HouseType.DIRT_HUT, BankService.today(s)).isEmpty(), "no new mortgage while a house is pending");
+        CompoundNBT moSaved = mo.write();
+        check(Account.read(moSaved).pendingHouse == HouseType.STONE_HOUSE.ordinal(), "pending house saved");
+
+        // ---- площадка под дом: ровная — можно; на доме, на банке, на склоне — нельзя
+        BlockPos pad = base.add(600, 80, 0);
+        for (BlockPos p : BlockPos.getAllInBoxMutable(pad.add(-12, -1, -12), pad.add(12, -1, 12))) ow.setBlockState(p.toImmutable(), Blocks.STONE.getDefaultState(), 2);
+        UUID owner = UUID.randomUUID();
+        String ok = Buildings.checkHouseSite(ow, pad, Direction.SOUTH, HouseType.DIRT_HUT, data, owner);
+        check(ok == null, "flat site accepted (" + ok + ")");
+        Blueprint hut = Buildings.buildHouse(ow, pad, Direction.SOUTH, HouseType.DIRT_HUT);
+        Account ho = data.getOrCreate(owner);
+        ho.hasHouse = true;
+        ho.houseMin = hut.min();
+        ho.houseMax = hut.max();
+        String onHouse = Buildings.checkHouseSite(ow, pad.add(1, 5, 1), Direction.SOUTH, HouseType.WOODEN_HUT, data, UUID.randomUUID());
+        check(onHouse != null, "house on top of a house refused: " + onHouse);
+        String onBank = Buildings.checkHouseSite(ow, bank.pos(0, 8, 4), Direction.SOUTH, HouseType.DIRT_HUT, data, owner);
+        check(onBank != null && onBank.contains("банк"), "house on the bank refused: " + onBank);
+        String edge = Buildings.checkHouseSite(ow, pad.add(11, 0, 0), Direction.SOUTH, HouseType.STONE_HOUSE, data, owner);
+        check(edge != null, "uneven site refused: " + edge);
+        data.reset(owner);
+        data.reset(mo.id);
 
         // ---- земля и выселение
         long ck = EconomyData.chunkKey(base.add(400, 0, 0));
@@ -231,7 +339,7 @@ public class SelfTest {
 
         // ---- NPC
         EntityType<?>[] types = {ModEntities.ZHORA.get(), ModEntities.ALEXANDER.get(), ModEntities.POLICE.get(),
-                ModEntities.VOVAN.get(), ModEntities.BRATOK.get(), ModEntities.INSPECTOR.get()};
+                ModEntities.VOVAN.get(), ModEntities.BRATOK.get(), ModEntities.INSPECTOR.get(), ModEntities.AMBAL.get()};
         for (EntityType<?> t : types) {
             DebtNpcEntity e = (DebtNpcEntity) t.create(ow);
             check(e != null, "create " + t.getRegistryName());
@@ -244,5 +352,7 @@ public class SelfTest {
         data.reset(m.id);
         for (Account x : new Account[]{jailed, jailed2, pit, pit2, biz}) data.reset(x.id);
         data.landOwners.remove(ck);
+        data.structures.removeIf(st -> !st.protect);
+        data.markDirty();
     }
 }

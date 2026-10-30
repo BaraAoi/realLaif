@@ -139,6 +139,9 @@ public class DebtManager {
 
         if (now % 20 != 0) return;
 
+        tickAlarms(server, data, now);
+        if (now % 600 == 0) tickCashiers(data, ow, now);
+
         tickLand(server, data, ow, now);
 
         // смена игрового дня
@@ -154,7 +157,7 @@ public class DebtManager {
         }
 
         for (ServerPlayerEntity p : new ArrayList<>(server.getPlayerList().getPlayers())) {
-            if (p.openContainer instanceof FinanceContainer) BankService.sync(p);
+            if (p.openContainer instanceof FinanceContainer || p.openContainer instanceof com.baraaoi.reallife.container.CasinoContainer) BankService.sync(p);
             if ((now / 20 + p.getEntityId()) % 2 == 0) tickPlayer(server, data, p, now);
         }
     }
@@ -168,6 +171,35 @@ public class DebtManager {
         if (p.isSpectator() || !p.isAlive()) return;
         ServerWorld w = p.getServerWorld();
         List<DebtNpcEntity> mine = findNpcs(w, p);
+
+        // ---------------- ограбление банка: розыск на сутки
+        if (a.robber && now >= a.robberyUntil) {
+            a.robber = false;
+            if (a.arrears <= 0.01) {
+                a.wanted = false;
+                a.policeWave = 0;
+                a.nextPoliceTick = 0;
+            }
+            data.markDirty();
+            BankService.msg(p, "§9[Полиция] §7Дело об ограблении банка приостановлено за недостатком улик.");
+        }
+
+        // ---------------- казино: охрана
+        if (w.getDimensionKey() == World.OVERWORLD) {
+            com.baraaoi.reallife.economy.Structure casino = data.structureAt(p.getPosition(), com.baraaoi.reallife.economy.Structure.CASINO, 0);
+            if (a.casinoKick) {
+                if (data.structureAt(p.getPosition(), com.baraaoi.reallife.economy.Structure.CASINO, 6) == null) {
+                    throwOutOfCasino(p, data, a);
+                } else if (count(mine, AmbalEntity.class) == 0) {
+                    for (int i = 0; i < 2; i++) spawn(ModEntities.AMBAL.get(), w, p, 3, 6);
+                }
+            } else if (casino != null && a.casinoBanUntil > now && !p.isCreative()) {
+                BlockPos e = casino.exit;
+                p.setPositionAndUpdate(e.getX() + 0.5, e.getY(), e.getZ() + 0.5);
+                BankService.msg(p, com.baraaoi.reallife.economy.CasinoService.CASINO + "§cОхрана: «Тебе сюда нельзя ещё "
+                        + com.baraaoi.reallife.economy.CasinoService.banLeft(a, now) + ".»");
+            }
+        }
 
         // ---------------- самострой
         if (a.landCase && count(mine, InspectorEntity.class) == 0 && w.getDimensionKey() == World.OVERWORLD) {
@@ -323,12 +355,9 @@ public class DebtManager {
         long now = ow.getGameTime();
         if (a.captivity == Account.PIT) {
             if (p.world == ow && a.cellActive && Buildings.inPitMine(a.cellCenter, pos) && !state.isAir(ow, pos)) {
-                ow.setBlockState(pos, Blocks.AIR.getDefaultState(), 3);
+                // забой: блок ломается как обычно (с добычей), через 5 сек порода нарастает снова
                 REGEN.add(new Regen(pos.toImmutable(), Buildings.pitBlock(RANDOM), now + 100));
-                a.pitBlocksLeft--;
-                data.markDirty();
-                BankService.actionBar(p, "§4Подвал Шайкина: §fосталось выкопать §c" + Math.max(0, a.pitBlocksLeft));
-                if (a.pitBlocksLeft <= 0) release(server, data, p, a);
+                return false;
             }
             return true;
         }
@@ -421,8 +450,11 @@ public class DebtManager {
         demolishHouse(ow, a);
         a.clearLoan();
         a.clearMortgage();
+        a.pendingHouse = -1;
+        a.houseOrderId = 0;
         a.clearArrears();
         a.wanted = false;
+        a.robber = false;
         a.policeWave = 0;
         a.nextPoliceTick = 0;
         a.defaults++;
@@ -451,7 +483,8 @@ public class DebtManager {
         double taken = Math.max(0, a.balance) * 0.5;
         a.balance -= taken;
         arson(server, a, p, true);
-        a.pitBlocksLeft = (int) Math.max(30, Math.min(250, Math.ceil(debt / 15.0)));
+        a.pitBlocksLeft = 0;
+        a.pitDebtLeft = Math.max(150, Math.min(1500, Math.ceil(debt * 0.25 / 10.0) * 10.0));
         a.clearMfo();
         a.captivity = Account.PIT;
         data.markDirty();
@@ -459,7 +492,9 @@ public class DebtManager {
         buildCell(server, data, a, p.getPosition());
         BankService.msg(p, BankService.MFO + "§4Очнулся? Ты в подвале у Шайкина. Вещи твои теперь наши, со счёта ты «добровольно» перевёл "
                 + Finance.money(taken) + ", а дом... ну, бывает, горит.");
-        BankService.msg(p, BankService.MFO + "§cКопай. Выкопаешь §4" + a.pitBlocksLeft + "§c блоков — отпустим. Долг " + Finance.money(debt) + " будет закрыт.");
+        BankService.give(p, new ItemStack(ModItems.DEBTOR_PICKAXE.get()));
+        BankService.msg(p, BankService.MFO + "§cВот кирка. Копай руду, камень, землю и сдавай всё в приёмник. Наберёшь на §4"
+                + Finance.money(a.pitDebtLeft) + "§c — отпустим, долг " + Finance.money(debt) + " будет закрыт.");
     }
 
     private static String houseTitle(Account a) {
@@ -496,6 +531,9 @@ public class DebtManager {
         if (a.hasBusiness) {
             Buildings.fillBasement(ow, a.businessMin, a.businessMax);
             a.hasBusiness = false;
+            a.printers = 0;
+            a.hasLaundering = false;
+            a.launderPos = BlockPos.ZERO;
         }
     }
 
@@ -648,8 +686,15 @@ public class DebtManager {
                 BankService.actionBar(p, String.format("§9СИЗО №1: §fдо освобождения §c%d:%02d", sec / 60, sec % 60));
             }
         } else if (a.captivity == Account.PIT) {
-            if (a.pitBlocksLeft <= 0) release(server, data, p, a);
-            else BankService.actionBar(p, "§4Подвал Шайкина: §fвыкопай ещё §c" + a.pitBlocksLeft + "§f блоков");
+            if (a.pitDebtLeft <= 0.01) {
+                release(server, data, p, a);
+            } else {
+                if (!hasItem(p, new ItemStack(ModItems.DEBTOR_PICKAXE.get()))) {
+                    BankService.give(p, new ItemStack(ModItems.DEBTOR_PICKAXE.get()));
+                    BankService.msg(p, BankService.MFO + "§7На, держи кирку. Руками много не накопаешь.");
+                }
+                BankService.actionBar(p, "§4Подвал Шайкина: §fсдай в приёмник добычи ещё на §c" + Finance.money(a.pitDebtLeft));
+            }
         }
     }
 
@@ -657,7 +702,9 @@ public class DebtManager {
         int was = a.captivity;
         a.captivity = Account.FREE;
         a.pitBlocksLeft = 0;
+        a.pitDebtLeft = 0;
         a.jailUntil = 0;
+        if (was == Account.PIT) p.inventory.clear(); // всё, что накопал, остаётся Шайкину
         data.markDirty();
         ServerWorld ow = EconomyData.overworld(server);
         IWorldInfo info = ow.getWorldInfo();
@@ -669,8 +716,175 @@ public class DebtManager {
         if (was == Account.JAIL) {
             BankService.msg(p, "§9[Полиция] §fВы освобождены. Начните жизнь с чистого листа. И больше не берите кредитов, которые не можете вернуть.");
         } else {
-            BankService.msg(p, BankService.MFO + "§fЛадно, отработал. Вали отсюда. И помни — мы всегда рядом. Нужны деньги — заходи!");
+            BankService.msg(p, BankService.MFO + "§fЛадно, отработал. Кирку и всё, что в карманах, оставь — это наше. Вали отсюда. Нужны деньги — заходи!");
         }
+    }
+
+    /** Сдать добычу в приёмник подвала. */
+    public static void pitDeliver(ServerPlayerEntity p) {
+        MinecraftServer server = p.getServer();
+        if (server == null) return;
+        EconomyData data = EconomyData.get(server);
+        Account a = data.get(p);
+        if (a.captivity != Account.PIT) {
+            BankService.msg(p, "§8[Приёмник Шайкина] §7Сюда сдают добычу должники. Ты пока не должник. Пока.");
+            return;
+        }
+        double total = 0;
+        for (int i = 0; i < p.inventory.mainInventory.size(); i++) {
+            ItemStack st = p.inventory.mainInventory.get(i);
+            double v = Buildings.pitValue(st);
+            if (v > 0) {
+                total += v * st.getCount();
+                p.inventory.mainInventory.set(i, ItemStack.EMPTY);
+            }
+        }
+        if (total <= 0) {
+            BankService.msg(p, BankService.MFO + "§7Пусто. Копай: руда, уголь, камень, земля, гравий — всё идёт в зачёт. Алмаз — 200₽.");
+            return;
+        }
+        a.pitDebtLeft = Math.max(0, a.pitDebtLeft - total);
+        data.markDirty();
+        if (a.pitDebtLeft <= 0.01) {
+            release(server, data, p, a);
+        } else {
+            BankService.msg(p, BankService.MFO + "Принято добычи на §a" + Finance.money(total) + "§f. Осталось сдать на §c" + Finance.money(a.pitDebtLeft));
+        }
+    }
+
+    // ================================================================== ограбление банка
+
+    private static class Alarm {
+        final AxisAlignedBBHolder box;
+        final long due;
+        final Set<UUID> players = new java.util.HashSet<>();
+
+        Alarm(AxisAlignedBBHolder box, long due) {
+            this.box = box;
+            this.due = due;
+        }
+    }
+
+    private static class AxisAlignedBBHolder {
+        final BlockPos min, max;
+
+        AxisAlignedBBHolder(BlockPos min, BlockPos max) {
+            this.min = min;
+            this.max = max;
+        }
+
+        boolean contains(Entity e) {
+            return e.getPosX() >= min.getX() - 1 && e.getPosX() <= max.getX() + 2 && e.getPosZ() >= min.getZ() - 1
+                    && e.getPosZ() <= max.getZ() + 2 && e.getPosY() >= min.getY() - 2 && e.getPosY() <= max.getY() + 2;
+        }
+    }
+
+    private static final List<Alarm> ALARMS = new ArrayList<>();
+
+    /** Игрок ударил кассира: тревожная кнопка. Всех, кто сейчас в зале, через 30 сек ищет СОБР. */
+    public static void cashierHit(CashierEntity c, ServerPlayerEntity attacker) {
+        MinecraftServer server = attacker.getServer();
+        if (server == null) return;
+        EconomyData data = EconomyData.get(server);
+        long now = c.world.getGameTime();
+        com.baraaoi.reallife.economy.Structure st = data.structureAt(c.getPosition(), com.baraaoi.reallife.economy.Structure.BANK, 1);
+        BlockPos min = st != null ? st.min : c.getPosition().add(-11, -3, -11);
+        BlockPos max = st != null ? st.max : c.getPosition().add(11, 6, 11);
+        for (Alarm al : ALARMS) {
+            if (al.box.min.equals(min)) {
+                al.players.add(attacker.getUniqueID());
+                return;
+            }
+        }
+        Alarm al = new Alarm(new AxisAlignedBBHolder(min, max), now + Config.ALARM_DELAY.get());
+        al.players.add(attacker.getUniqueID());
+        for (ServerPlayerEntity o : server.getPlayerList().getPlayers()) {
+            if (o.world == c.world && al.box.contains(o) && !o.isSpectator()) al.players.add(o.getUniqueID());
+        }
+        ALARMS.add(al);
+        int sec = Config.ALARM_DELAY.get() / 20;
+        for (UUID id : al.players) {
+            ServerPlayerEntity o = server.getPlayerList().getPlayerByUUID(id);
+            if (o != null) BankService.msg(o, "§4§l[ТРЕВОГА] §r§cКассир нажал тревожную кнопку! Через " + sec
+                    + " сек. приедет СОБР — искать будут всех, кто сейчас в банке. Даже если уйдёте.");
+        }
+    }
+
+    public static void cashierKilled(CashierEntity c) {
+        MinecraftServer server = c.world.getServer();
+        if (server == null) return;
+        EconomyData data = EconomyData.get(server);
+        com.baraaoi.reallife.economy.Structure st = data.structureAt(c.getPosition(), com.baraaoi.reallife.economy.Structure.BANK, 1);
+        if (st != null) {
+            st.cashierRespawn = c.world.getGameTime() + 12000;
+            data.markDirty();
+        }
+    }
+
+    private static void tickAlarms(MinecraftServer server, EconomyData data, long now) {
+        if (ALARMS.isEmpty()) return;
+        Iterator<Alarm> it = ALARMS.iterator();
+        while (it.hasNext()) {
+            Alarm al = it.next();
+            if (now < al.due) continue;
+            it.remove();
+            for (UUID id : al.players) {
+                Account a = data.getOrCreate(id);
+                if (a.captivity != Account.FREE) continue;
+                a.wanted = true;
+                a.robber = true;
+                a.robberyUntil = now + 24000;
+                a.policeWave = Math.max(1, a.policeWave);
+                a.nextPoliceTick = Math.max(1, now);
+                ServerPlayerEntity p = server.getPlayerList().getPlayerByUUID(id);
+                if (p != null) BankService.msg(p, "§9§l[СОБР] §r§cВы были в банке во время нападения на кассира. Вы объявлены в розыск на сутки!");
+            }
+            data.markDirty();
+        }
+    }
+
+    /** Посадить на место убитых кассиров (не раньше чем через полдня после убийства). */
+    private static void tickCashiers(EconomyData data, ServerWorld ow, long now) {
+        for (com.baraaoi.reallife.economy.Structure st : data.structures) {
+            if (st.cashiers.isEmpty() || now < st.cashierRespawn) continue;
+            for (BlockPos c : st.cashiers) {
+                if (!ow.isBlockLoaded(c)) continue;
+                if (ow.getEntitiesWithinAABB(CashierEntity.class, new net.minecraft.util.math.AxisAlignedBB(c).grow(1.5D)).isEmpty()) {
+                    Buildings.spawnCashier(ow, c, net.minecraft.util.Direction.NORTH);
+                }
+            }
+        }
+    }
+
+    // ================================================================== казино
+
+    /** Амбалы выносят игрока на улицу и закрывают казино для него на сутки. */
+    public static void throwOutOfCasino(ServerPlayerEntity p, EconomyData data, Account a) {
+        long now = EconomyData.overworld(p.getServer()).getGameTime();
+        a.casinoKick = false;
+        a.casinoBanUntil = now + Config.CASINO_BAN_TICKS.get();
+        com.baraaoi.reallife.economy.Structure best = null;
+        double bd = Double.MAX_VALUE;
+        for (com.baraaoi.reallife.economy.Structure st : data.structures) {
+            if (!com.baraaoi.reallife.economy.Structure.CASINO.equals(st.type)) continue;
+            double d = st.exit.distanceSq(p.getPosition());
+            if (d < bd) { bd = d; best = st; }
+        }
+        if (best != null && best.contains(p.getPosition(), 6) && p.world.getDimensionKey() == World.OVERWORLD) {
+            p.closeScreen();
+            p.setPositionAndUpdate(best.exit.getX() + 0.5, best.exit.getY(), best.exit.getZ() + 0.5);
+            p.addPotionEffect(new EffectInstance(Effects.SLOWNESS, 100, 1));
+            p.addPotionEffect(new EffectInstance(Effects.NAUSEA, 120, 0));
+            BankService.msg(p, com.baraaoi.reallife.economy.CasinoService.CASINO + "§cДвое в костюмах взяли вас под руки и вынесли на улицу. "
+                    + "«Казино для вас закрыто на сутки. Выигрыш оставьте себе — на лечение.»");
+        } else {
+            BankService.msg(p, com.baraaoi.reallife.economy.CasinoService.CASINO + "§7Охрана запомнила ваше лицо: вход в казино закрыт на сутки.");
+        }
+        for (ServerWorld w : p.getServer().getWorlds()) {
+            for (AmbalEntity e : w.getEntitiesWithinAABB(AmbalEntity.class, p.getBoundingBox().grow(64.0D),
+                    e -> p.getUniqueID().equals(e.getTargetId()))) e.remove();
+        }
+        data.markDirty();
     }
 
     // ================================================================== взятки
@@ -855,17 +1069,91 @@ public class DebtManager {
             fillBox(ow, data.pitPos);
             data.pitBuilt = false;
         }
+        IWorldInfo info = ow.getWorldInfo();
+        int sx = info.getSpawnX(), sz = info.getSpawnZ();
+        net.minecraft.util.Direction south = net.minecraft.util.Direction.SOUTH;
         if (Config.SPAWN_BUILDINGS.get() && !data.spawnBuilt) {
-            IWorldInfo info = ow.getWorldInfo();
-            int sx = info.getSpawnX(), sz = info.getSpawnZ();
             int by = ow.getHeight(Heightmap.Type.MOTION_BLOCKING_NO_LEAVES, sx, sz + 6);
-            Buildings.buildBank(ow, new BlockPos(sx, by, sz + 6), net.minecraft.util.Direction.SOUTH);
+            Buildings.buildBank(ow, new BlockPos(sx, by, sz + 6), south, true);
             int my = ow.getHeight(Heightmap.Type.MOTION_BLOCKING_NO_LEAVES, sx - 18, sz + 6);
-            Buildings.buildMfo(ow, new BlockPos(sx - 18, my, sz + 6), net.minecraft.util.Direction.SOUTH);
+            Buildings.buildMfo(ow, new BlockPos(sx - 18, my, sz + 6), south, true);
             data.spawnBuilt = true;
+            data.spawnVersion = 3;
             com.baraaoi.reallife.RealLife.LOG.info("Real Life: bank and MFO built at world spawn " + sx + ", " + sz);
+        } else if (data.spawnBuilt && data.spawnVersion < 3) {
+            // мир с версии 2: находим банк и МФО по стойкам, перестраиваем банк (кассиры) и делаем оба неразрушимыми
+            BlockPos bc = findInColumn(ow, sx, sz + 11, com.baraaoi.reallife.registry.ModBlocks.BANK_COUNTER.get());
+            int by = bc != null ? bc.getY() - 1 : ow.getHeight(Heightmap.Type.MOTION_BLOCKING_NO_LEAVES, sx, sz + 6);
+            Buildings.buildBank(ow, new BlockPos(sx, by, sz + 6), south, true);
+            BlockPos mc = findInColumn(ow, sx - 18, sz + 11, com.baraaoi.reallife.registry.ModBlocks.MFO_COUNTER.get());
+            int my = mc != null ? mc.getY() - 1 : ow.getHeight(Heightmap.Type.MOTION_BLOCKING_NO_LEAVES, sx - 18, sz + 6);
+            Buildings.buildMfo(ow, new BlockPos(sx - 18, my, sz + 6), south, true);
+            data.spawnVersion = 3;
+            com.baraaoi.reallife.RealLife.LOG.info("Real Life: spawn bank rebuilt (v3), bank y=" + by + ", mfo y=" + my);
+        }
+        for (Account acc : data.all()) {
+            if (!acc.needPrinters) continue;
+            acc.needPrinters = false;
+            for (int i = Buildings.countPrinters(ow, acc); i < acc.printers; i++) if (!Buildings.placePrinter(ow, acc)) break;
+        }
+        if (Config.SPAWN_CASINO.get() && !data.casinoBuilt) {
+            data.casinoBuilt = true;
+            buildSpawnCasino(ow, data, sx, sz);
         }
         data.markDirty();
+    }
+
+    private static BlockPos findInColumn(ServerWorld w, int x, int z, net.minecraft.block.Block b) {
+        for (int y = w.getHeight() - 1; y > 0; y--) {
+            BlockPos p = new BlockPos(x, y, z);
+            if (w.getBlockState(p).getBlock() == b) return p;
+        }
+        return null;
+    }
+
+    /** Казино: 100–130 блоков от спавна (не впритык, но в пределах 12 чанков), на самом ровном месте. */
+    public static BlockPos buildSpawnCasino(ServerWorld ow, EconomyData data, int sx, int sz) {
+        BlockPos best = null;
+        net.minecraft.util.Direction bestDir = net.minecraft.util.Direction.SOUTH;
+        int bestScore = Integer.MAX_VALUE;
+        for (int k = 0; k < 8; k++) {
+            double ang = k * Math.PI / 4 + Math.PI / 8;
+            for (int dist : new int[]{100, 125}) {
+                int dx = (int) Math.round(Math.cos(ang) * dist), dz = (int) Math.round(Math.sin(ang) * dist);
+                net.minecraft.util.Direction f = Math.abs(dx) > Math.abs(dz)
+                        ? (dx > 0 ? net.minecraft.util.Direction.EAST : net.minecraft.util.Direction.WEST)
+                        : (dz > 0 ? net.minecraft.util.Direction.SOUTH : net.minecraft.util.Direction.NORTH);
+                Blueprint probe = new Blueprint(ow, new BlockPos(sx + dx, 64, sz + dz), f);
+                int[] hs = new int[9];
+                int n = 0, water = 0;
+                boolean taken = false;
+                for (int lx : new int[]{-16, 0, 16})
+                    for (int lz : new int[]{-8, 12, 31}) {
+                        BlockPos q = probe.pos(lx, 0, lz);
+                        int h = ow.getHeight(Heightmap.Type.MOTION_BLOCKING_NO_LEAVES, q.getX(), q.getZ());
+                        hs[n++] = h;
+                        if (ow.getBlockState(new BlockPos(q.getX(), h - 1, q.getZ())).getMaterial().isLiquid()) water++;
+                        long ck = EconomyData.chunkKey(q);
+                        if (data.owner(ck) != null || data.placed.containsKey(ck)) taken = true;
+                    }
+                if (taken) continue;
+                java.util.Arrays.sort(hs);
+                int score = (hs[8] - hs[0]) + water * 8;
+                if (score < bestScore) {
+                    bestScore = score;
+                    best = new BlockPos(sx + dx, hs[4], sz + dz);
+                    bestDir = f;
+                }
+            }
+        }
+        if (best == null) {
+            com.baraaoi.reallife.RealLife.LOG.warn("Real Life: no free place for the casino near spawn");
+            return null;
+        }
+        Buildings.buildCasino(ow, best, bestDir, true);
+        data.markDirty();
+        com.baraaoi.reallife.RealLife.LOG.info("Real Life: casino built at " + best + " facing " + bestDir + " (score " + bestScore + ")");
+        return best;
     }
 
     private static void fillBox(ServerWorld w, BlockPos c) {

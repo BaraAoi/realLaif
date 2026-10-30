@@ -340,4 +340,126 @@ def inspector_extra(im):
 
 
 skin('inspector', SKIN, (90, 90, 95), (90, 95, 110), (50, 55, 70), (20, 20, 20), extra=inspector_extra, hat=(240, 200, 30))
+# ================= версия 3: казино, приёмник, ООО, кассир, амбал =================
+# приёмник ямы — деревянный короб с воронкой
+rs = planks((110, 80, 50)); outline(rs, 0, 0, 15, 15, (60, 45, 25)); rs.save(f'{R}/block/pit_receiver_side.png')
+rt = planks((110, 80, 50)); rect(rt, 3, 3, 12, 12, (40, 40, 42)); outline(rt, 2, 2, 13, 13, (90, 90, 95))
+rect(rt, 6, 6, 9, 9, (15, 15, 15)); rt.save(f'{R}/block/pit_receiver_top.png')
+rf = planks((110, 80, 50)); outline(rf, 0, 0, 15, 15, (60, 45, 25))
+rect(rf, 3, 3, 12, 6, (230, 225, 210)); pix(rf, [(5, 4), (6, 4), (7, 4), (9, 4), (10, 4), (5, 5), (9, 5)], (150, 30, 30))   # табличка «₽»
+rect(rf, 4, 9, 11, 12, (25, 25, 25)); rf.save(f'{R}/block/pit_receiver_front.png')
+
+# ООО «Отмыв денег» — стиральная машина
+ls = metal((230, 232, 236), 4); outline(ls, 0, 0, 15, 15, (170, 172, 180)); ls.save(f'{R}/block/launder_machine_side.png')
+lt = metal((220, 222, 228), 4); outline(lt, 0, 0, 15, 15, (170, 172, 180)); rect(lt, 2, 2, 13, 4, (90, 160, 220)); lt.save(f'{R}/block/launder_machine_top.png')
+lf = metal((238, 240, 244), 3); outline(lf, 0, 0, 15, 15, (170, 172, 180))
+rect(lf, 1, 1, 14, 3, (70, 75, 85)); pix(lf, [(3, 2), (5, 2)], (60, 240, 90)); pix(lf, [(12, 2)], (240, 200, 60))
+for x in range(16):
+    for y in range(16):
+        d = ((x - 7.5) ** 2 + (y - 9.5) ** 2) ** 0.5
+        if d <= 5.2:
+            lf.putpixel((x, y), (60, 65, 75, 255) if d > 4.2 else ((120, 170, 110, 255) if (x + y) % 3 else (90, 140, 210, 255)))
+lf.save(f'{R}/block/launder_machine_front.png')
+
+# казино — общий корпус
+CRED = (130, 20, 30)
+cs = metal(CRED, 6); outline(cs, 0, 0, 15, 15, DGOLD); rect(cs, 0, 0, 15, 0, GOLD); cs.save(f'{R}/block/casino_side.png')
+ct = metal((30, 100, 50), 6); outline(ct, 0, 0, 15, 15, DGOLD); ct.save(f'{R}/block/casino_top.png')
+
+# орёл/решка — стол с монетой
+cf = metal(CRED, 6); outline(cf, 0, 0, 15, 15, DGOLD)
+rect(cf, 1, 1, 14, 5, (30, 100, 50))
+for x in range(16):
+    for y in range(16):
+        d = ((x - 7.5) ** 2 + (y - 10) ** 2) ** 0.5
+        if d <= 4: cf.putpixel((x, y), (GOLD if d <= 3 else DGOLD) + (255,))
+pix(cf, [(7, 9), (8, 9), (7, 10), (8, 11)], DGOLD)
+cf.save(f'{R}/block/coin_table_front.png')
+cto = metal((30, 100, 50), 6); outline(cto, 0, 0, 15, 15, DGOLD)
+for x in range(16):
+    for y in range(16):
+        if ((x - 7.5) ** 2 + (y - 7.5) ** 2) ** 0.5 <= 3: cto.putpixel((x, y), GOLD + (255,))
+cto.save(f'{R}/block/coin_table_top.png')
+
+# однорукий бандит
+sf = metal(CRED, 5); outline(sf, 0, 0, 15, 15, DGOLD); rect(sf, 0, 0, 15, 1, GOLD)
+rect(sf, 1, 4, 12, 9, (245, 245, 240)); outline(sf, 1, 4, 12, 9, (40, 40, 40))
+rect(sf, 4, 4, 4, 9, (40, 40, 40)); rect(sf, 8, 4, 8, 9, (40, 40, 40))
+for i, c in enumerate([(220, 30, 30), (220, 30, 30), (220, 30, 30)]):
+    pix(sf, [(2 + i * 4, 6), (3 + i * 4, 6), (3 + i * 4, 7), (2 + i * 4, 8)], c)    # 7 7 7
+rect(sf, 14, 3, 14, 8, (180, 180, 185)); rect(sf, 13, 2, 15, 3, (220, 30, 30))   # рычаг
+rect(sf, 3, 12, 10, 13, (20, 20, 20)); pix(sf, [(2, 2), (5, 2), (8, 2), (11, 2)], (255, 230, 120))
+sf.save(f'{R}/block/slot_machine_front.png')
+
+# Мама Анархия — фиолетовый автомат с черепом и короной
+af3 = metal((70, 20, 90), 6); outline(af3, 0, 0, 15, 15, (200, 60, 200))
+rect(af3, 2, 2, 13, 11, (20, 10, 25)); outline(af3, 2, 2, 13, 11, (200, 60, 200))
+pix(af3, [(6, 3), (8, 3), (10, 3), (6, 4), (7, 4), (8, 4), (9, 4), (10, 4)], GOLD)            # корона
+rect(af3, 6, 5, 10, 8, (235, 235, 235)); pix(af3, [(7, 6), (9, 6)], (20, 10, 25)); rect(af3, 7, 9, 9, 9, (235, 235, 235))
+pix(af3, [(8, 9)], (20, 10, 25))
+rect(af3, 3, 13, 12, 14, (230, 40, 40))
+af3.save(f'{R}/block/anarchy_machine_front.png')
+
+# рулетка
+rfr = metal(CRED, 6); outline(rfr, 0, 0, 15, 15, DGOLD); rect(rfr, 1, 1, 14, 6, (30, 100, 50))
+for k in range(7):
+    pix(rfr, [(1 + k * 2, 3)], (220, 30, 30) if k % 2 else (20, 20, 20))
+rfr.save(f'{R}/block/roulette_table_front.png')
+rto = metal((30, 100, 50), 6); outline(rto, 0, 0, 15, 15, DGOLD)
+import math
+for x in range(16):
+    for y in range(16):
+        dx, dy = x - 7.5, y - 7.5
+        d = (dx * dx + dy * dy) ** 0.5
+        if d <= 7:
+            if d > 5.5: c = (110, 70, 35)
+            elif d > 2:
+                seg = int((math.atan2(dy, dx) + math.pi) / (2 * math.pi) * 12)
+                c = (30, 140, 60) if seg == 0 else ((200, 30, 30) if seg % 2 else (25, 25, 25))
+            elif d > 1: c = GOLD
+            else: c = (240, 240, 240)
+            rto.putpixel((x, y), c + (255,))
+rto.save(f'{R}/block/roulette_table_top.png')
+
+# клевер абсолютной удачи
+cl = img()
+LEAF, DLEAF = (60, 190, 70), (30, 120, 40)
+for cx, cy in [(5, 4), (10, 4), (5, 9), (10, 9)]:
+    for x in range(cx - 2, cx + 3):
+        for y in range(cy - 2, cy + 3):
+            if abs(x - cx) + abs(y - cy) <= 3: cl.putpixel((x, y), LEAF + (255,))
+    pix(cl, [(cx, cy)], DLEAF)
+rect(cl, 7, 6, 8, 7, DLEAF)
+pix(cl, [(8, 11), (8, 12), (9, 13), (9, 14), (10, 15)], DLEAF)
+pix(cl, [(4, 3), (9, 3)], (170, 240, 170))
+cl.save(f'{R}/item/clover.png')
+
+# лицензия казино
+cp = paper()
+rect(cp, 5, 7, 10, 12, (130, 20, 30)); outline(cp, 5, 7, 10, 12, DGOLD)
+pix(cp, [(7, 9), (8, 9), (7, 10), (8, 10)], GOLD)
+cp.save(f'{R}/item/casino_permit.png')
+
+
+def cashier_extra(im):
+    rect(im, 20, 20, 27, 31, (245, 245, 245))     # блузка
+    rect(im, 20, 20, 27, 21, (200, 40, 50))       # шейный платок
+    rect(im, 25, 23, 26, 24, (230, 190, 50))      # бейдж банка
+    rect(im, 11, 15, 12, 15, (190, 70, 80))
+    rect(im, 0, 8, 7, 14, (120, 60, 30)); rect(im, 16, 8, 23, 14, (120, 60, 30))  # длинные волосы
+    rect(im, 24, 8, 31, 15, (120, 60, 30))
+
+
+skin('cashier', SKIN, (120, 60, 30), (35, 45, 90), (35, 45, 90), (20, 15, 15), extra=cashier_extra)
+
+
+def ambal_extra(im):
+    rect(im, 9, 11, 14, 12, (10, 10, 10))           # тёмные очки
+    rect(im, 20, 20, 27, 31, (245, 245, 245)); rect(im, 23, 20, 24, 31, (10, 10, 10))
+    rect(im, 8, 8, 15, 8, shade(SKIN, 0.85))        # лысина
+    rect(im, 40, 20, 41, 23, (20, 20, 20))
+    pix(im, [(16, 12), (16, 13)], (60, 60, 60))     # наушник охраны
+
+
+skin('ambal', shade(SKIN, 0.95), shade(SKIN, 0.85), (15, 15, 18), (15, 15, 18), (5, 5, 5), extra=ambal_extra)
 print('ok')

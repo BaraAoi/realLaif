@@ -61,19 +61,25 @@ public class HouseOrderItem extends Item {
         EconomyData data = EconomyData.get(world.getServer());
         Account a = data.get(player);
         HouseType type = HouseType.byId(t.getInt("house"));
-        if (type == null || !a.hasMortgage() || a.houseBuilt || a.houseOrderId != t.getLong("order") || a.mortHouse != type.ordinal()) {
+        if (type == null || a.pendingHouse != type.ordinal() || a.houseOrderId != t.getLong("order")) {
             player.sendStatusMessage(new StringTextComponent("§cОрдер аннулирован банком."), false);
             stack.shrink(1);
             return ActionResultType.FAIL;
         }
         Direction facing = ctx.getPlacementHorizontalFacing();
         BlockPos origin = ctx.getPos().up().offset(facing, 2);
+        String problem = Buildings.checkHouseSite(world, origin, facing, type, data, player.getUniqueID());
+        if (problem != null) {
+            player.sendStatusMessage(new StringTextComponent("§6[Реал Банк] §cБригада отказалась строить: §f" + problem), false);
+            return ActionResultType.FAIL;
+        }
         Blueprint bp = Buildings.buildHouse(world, origin, facing, type);
         a.hasHouse = true;
         a.houseType = type.ordinal();
         a.houseMin = bp.min();
         a.houseMax = bp.max();
         a.houseBuilt = true;
+        a.pendingHouse = -1;
         int claimed = Buildings.claimArea(data, player.getUniqueID(), bp.min().add(-8, 0, -8), bp.max().add(8, 0, 8), true);
         if (a.landCase && player.getUniqueID().equals(data.owner(a.landChunk))) a.landCase = false;
         data.markDirty();
@@ -93,7 +99,8 @@ public class HouseOrderItem extends Item {
             if (type != null) tooltip.add(new StringTextComponent("§eДом: " + type.title));
         }
         tooltip.add(new StringTextComponent("§7ПКМ по земле — бригада банка построит дом перед вами."));
-        tooltip.add(new StringTextComponent("§cБлоки на месте стройки будут снесены!"));
+        tooltip.add(new StringTextComponent("§7Нужна ровная площадка без чужих построек."));
+        tooltip.add(new StringTextComponent("§8Ордер действует, даже если ипотека уже погашена."));
         tooltip.add(new StringTextComponent("§8Залог банка. При неуплате дом изымается."));
     }
 }

@@ -11,6 +11,7 @@ public class ClientSetup {
         event.enqueueWork(() -> {
             ScreenManager.registerFactory(ModContainers.BANK.get(), FinanceScreen::new);
             ScreenManager.registerFactory(ModContainers.MFO.get(), FinanceScreen::new);
+            ScreenManager.registerFactory(ModContainers.CASINO.get(), CasinoScreen::new);
         });
         RenderingRegistry.registerEntityRenderingHandler(ModEntities.ZHORA.get(), m -> new NpcRenderer<>(m, "zhora"));
         RenderingRegistry.registerEntityRenderingHandler(ModEntities.ALEXANDER.get(), m -> new NpcRenderer<>(m, "alexander"));
@@ -19,5 +20,7 @@ public class ClientSetup {
         RenderingRegistry.registerEntityRenderingHandler(ModEntities.BRATOK.get(), m -> new NpcRenderer<>(m, "bratok"));
         RenderingRegistry.registerEntityRenderingHandler(ModEntities.INSPECTOR.get(), m -> new NpcRenderer<>(m, "inspector"));
         RenderingRegistry.registerEntityRenderingHandler(ModEntities.SELLER.get(), m -> new NpcRenderer<>(m, "seller"));
+        RenderingRegistry.registerEntityRenderingHandler(ModEntities.CASHIER.get(), m -> new NpcRenderer<>(m, "cashier"));
+        RenderingRegistry.registerEntityRenderingHandler(ModEntities.AMBAL.get(), m -> new NpcRenderer<>(m, "ambal"));
     }
 }

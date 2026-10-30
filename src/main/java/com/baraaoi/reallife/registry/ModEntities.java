@@ -1,5 +1,8 @@
 package com.baraaoi.reallife.registry;
 
+import com.baraaoi.reallife.entity.CashierEntity;
+import com.baraaoi.reallife.entity.AmbalEntity;
+
 import com.baraaoi.reallife.RealLife;
 import com.baraaoi.reallife.entity.*;
 import net.minecraft.entity.EntityClassification;
@@ -38,6 +41,13 @@ public class ModEntities {
             () -> EntityType.Builder.<SellerEntity>create(SellerEntity::new, EntityClassification.MISC)
                     .size(0.6F, 1.95F).build(RealLife.MODID + ":seller"));
 
+    public static final RegistryObject<EntityType<CashierEntity>> CASHIER = ENTITIES.register("cashier",
+            () -> EntityType.Builder.<CashierEntity>create(CashierEntity::new, EntityClassification.MISC)
+                    .size(0.6F, 1.8F).build(RealLife.MODID + ":cashier"));
+    public static final RegistryObject<EntityType<AmbalEntity>> AMBAL = ENTITIES.register("ambal",
+            () -> EntityType.Builder.<AmbalEntity>create(AmbalEntity::new, EntityClassification.MISC)
+                    .size(0.7F, 1.95F).build(RealLife.MODID + ":ambal"));
+
     private static AttributeModifierMap attrs(double health, double speed, double damage) {
         return MobEntity.func_233666_p_()
                 .createMutableAttribute(Attributes.MAX_HEALTH, health)
@@ -54,6 +64,12 @@ public class ModEntities {
         GlobalEntityTypeAttributes.put(VOVAN.get(), attrs(24, 0.34, 2));
         GlobalEntityTypeAttributes.put(BRATOK.get(), attrs(34, 0.35, 5));
         GlobalEntityTypeAttributes.put(INSPECTOR.get(), attrs(20, 0.34, 1));
+        GlobalEntityTypeAttributes.put(AMBAL.get(), attrs(80, 0.38, 6));
+        GlobalEntityTypeAttributes.put(CASHIER.get(), MobEntity.func_233666_p_()
+                .createMutableAttribute(Attributes.MAX_HEALTH, 20)
+                .createMutableAttribute(Attributes.MOVEMENT_SPEED, 0.0D)
+                .createMutableAttribute(Attributes.FOLLOW_RANGE, 16.0D)
+                .create());
         GlobalEntityTypeAttributes.put(SELLER.get(), MobEntity.func_233666_p_()
                 .createMutableAttribute(Attributes.MAX_HEALTH, 20)
                 .createMutableAttribute(Attributes.MOVEMENT_SPEED, 0.0D)

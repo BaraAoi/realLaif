@@ -1,0 +1,8 @@
+{
+  "parent": "minecraft:block/orientable",
+  "textures": {
+    "top": "reallife:block/roulette_table_top",
+    "front": "reallife:block/roulette_table_front",
+    "side": "reallife:block/casino_side"
+  }
+}

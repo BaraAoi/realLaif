@@ -110,9 +110,10 @@ public class FinanceScreen extends ContainerScreen<FinanceContainer> {
             btn(150 + i * 52, 4, 50, (mfoTab == i ? "§e" : "") + names[i], b -> { mfoTab = t; rebuild(); });
         }
         if (mfoTab == 1) {
-            btn(8, 52, 120, "Купить цех", b -> send(Actions.MFO_BUY_BUSINESS, 0, 0));
+            btn(8, 52, 74, "Купить цех", b -> send(Actions.MFO_BUY_BUSINESS, 0, 0));
+            btn(84, 52, 80, "+1 станок", b -> send(Actions.MFO_BUY_PRINTER, 0, 0));
             btn(8, 92, 120, "Купить ООО «Отмыв»", b -> send(Actions.MFO_BUY_LAUNDER, 0, 0));
-            btn(8, 124, 120, "§2Отмыть из слота", b -> send(Actions.MFO_LAUNDER, 0, 0));
+            btn(8, 124, 140, "§2Отмыть из слота (−50%)", b -> send(Actions.MFO_LAUNDER, 0, 0));
             return;
         }
         btn(8, 38, 36, "-1000", b -> { mfoAmount = Math.max(100, mfoAmount - 1000); });
@@ -250,16 +251,18 @@ public class FinanceScreen extends ContainerScreen<FinanceContainer> {
     private void drawBusiness(MatrixStack ms, CompoundNBT t) {
         text(ms, "§2§lШАЙКИН И КО", 8, 7);
         text(ms, "§fПодпольный цех §7(подвал под домом)", 8, 25);
-        small(ms, "§7Станки печатают §2" + Finance.money(t.getInt("businessDaily")) + "§7 грязными в день → сундук в подвале.", 8, 36, 0xFFFFFF);
-        if (t.getBoolean("hasBusiness")) small(ms, "§a✔ Цех работает", 132, 56, 0xFFFFFF);
-        else if (!t.getBoolean("hasHouse")) small(ms, "§c✘ Нужен свой дом", 132, 56, 0xFFFFFF);
-        else small(ms, "Цена: §e" + Finance.money(t.getInt("businessPrice")), 132, 56, 0xFFFFFF);
+        small(ms, "§7Цех = 2 станка. Станок печатает §2" + Finance.money(t.getInt("printerDaily")) + "§7/день, ещё — по §e"
+                + Finance.money(t.getInt("printerPrice")) + "§7 (макс " + t.getInt("maxPrinters") + ").", 8, 36, 0xFFFFFF);
+        if (t.getBoolean("hasBusiness")) small(ms, "§a✔ Станков: " + t.getInt("printers") + " → " + Finance.money(t.getInt("printers") * t.getInt("printerDaily")) + "/день", 8, 44, 0xFFFFFF);
+        else if (!t.getBoolean("hasHouse")) small(ms, "§c✘ Нужен свой дом", 8, 44, 0xFFFFFF);
+        else small(ms, "Цена цеха: §e" + Finance.money(t.getInt("businessPrice")), 8, 44, 0xFFFFFF);
         fill(ms, 8, 69, 212, 70, 0xFF335533);
         text(ms, "§fООО «Отмыв денег»", 8, 74);
-        small(ms, "§7Грязные → чистые, комиссия " + Finance.percent(t.getDouble("launderCommission")) + ".", 8, 84, 0xFFFFFF);
+        small(ms, "§7Аппарат в подвале цеха, комиссия " + Finance.percent(t.getDouble("launderCommission")) + ". Здесь, в конторе — "
+                + Finance.percent(t.getDouble("mfoLaunderCommission")) + ".", 8, 84, 0xFFFFFF);
         if (t.getBoolean("hasLaundering")) small(ms, "§a✔ ООО оформлено", 132, 96, 0xFFFFFF);
         else small(ms, "Цена: §e" + Finance.money(t.getInt("launderPrice")), 132, 96, 0xFFFFFF);
-        small(ms, "§8Банк примет грязные с шансом " + Finance.percent(t.getDouble("dirtyChance")) + ", иначе изымет", 8, 108, 0x777777);
+        small(ms, "§8Банк палит грязные в " + Finance.percent(t.getDouble("dirtyChance")) + " случаев: изымет", 8, 108, 0x777777);
         small(ms, "§8и снизит рейтинг. Оплата: счёт, потом наличные.", 8, 115, 0x777777);
     }
 

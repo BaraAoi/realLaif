@@ -25,5 +25,15 @@
   "block.reallife.money_printer": "Печатный станок",
   "item.reallife.dirty_money": "Грязные деньги",
   "entity.reallife.inspector": "Инспектор по самострою",
-  "entity.reallife.seller": "Продавец"
+  "entity.reallife.seller": "Продавец",
+  "item.reallife.casino_permit": "Лицензия на казино «Три семёрки»",
+  "item.reallife.clover": "Клевер абсолютной удачи",
+  "block.reallife.pit_receiver": "Приёмник добычи",
+  "block.reallife.launder_machine": "ООО «Отмыв денег»",
+  "block.reallife.coin_table": "Стол «Орёл или решка»",
+  "block.reallife.slot_machine": "Однорукий бандит",
+  "block.reallife.anarchy_machine": "Автомат «Мама Анархия»",
+  "block.reallife.roulette_table": "Рулетка x0–x25",
+  "entity.reallife.cashier": "Кассир",
+  "entity.reallife.ambal": "Амбал казино"
 }

@@ -1,5 +1,6 @@
 package com.baraaoi.reallife.structure;
 
+import com.baraaoi.reallife.Config;
 import com.baraaoi.reallife.block.FinanceBlock;
 import com.baraaoi.reallife.economy.HouseType;
 import com.baraaoi.reallife.economy.EconomyData;
@@ -32,7 +33,21 @@ import net.minecraft.util.Direction;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Random;
+import com.baraaoi.reallife.economy.Account;
+import com.baraaoi.reallife.economy.Structure;
+import com.baraaoi.reallife.entity.CashierEntity;
+import net.minecraft.potion.PotionUtils;
+import net.minecraft.potion.Potion;
+import net.minecraft.potion.Potions;
+import net.minecraft.tags.BlockTags;
+import net.minecraft.block.material.Material;
+import net.minecraft.tileentity.BarrelTileEntity;
+import net.minecraft.tileentity.ChestTileEntity;
+import net.minecraft.tileentity.BrewingStandTileEntity;
+import net.minecraft.util.math.ChunkPos;
 
 /**
  * Все постройки мода: банк, контора МФО, дома для ипотеки, тюрьма и подвал.
@@ -71,30 +86,35 @@ public class Buildings {
     //  БАНК
     // =====================================================================================
     public static Blueprint buildBank(World w, BlockPos origin, Direction facing) {
+        return buildBank(w, origin, facing, false);
+    }
+
+    /** Отделение банка 19×12: зал, три окна с кассирами, окна продавцов, хранилище. */
+    public static Blueprint buildBank(World w, BlockPos origin, Direction facing, boolean protect) {
         Blueprint b = new Blueprint(w, origin, facing);
-        b.clear(-7, 0, -3, 7, 9, 10);
-        b.foundation(-7, -3, 7, 10, s(Blocks.SMOOTH_STONE));
+        removeStaff(w, b.pos(-10, 0, -3), b.pos(10, 9, 12));
+        b.clear(-10, 0, -3, 10, 9, 12);
+        b.foundation(-10, -3, 10, 12, s(Blocks.SMOOTH_STONE));
         // ступени и площадка перед входом
         for (int x = -2; x <= 2; x++) b.set(x, 0, -3, b.stairs(s(Blocks.STONE_BRICK_STAIRS), Direction.SOUTH));
-        b.fill(-6, 0, -2, 6, 0, -1, s(Blocks.POLISHED_ANDESITE));
-        // пол
-        b.fill(-5, 0, 1, 5, 0, 8, s(Blocks.POLISHED_DIORITE));
-        b.fill(-5, -1, 1, 5, -1, 8, s(Blocks.SMOOTH_STONE));
-        // стены
-        b.walls(-6, 0, 0, 6, 6, 9, s(Blocks.STONE_BRICKS));
-        b.fill(-6, 0, 0, 6, 0, 9, s(Blocks.POLISHED_ANDESITE));
-        b.fill(-5, 0, 1, 5, 0, 8, s(Blocks.POLISHED_DIORITE));
-        for (int[] c : new int[][]{{-6, 0}, {6, 0}, {-6, 9}, {6, 9}})
+        b.fill(-8, 0, -2, 8, 0, -1, s(Blocks.POLISHED_ANDESITE));
+        // стены и пол
+        b.walls(-9, 0, 0, 9, 6, 11, s(Blocks.STONE_BRICKS));
+        b.fill(-9, 0, 0, 9, 0, 11, s(Blocks.POLISHED_ANDESITE));
+        b.fill(-8, 0, 1, 8, 0, 10, s(Blocks.POLISHED_DIORITE));
+        b.fill(-8, -1, 1, 8, -1, 10, s(Blocks.SMOOTH_STONE));
+        for (int x = -6; x <= 6; x += 4) for (int z = 2; z <= 4; z += 2) b.set(x, 0, z, s(Blocks.POLISHED_GRANITE));
+        for (int[] c : new int[][]{{-9, 0}, {9, 0}, {-9, 11}, {9, 11}})
             b.fill(c[0], 0, c[1], c[0], 6, c[1], s(Blocks.QUARTZ_PILLAR));
         // колоннада
-        for (int x : new int[]{-5, -3, 3, 5}) b.fill(x, 1, -2, x, 5, -2, s(Blocks.QUARTZ_PILLAR));
-        b.fill(-6, 6, -2, 6, 6, -1, s(Blocks.QUARTZ_BLOCK));
-        b.fill(-6, 7, -2, 6, 7, -2, s(Blocks.SMOOTH_QUARTZ_SLAB));
+        for (int x : new int[]{-7, -5, -3, 3, 5, 7}) b.fill(x, 1, -2, x, 5, -2, s(Blocks.QUARTZ_PILLAR));
+        b.fill(-8, 6, -2, 8, 6, -1, s(Blocks.QUARTZ_BLOCK));
+        b.fill(-8, 7, -2, 8, 7, -2, s(Blocks.SMOOTH_QUARTZ_SLAB));
         // окна
-        for (int x : new int[]{-5, -4, 4, 5}) b.fill(x, 2, 0, x, 4, 0, s(Blocks.GLASS));
-        for (int z : new int[]{2, 3, 6, 7}) {
-            b.fill(-6, 2, z, -6, 4, z, s(Blocks.GLASS));
-            b.fill(6, 2, z, 6, 4, z, s(Blocks.GLASS));
+        for (int x : new int[]{-7, -6, -5, 5, 6, 7}) b.fill(x, 2, 0, x, 4, 0, s(Blocks.GLASS));
+        for (int z : new int[]{2, 3, 4, 8, 9}) {
+            b.fill(-9, 2, z, -9, 4, z, s(Blocks.GLASS));
+            b.fill(9, 2, z, 9, 4, z, s(Blocks.GLASS));
         }
         // вход
         b.fill(-1, 1, 0, 1, 3, 0, s(Blocks.AIR));
@@ -108,56 +128,103 @@ public class Buildings {
         b.set(0, 3, 0, s(Blocks.CHISELED_STONE_BRICKS));
         b.sign(0, 4, -1, s(Blocks.DARK_OAK_WALL_SIGN), Direction.NORTH, "", "§lБАНК", "«Реал Банк»", "вклады • кредиты");
         b.sign(-2, 2, -1, s(Blocks.DARK_OAK_WALL_SIGN), Direction.NORTH, "Ипотека", "от землянки", "до пентхауса", "");
-        b.sign(2, 2, -1, s(Blocks.DARK_OAK_WALL_SIGN), Direction.NORTH, "Часы работы:", "круглосуточно", "", "Без выходных");
+        b.sign(2, 2, -1, s(Blocks.DARK_OAK_WALL_SIGN), Direction.NORTH, "Часы работы:", "круглосуточно", "§4Ведётся", "§4видеонаблюдение");
         // крыша
-        b.fill(-6, 7, 0, 6, 7, 9, s(Blocks.STONE_BRICKS));
-        b.walls(-6, 8, 0, 6, 8, 9, s(Blocks.STONE_BRICK_SLAB));
-        for (int x : new int[]{-3, 0, 3}) for (int z : new int[]{2, 6}) b.set(x, 7, z, s(Blocks.SEA_LANTERN));
+        b.fill(-9, 7, 0, 9, 7, 11, s(Blocks.STONE_BRICKS));
+        b.walls(-9, 8, 0, 9, 8, 11, s(Blocks.STONE_BRICK_SLAB));
+        for (int x = -6; x <= 6; x += 3) for (int z : new int[]{2, 5, 8}) b.set(x, 7, z, s(Blocks.SEA_LANTERN));
         b.set(-2, 8, 0, s(Blocks.YELLOW_GLAZED_TERRACOTTA));
         b.set(2, 8, 0, s(Blocks.YELLOW_GLAZED_TERRACOTTA));
-        // ковровая дорожка
-        for (int z = 1; z <= 4; z++) b.set(0, 1, z, s(Blocks.RED_CARPET));
-        // стойки кассиров со стеклом
-        for (int x = -5; x <= 5; x++) {
-            b.set(x, 1, 5, s(Blocks.POLISHED_ANDESITE));
-            b.set(x, 2, 5, s(Blocks.GLASS));
+        // ковровая дорожка к кассам
+        for (int z = 1; z <= 5; z++) b.set(0, 1, z, s(Blocks.RED_CARPET));
+        // стойка кассиров со стеклом (ряд z=6)
+        for (int x = -8; x <= 8; x++) {
+            b.set(x, 1, 6, s(Blocks.POLISHED_ANDESITE));
+            b.set(x, 2, 6, s(Blocks.GLASS));
+            b.set(x, 3, 6, s(Blocks.SMOOTH_STONE_SLAB));
         }
-        for (int x : new int[]{-3, 0, 3}) {
-            b.set(x, 1, 5, counter(ModBlocks.BANK_COUNTER.get(), Direction.NORTH));
-            b.set(x, 2, 5, s(Blocks.AIR));
+        List<BlockPos> cashiers = new ArrayList<>();
+        for (int x : new int[]{-4, 0, 4}) {
+            b.set(x, 1, 6, counter(ModBlocks.BANK_COUNTER.get(), Direction.NORTH));
+            b.set(x, 2, 6, s(Blocks.AIR));
+            b.set(x, 1, 8, b.stairs(s(Blocks.DARK_OAK_STAIRS), Direction.SOUTH));
+            cashiers.add(b.pos(x, 1, 7));
         }
-        // хранилище за стойкой
-        b.fill(-5, 1, 8, 5, 3, 8, s(Blocks.POLISHED_BLACKSTONE_BRICKS));
-        b.fill(-1, 1, 8, 1, 2, 8, s(Blocks.IRON_BARS));
-        b.set(-4, 1, 7, s(Blocks.BARREL));
-        b.set(4, 1, 7, s(Blocks.BARREL));
-        // зал ожидания
-        for (int x = -5; x <= -3; x++) b.set(x, 1, 1, b.stairs(s(Blocks.DARK_OAK_STAIRS), Direction.NORTH));
-        for (int x = 3; x <= 5; x++) b.set(x, 1, 1, b.stairs(s(Blocks.DARK_OAK_STAIRS), Direction.NORTH));
-        // торговые автоматы и банкомат
-        b.set(-5, 1, 3, counter(ModBlocks.VENDING_FOOD.get(), Direction.EAST));
-        b.set(5, 1, 3, counter(ModBlocks.VENDING_RESOURCES.get(), Direction.WEST));
-        b.set(-2, 1, 1, counter(ModBlocks.ATM.get(), Direction.SOUTH));
-        b.set(2, 1, 1, s(Blocks.POTTED_FERN));
         // окна продавцов (по краям стойки)
-        for (int x : new int[]{-5, 5}) {
-            b.set(x, 1, 5, topSlab(Blocks.SMOOTH_QUARTZ_SLAB).with(SlabBlock.TYPE, SlabType.BOTTOM));
-            b.set(x, 2, 5, s(Blocks.AIR));
-            b.set(x, 1, 6, s(Blocks.AIR));
+        for (int x : new int[]{-7, 7}) {
+            b.set(x, 1, 6, s(Blocks.SMOOTH_QUARTZ_SLAB));
             b.set(x, 2, 6, s(Blocks.AIR));
         }
-        b.set(-4, 1, 6, s(Blocks.BARREL));
-        b.set(4, 1, 6, s(Blocks.BARREL));
-        spawnSeller(w, b.pos(-5, 1, 6), Trades.SELLER_FOOD);
-        spawnSeller(w, b.pos(5, 1, 6), Trades.SELLER_GOODS);
+        // служебная зона и хранилище
+        b.fill(-8, 1, 10, 8, 3, 10, s(Blocks.POLISHED_BLACKSTONE_BRICKS));
+        b.door(0, 1, 10, s(Blocks.IRON_DOOR), Direction.NORTH);
+        for (int x : new int[]{-3, -2, 2, 3}) b.set(x, 2, 10, s(Blocks.IRON_BARS));
+        b.set(0, 3, 10, s(Blocks.CHISELED_POLISHED_BLACKSTONE));
+        for (int x : new int[]{-8, -6, 6, 8}) b.set(x, 1, 9, s(Blocks.BARREL));
+        b.set(-2, 1, 9, s(Blocks.LECTERN));
+        b.set(2, 1, 9, s(Blocks.CARTOGRAPHY_TABLE));
+        b.sign(1, 2, 9, s(Blocks.DARK_OAK_WALL_SIGN), Direction.NORTH, "§4ХРАНИЛИЩЕ", "Посторонним", "вход воспрещён", "");
+        // зал ожидания
+        for (int x = -7; x <= -5; x++) b.set(x, 1, 1, b.stairs(s(Blocks.DARK_OAK_STAIRS), Direction.NORTH));
+        for (int x = 5; x <= 7; x++) b.set(x, 1, 1, b.stairs(s(Blocks.DARK_OAK_STAIRS), Direction.NORTH));
+        b.set(-4, 1, 1, s(Blocks.POTTED_FERN));
+        b.set(4, 1, 1, s(Blocks.POTTED_FERN));
+        b.set(-8, 1, 5, s(Blocks.POTTED_BAMBOO));
+        b.set(8, 1, 5, s(Blocks.POTTED_BAMBOO));
+        // банкоматы и торговые автоматы
+        b.set(-2, 1, 1, counter(ModBlocks.ATM.get(), Direction.SOUTH));
+        b.set(2, 1, 1, counter(ModBlocks.ATM.get(), Direction.SOUTH));
+        b.set(-8, 1, 3, counter(ModBlocks.VENDING_FOOD.get(), Direction.EAST));
+        b.set(8, 1, 3, counter(ModBlocks.VENDING_RESOURCES.get(), Direction.WEST));
+        spawnSeller(w, b.pos(-7, 1, 7), Trades.SELLER_FOOD);
+        spawnSeller(w, b.pos(7, 1, 7), Trades.SELLER_GOODS);
+        for (BlockPos c : cashiers) spawnCashier(w, c, b.dir(Direction.NORTH));
         claimCity(w, b);
+        register(w, Structure.BANK, b, protect, b.pos(0, 1, -2), cashiers);
         return b;
+    }
+
+    /** Убрать старых продавцов и кассиров (перед перестройкой). */
+    static void removeStaff(World w, BlockPos a, BlockPos c) {
+        if (!(w instanceof ServerWorld)) return;
+        AxisAlignedBB box = new AxisAlignedBB(a, c).grow(1.0D);
+        for (SellerEntity e : w.getEntitiesWithinAABB(SellerEntity.class, box)) e.remove();
+        for (CashierEntity e : w.getEntitiesWithinAABB(CashierEntity.class, box)) e.remove();
+    }
+
+    public static void spawnCashier(World w, BlockPos pos, Direction face) {
+        if (!(w instanceof ServerWorld)) return;
+        for (CashierEntity old : w.getEntitiesWithinAABB(CashierEntity.class, new AxisAlignedBB(pos).grow(1.0D))) old.remove();
+        CashierEntity e = ModEntities.CASHIER.get().create(w);
+        if (e == null) return;
+        float yaw = face.getHorizontalAngle();
+        e.setLocationAndAngles(pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5, yaw, 0F);
+        e.rotationYawHead = yaw;
+        e.renderYawOffset = yaw;
+        w.addEntity(e);
+    }
+
+    /** Записать постройку в реестр мира (для защиты, кассиров, охраны казино). */
+    static Structure register(World w, String type, Blueprint b, boolean protect, BlockPos exit, List<BlockPos> cashiers) {
+        if (!(w instanceof ServerWorld) || w.getServer() == null || w.getDimensionKey() != World.OVERWORLD) return null;
+        Structure st = new Structure();
+        st.type = type;
+        st.min = b.min();
+        st.max = b.max();
+        st.protect = protect;
+        st.exit = exit;
+        st.cashiers.addAll(cashiers);
+        return EconomyData.get(w.getServer()).addStructure(st);
     }
 
     // =====================================================================================
     //  КОНТОРА МФО «Шайкин и Ко»
     // =====================================================================================
     public static Blueprint buildMfo(World w, BlockPos origin, Direction facing) {
+        return buildMfo(w, origin, facing, false);
+    }
+
+    public static Blueprint buildMfo(World w, BlockPos origin, Direction facing, boolean protect) {
         Blueprint b = new Blueprint(w, origin, facing);
         Random r = new Random(origin.toLong());
         b.clear(-4, 0, -1, 4, 6, 7);
@@ -206,6 +273,7 @@ public class Buildings {
         b.set(2, 1, 2, chest(Direction.WEST));
         b.set(-1, 1, 1, counter(ModBlocks.MONEY_PRINTER.get(), Direction.SOUTH));
         claimCity(w, b);
+        register(w, Structure.MFO, b, protect, b.pos(0, 1, -2), new ArrayList<>());
         if (w instanceof ServerWorld && w.getServer() != null && w.getDimensionKey() == World.OVERWORLD) {
             EconomyData data = EconomyData.get(w.getServer());
             BlockPos c = b.pos(0, 0, 3);
@@ -533,7 +601,7 @@ public class Buildings {
         // освещение этажей
         for (int lvl = 0; lvl < 3; lvl++) {
             int yc = lvl * 5 + 4;
-            for (int x : new int[]{-3, 0, 3}) for (int z : new int[]{3, 9}) if (!(lvl == 2 && z == 3)) b.set(x, yc, z, s(Blocks.SEA_LANTERN));
+            for (int x : new int[]{-3, 0, 3}) for (int z : new int[]{3, 9}) b.set(x, yc, z, s(Blocks.SEA_LANTERN));
         }
         // лобби
         for (int x = -2; x <= 2; x++) b.set(x, 0, 7, b.stairs(s(Blocks.QUARTZ_STAIRS), Direction.NORTH));
@@ -577,22 +645,47 @@ public class Buildings {
         b.set(1, 15, 11, s(Blocks.BARREL));
         b.set(-5, 15, 11, chest(Direction.EAST));
         b.set(5, 15, 7, s(Blocks.POTTED_BAMBOO));
-        // ===== ТЕРРАСА С БАССЕЙНОМ (y 14, передняя половина) =====
+        // ===== ТЕРРАСА-ВЕРАНДА (y 15, передняя половина) =====
         b.fill(-6, 15, 0, -6, 15, 5, glass);
         b.fill(6, 15, 0, 6, 15, 5, glass);
         b.fill(-6, 15, 0, 6, 15, 0, glass);
-        // чаша бассейна: дно на y=13, вода y=14..15, бортик y=15
-        b.fill(-4, 13, 1, 4, 13, 4, s(Blocks.PRISMARINE_BRICKS));
-        b.fill(-3, 13, 2, 3, 13, 3, s(Blocks.SEA_LANTERN));
-        b.fill(-4, 14, 1, 4, 14, 4, s(Blocks.PRISMARINE_BRICKS));
-        b.walls(-4, 15, 0, 4, 15, 5, s(Blocks.WHITE_STAINED_GLASS));
-        b.fill(-3, 14, 1, 3, 15, 4, s(Blocks.WATER));
-        b.set(0, 15, 5, b.stairs(s(Blocks.QUARTZ_STAIRS), Direction.SOUTH));
-        // шезлонги
-        for (int z = 1; z <= 3; z += 2) {
-            b.set(-5, 15, z, b.stairs(s(Blocks.QUARTZ_STAIRS), Direction.SOUTH));
-            b.set(5, 15, z, b.stairs(s(Blocks.QUARTZ_STAIRS), Direction.SOUTH));
+        // ===== ВЫДВИЖНОЙ СТЕКЛЯННЫЙ БАССЕЙН: консоль над входом, x −4..4, z −7..−1 =====
+        b.clear(-5, 10, -8, 5, 17, -1);
+        b.fill(-4, 11, -7, 4, 11, -1, s(Blocks.GLASS));                 // прозрачное дно
+        b.walls(-4, 11, -7, 4, 11, 0, frame);                            // рама по низу
+        b.fill(-4, 12, -7, -4, 15, -1, s(Blocks.GLASS));                 // боковые стенки
+        b.fill(4, 12, -7, 4, 15, -1, s(Blocks.GLASS));
+        b.fill(-4, 12, -7, 4, 15, -7, s(Blocks.GLASS));                  // торец
+        b.fill(-4, 15, -7, 4, 15, -7, frame);
+        b.fill(-4, 15, -7, -4, 15, -1, frame);
+        b.fill(4, 15, -7, 4, 15, -1, frame);
+        for (int x = -2; x <= 2; x += 2) for (int z : new int[]{-2, -5}) b.set(x, 11, z, s(Blocks.SEA_LANTERN));
+        b.fill(-3, 12, -6, 3, 14, -1, s(Blocks.WATER));
+        // выход из пентхауса прямо в воду: проём в перилах террасы
+        b.fill(-3, 15, 0, 3, 15, 0, s(Blocks.AIR));
+        // трамплин
+        b.set(0, 15, 0, topSlab(Blocks.SMOOTH_QUARTZ_SLAB).with(SlabBlock.TYPE, SlabType.BOTTOM));
+        // ===== БАР НА ВЕРАНДЕ (правая сторона, проход x −2..2 свободен) =====
+        for (int z = 1; z <= 4; z++) b.set(3, 15, z, s(Blocks.POLISHED_BLACKSTONE_BRICKS));
+        b.set(3, 16, 1, s(Blocks.LANTERN));
+        b.set(3, 16, 4, s(Blocks.LANTERN));
+        for (int z = 1; z <= 4; z += 3) {
+            b.set(2, 15, z, s(Blocks.DARK_OAK_FENCE));
+            b.set(2, 16, z, s(Blocks.RED_CARPET));
         }
+        b.set(5, 15, 1, s(Blocks.BARREL));
+        b.set(5, 15, 2, s(Blocks.BARREL));
+        b.set(5, 15, 3, s(Blocks.BREWING_STAND));
+        b.set(5, 15, 4, s(Blocks.BARREL));
+        b.set(5, 16, 1, s(Blocks.BARREL));
+        b.set(5, 16, 2, s(Blocks.BARREL));
+        b.sign(4, 16, 5, s(Blocks.DARK_OAK_WALL_SIGN), Direction.NORTH, "§lБАР", "«Ипотека»", "§8напитки", "§8за счёт банка");
+        fillBar(w, b, new int[][]{{5, 15, 1}, {5, 15, 2}, {5, 15, 4}, {5, 16, 1}, {5, 16, 2}, {5, 15, 3}});
+        // шезлонги с зонтиком (левая сторона)
+        for (int z = 1; z <= 3; z += 2) b.set(-5, 15, z, b.stairs(s(Blocks.QUARTZ_STAIRS), Direction.SOUTH));
+        b.fill(-4, 15, 2, -4, 16, 2, s(Blocks.DARK_OAK_FENCE));
+        b.fill(-5, 17, 1, -3, 17, 3, s(Blocks.WHITE_WOOL));
+        b.set(-4, 17, 2, s(Blocks.RED_WOOL));
         b.set(-5, 15, 5, s(Blocks.POTTED_OAK_SAPLING));
         b.set(5, 15, 5, s(Blocks.POTTED_OAK_SAPLING));
         // лобби: банкомат и автомат
@@ -680,13 +773,40 @@ public class Buildings {
         }
     }
 
+    private static final Potion[] DRINKS = {Potions.SWIFTNESS, Potions.STRENGTH, Potions.LEAPING, Potions.FIRE_RESISTANCE,
+            Potions.NIGHT_VISION, Potions.REGENERATION, Potions.WATER_BREATHING, Potions.LONG_SWIFTNESS, Potions.HEALING};
+
+    public static ItemStack drink(Potion p) {
+        return PotionUtils.addPotionToItemStack(new ItemStack(Items.POTION), p);
+    }
+
+    /** Бар: бочки с зельями-«коктейлями», в варочной стойке — три готовых напитка. */
+    static void fillBar(World w, Blueprint b, int[][] spots) {
+        Random r = new Random(b.pos(0, 0, 0).toLong());
+        for (int[] sp : spots) {
+            TileEntity te = w.getTileEntity(b.pos(sp[0], sp[1], sp[2]));
+            if (te instanceof BrewingStandTileEntity) {
+                IInventory inv = (IInventory) te;
+                for (int i = 0; i < 3; i++) inv.setInventorySlotContents(i, drink(DRINKS[r.nextInt(DRINKS.length)]));
+                te.markDirty();
+            } else if (te instanceof IInventory) {
+                IInventory inv = (IInventory) te;
+                for (int i = 0; i < 9; i++) inv.setInventorySlotContents(i * 3, drink(DRINKS[r.nextInt(DRINKS.length)]));
+                inv.setInventorySlotContents(1, it(Items.HONEY_BOTTLE, 4));
+                inv.setInventorySlotContents(4, it(Items.MILK_BUCKET, 1));
+                inv.setInventorySlotContents(7, it(Items.GLASS_BOTTLE, 8));
+                te.markDirty();
+            }
+        }
+    }
+
     /** Заполнить все пустые сундуки, бочки и холодильники дома. tier 0..5 — чем дороже дом, тем богаче. */
     public static void furnish(Blueprint b, int tier, Random r) {
         World w = b.world();
         BlockPos min = b.min(), max = b.max();
         for (BlockPos pos : BlockPos.getAllInBoxMutable(min, max)) {
             TileEntity te = w.getTileEntity(pos);
-            if (!(te instanceof IInventory)) continue;
+            if (!(te instanceof ChestTileEntity) && !(te instanceof BarrelTileEntity) && !(te instanceof FridgeTileEntity)) continue;
             IInventory inv = (IInventory) te;
             if (!inv.isEmpty()) continue;
             if (te instanceof FridgeTileEntity) {
@@ -752,9 +872,11 @@ public class Buildings {
             for (int y = 1; y <= 4; y++)
                 for (int z = -3; z <= 0; z++)
                     b.set(x, y, z, pitBlock(r));
-        b.sign(-3, 2, 3, s(Blocks.OAK_WALL_SIGN), Direction.EAST, "§4ПОДВАЛ", "Шайкина", "Копай, пока", "не отработаешь");
+        b.sign(-3, 2, 3, s(Blocks.OAK_WALL_SIGN), Direction.EAST, "§4ПОДВАЛ", "Шайкина", "Копай и сдавай", "в приёмник");
+        b.set(0, 1, 3, counter(ModBlocks.PIT_RECEIVER.get(), Direction.NORTH));
         b.set(3, 1, 3, s(Blocks.CAULDRON));
         b.set(2, 1, 3, s(Blocks.CHAIN));
+        b.set(-2, 1, 3, s(Blocks.CHAIN));
         return b;
     }
 
@@ -819,8 +941,13 @@ public class Buildings {
         b.set(hx, floorY - 1 - by, hz, s(Blocks.SPRUCE_TRAPDOOR).with(TrapDoorBlock.HALF, Half.TOP)
                 .with(TrapDoorBlock.HORIZONTAL_FACING, Direction.WEST));
         // станки и стол
-        int[][] printers = {{-3, -3}, {-2, -3}, {-1, -3}, {1, -3}, {2, -3}};
-        for (int[] pr : printers) if (!(pr[0] == hx && pr[1] == hz) && !(pr[0] == hx + 1 && pr[1] == hz)) b.set(pr[0], 1, pr[1], counter(ModBlocks.MONEY_PRINTER.get(), Direction.SOUTH));
+        int placed = 0;
+        for (int[] pr : PRINTER_SPOTS) {
+            if (placed >= 2) break;
+            if (Math.abs(pr[0] - hx) <= 1 && Math.abs(pr[1] - hz) <= 1) continue;
+            b.set(pr[0], 1, pr[1], counter(ModBlocks.MONEY_PRINTER.get(), Direction.SOUTH));
+            placed++;
+        }
         BlockPos chest = null;
         int[][] chestSpots = {{-3, 3}, {3, 3}, {-3, 0}, {3, 0}, {0, 3}};
         for (int[] cs : chestSpots) {
@@ -847,6 +974,52 @@ public class Buildings {
         return new Basement(b, chest, hatch);
     }
 
+    /** Места под печатные станки (смещения от центра комнаты подвала, пол +1). */
+    static final int[][] PRINTER_SPOTS = {{-3, -3}, {-2, -3}, {-1, -3}, {1, -3}, {2, -3}, {0, -3}, {3, -3}, {-3, -2},
+            {3, -2}, {-3, -1}, {1, -2}, {-1, -2}};
+    static final int[][] LAUNDER_SPOTS = {{3, 1}, {3, 2}, {-3, 2}, {1, 3}, {-1, 3}, {2, 3}, {-2, 3}, {3, 0}, {-3, 0}};
+
+    /** Центр комнаты подвала (уровень пола). */
+    public static BlockPos basementCenter(Account a) {
+        return a.businessMin.add(4, 0, 4);
+    }
+
+    /** Сколько станков реально стоит в подвале. */
+    public static int countPrinters(World w, Account a) {
+        BlockPos c = basementCenter(a);
+        int n = 0;
+        for (BlockPos p : BlockPos.getAllInBoxMutable(c.add(-3, 1, -3), c.add(3, 1, 3)))
+            if (w.getBlockState(p).getBlock() == ModBlocks.MONEY_PRINTER.get()) n++;
+        return n;
+    }
+
+    private static BlockPos freeSpot(World w, BlockPos c, int[][] spots) {
+        for (int[] sp : spots) {
+            BlockPos p = c.add(sp[0], 1, sp[1]);
+            if (w.isAirBlock(p) && w.isAirBlock(p.up())) return p;
+        }
+        return null;
+    }
+
+    /** Поставить ещё один станок в подвал. */
+    public static boolean placePrinter(World w, Account a) {
+        BlockPos p = freeSpot(w, basementCenter(a), PRINTER_SPOTS);
+        if (p == null) return false;
+        w.setBlockState(p, counter(ModBlocks.MONEY_PRINTER.get(), Direction.SOUTH), 3);
+        return true;
+    }
+
+    /** Поставить аппарат ООО «Отмыв денег» в подвал. */
+    public static BlockPos placeLaunderMachine(World w, Account a) {
+        BlockPos c = basementCenter(a);
+        BlockPos p = freeSpot(w, c, LAUNDER_SPOTS);
+        if (p == null) p = freeSpot(w, c, PRINTER_SPOTS);
+        if (p == null) return null;
+        Direction face = p.getX() > c.getX() ? Direction.WEST : p.getX() < c.getX() ? Direction.EAST : Direction.NORTH;
+        w.setBlockState(p, counter(ModBlocks.LAUNDER_MACHINE.get(), face), 3);
+        return p;
+    }
+
     /** Засыпать подвал (при изъятии дома). */
     public static void fillBasement(World w, BlockPos min, BlockPos max) {
         long volume = (long) (max.getX() - min.getX() + 1) * (max.getY() - min.getY() + 1) * (max.getZ() - min.getZ() + 1);
@@ -860,17 +1033,218 @@ public class Buildings {
 
     public static BlockState pitBlock(Random r) {
         int n = r.nextInt(100);
-        if (n < 70) return s(Blocks.STONE);
-        if (n < 80) return s(Blocks.ANDESITE);
-        if (n < 88) return s(Blocks.COAL_ORE);
-        if (n < 95) return s(Blocks.IRON_ORE);
-        if (n < 98) return s(Blocks.GOLD_ORE);
+        if (n < 36) return s(Blocks.STONE);
+        if (n < 44) return s(Blocks.ANDESITE);
+        if (n < 58) return s(Blocks.DIRT);
+        if (n < 64) return s(Blocks.GRAVEL);
+        if (n < 77) return s(Blocks.COAL_ORE);
+        if (n < 88) return s(Blocks.IRON_ORE);
+        if (n < 93) return s(Blocks.GOLD_ORE);
+        if (n < 97) return s(Blocks.REDSTONE_ORE);
+        if (n < 99) return s(Blocks.LAPIS_ORE);
         return s(Blocks.DIAMOND_ORE);
+    }
+
+    /** Сколько рублей долга Шайкину гасит единица добычи, сданная в приёмник. */
+    public static double pitValue(ItemStack st) {
+        Item i = st.getItem();
+        if (i == Items.COBBLESTONE || i == Items.ANDESITE || i == Items.STONE || i == Items.DIRT || i == Items.GRAVEL || i == Items.FLINT) return 3;
+        if (i == Items.COAL) return 6;
+        if (i == Items.IRON_ORE) return 20;
+        if (i == Items.GOLD_ORE) return 40;
+        if (i == Items.REDSTONE) return 2;
+        if (i == Items.LAPIS_LAZULI) return 3;
+        if (i == Items.DIAMOND) return 200;
+        return 0;
     }
 
     /** Зона забоя в подвале: внутри неё блоки отрабатывают долг и восстанавливаются. */
     public static boolean inPitMine(BlockPos center, BlockPos p) {
         int dx = p.getX() - center.getX(), dy = p.getY() - center.getY(), dz = p.getZ() - center.getZ();
         return dx >= -3 && dx <= 3 && dy >= 1 && dy <= 4 && dz >= -3 && dz <= 0;
+    }
+
+    // =====================================================================================
+    //  ПРОВЕРКА ПЛОЩАДКИ ПОД ИПОТЕЧНЫЙ ДОМ (подвал цеха сюда не относится)
+    // =====================================================================================
+
+    /** Габарит дома в локальных координатах: x1, y1, z1, x2, y2, z2 (у пентхауса — с консолью бассейна). */
+    static final int[][] HOUSE_BOX = {
+            {-2, 0, 0, 2, 4, 4}, {-4, 0, -1, 4, 9, 7}, {-5, 0, -1, 5, 10, 8},
+            {-6, 0, -2, 6, 15, 10}, {-8, 0, -4, 8, 19, 13}, {-7, 0, -8, 7, 21, 13}};
+
+    static boolean isGround(BlockState st) {
+        Material m = st.getMaterial();
+        if (!m.isSolid() || m.isLiquid() || m.isReplaceable()) return false;
+        if (st.isIn(BlockTags.LOGS) || st.isIn(BlockTags.LEAVES)) return false;
+        return m != Material.PLANTS && m != Material.TALL_PLANTS && m != Material.BAMBOO && m != Material.BAMBOO_SAPLING
+                && m != Material.CACTUS && m != Material.GOURD && m != Material.WEB;
+    }
+
+    /** Верхний «грунтовый» блок столбца в окне ±16 от y0 (деревья, трава, вода — не грунт). */
+    static int groundY(World w, int x, int z, int y0) {
+        BlockPos.Mutable m = new BlockPos.Mutable();
+        for (int y = y0 + 16; y >= y0 - 16; y--) {
+            m.setPos(x, y, z);
+            if (isGround(w.getBlockState(m))) return y;
+        }
+        return y0 - 17;
+    }
+
+    static boolean boxesIntersect(BlockPos a1, BlockPos a2, BlockPos b1, BlockPos b2, int grow) {
+        return a1.getX() <= b2.getX() + grow && a2.getX() >= b1.getX() - grow
+                && a1.getZ() <= b2.getZ() + grow && a2.getZ() >= b1.getZ() - grow
+                && a1.getY() <= b2.getY() + grow && a2.getY() >= b1.getY() - grow;
+    }
+
+    /**
+     * Можно ли здесь строить ипотечный дом. null — можно, иначе причина отказа.
+     * Нельзя: на другом доме, на банке/МФО/казино, на чужой или городской земле, на чужом имуществе,
+     * на неровной площадке (перепад больше houseFlatness).
+     */
+    public static String checkHouseSite(World w, BlockPos origin, Direction facing, HouseType type, EconomyData data, UUID player) {
+        int[] bx = HOUSE_BOX[type.ordinal()];
+        Blueprint b = new Blueprint(w, origin, facing);
+        BlockPos p1 = b.pos(bx[0], bx[1], bx[2]), p2 = b.pos(bx[3], bx[4], bx[5]);
+        BlockPos min = new BlockPos(Math.min(p1.getX(), p2.getX()), origin.getY() - 1, Math.min(p1.getZ(), p2.getZ()));
+        BlockPos max = new BlockPos(Math.max(p1.getX(), p2.getX()), Math.max(p1.getY(), p2.getY()), Math.max(p1.getZ(), p2.getZ()));
+        for (Structure st : data.structures) {
+            if (!st.intersects(min, max, 3)) continue;
+            if (Structure.BANK.equals(st.type)) return "здесь стоит банк";
+            if (Structure.MFO.equals(st.type)) return "здесь контора МФО";
+            return "здесь казино";
+        }
+        for (Account o : data.all()) {
+            if (!o.hasHouse) continue;
+            if (boxesIntersect(min, max, o.houseMin, o.houseMax, 1)) {
+                return player.equals(o.id) ? "здесь уже стоит ваш дом — дома друг на друга не ставят"
+                        : "здесь стоит дом игрока " + (o.name.isEmpty() ? "?" : o.name);
+            }
+        }
+        for (int cx = min.getX() >> 4; cx <= max.getX() >> 4; cx++)
+            for (int cz = min.getZ() >> 4; cz <= max.getZ() >> 4; cz++) {
+                UUID owner = data.owner(ChunkPos.asLong(cx, cz));
+                if (owner == null || owner.equals(player)) continue;
+                return owner.equals(CITY) ? "это городская земля (рядом банк/МФО/казино)" : "участок принадлежит другому игроку";
+            }
+        int z1 = type == HouseType.PENTHOUSE ? -2 : bx[2];
+        int lo = Integer.MAX_VALUE, hi = Integer.MIN_VALUE;
+        for (int x = bx[0]; x <= bx[3]; x++)
+            for (int z = z1; z <= bx[5]; z++) {
+                BlockPos c = b.pos(x, 0, z);
+                int g = groundY(w, c.getX(), c.getZ(), origin.getY());
+                lo = Math.min(lo, g);
+                hi = Math.max(hi, g);
+            }
+        int tol = Config.HOUSE_FLATNESS.get();
+        if (hi - lo > tol) return "площадка неровная: перепад " + (hi - lo) + " бл. (допустимо " + tol + "). Выровняйте участок";
+        int base = origin.getY() - 1;
+        if (base - lo > tol || hi - base > tol) return "дом повиснет в воздухе или уйдёт в землю — кликните по земле на ровном месте";
+        for (BlockPos p : BlockPos.getAllInBoxMutable(min.up(), max)) {
+            if (w.getTileEntity(p) != null) {
+                return "на месте стройки чьё-то имущество (" + w.getBlockState(p).getBlock().getTranslatedName().getString()
+                        + " на " + p.getX() + ", " + p.getY() + ", " + p.getZ() + ")";
+            }
+        }
+        return null;
+    }
+
+    // =====================================================================================
+    //  КАЗИНО «Три семёрки»
+    // =====================================================================================
+
+    public static Blueprint buildCasino(World w, BlockPos origin, Direction facing, boolean protect) {
+        Blueprint b = new Blueprint(w, origin, facing);
+        removeStaff(w, b.pos(-16, 0, -5), b.pos(16, 14, 31));
+        BlockState black = s(Blocks.BLACK_CONCRETE);
+        BlockState red = s(Blocks.RED_CONCRETE);
+        BlockState gold = s(Blocks.YELLOW_CONCRETE);
+        b.clear(-16, 0, -5, 16, 14, 31);
+        b.foundation(-16, -5, 16, 31, s(Blocks.POLISHED_BLACKSTONE));
+        // площадка перед входом
+        b.fill(-9, 0, -5, 9, 0, -1, s(Blocks.POLISHED_BLACKSTONE_BRICKS));
+        for (int z = -5; z <= -1; z++) b.set(0, 1, z, s(Blocks.RED_CARPET));
+        for (int x : new int[]{-8, 8}) {
+            b.fill(x, 1, -4, x, 3, -4, s(Blocks.QUARTZ_PILLAR));
+            b.set(x, 4, -4, s(Blocks.SEA_LANTERN));
+        }
+        // пол «шахматкой», стены, крыша
+        for (int x = -15; x <= 15; x++)
+            for (int z = 0; z <= 30; z++) b.set(x, 0, z, ((x + z) & 1) == 0 ? black : red);
+        b.walls(-15, 0, 0, 15, 11, 30, black);
+        b.fill(-15, 12, 0, 15, 12, 30, black);
+        b.walls(-15, 13, 0, 15, 13, 30, s(Blocks.BLACKSTONE_SLAB));
+        b.walls(-15, 5, 0, 15, 5, 30, gold);
+        b.walls(-15, 11, 0, 15, 11, 30, gold);
+        for (int[] c : new int[][]{{-15, 0}, {15, 0}, {-15, 30}, {15, 30}}) b.fill(c[0], 0, c[1], c[0], 13, c[1], s(Blocks.QUARTZ_PILLAR));
+        // фасад: неон
+        for (int x = -14; x <= 14; x++) {
+            b.set(x, 7, 0, ((x & 1) == 0) ? s(Blocks.GLOWSTONE) : red);
+            b.set(x, 9, 0, ((x & 1) == 0) ? red : s(Blocks.SHROOMLIGHT));
+        }
+        for (int x = -6; x <= 6; x++) b.set(x, 8, -1, s(Blocks.RED_STAINED_GLASS));
+        // вход 5×4 без дверей — заходи, кто хочет
+        b.fill(-2, 1, 0, 2, 4, 0, s(Blocks.AIR));
+        b.fill(-3, 5, -3, 3, 5, -1, red);
+        for (int x = -3; x <= 3; x += 2) b.set(x, 4, -3, s(Blocks.LANTERN).with(net.minecraft.block.LanternBlock.HANGING, true));
+        b.sign(0, 6, -1, s(Blocks.DARK_OAK_WALL_SIGN), Direction.NORTH, "§6§lКАЗИНО", "«Три семёрки»", "§47 7 7", "§018+");
+        b.sign(-4, 2, -1, s(Blocks.DARK_OAK_WALL_SIGN), Direction.NORTH, "Однорукий бандит", "Рулетка 0–25x", "Орёл и решка", "Мама Анархия");
+        b.sign(4, 2, -1, s(Blocks.DARK_OAK_WALL_SIGN), Direction.NORTH, "§4Правила:", "Слишком везёт —", "выведут под руки", "на сутки");
+        // интерьер
+        for (int x = -12; x <= 12; x += 4) for (int z = 3; z <= 27; z += 4) b.set(x, 12, z, s(Blocks.SEA_LANTERN));
+        for (int z = 1; z <= 20; z++) b.set(0, 1, z, s(Blocks.RED_CARPET));
+        for (int x : new int[]{-4, 4}) for (int z : new int[]{8, 16}) {
+            b.fill(x, 1, z, x, 10, z, s(Blocks.QUARTZ_PILLAR));
+            b.set(x, 6, z, s(Blocks.YELLOW_GLAZED_TERRACOTTA));
+        }
+        // однорукие бандиты вдоль стен
+        for (int z = 4; z <= 26; z += 2) {
+            b.set(-14, 1, z, counter(ModBlocks.SLOT_MACHINE.get(), Direction.EAST));
+            b.set(14, 1, z, counter(ModBlocks.SLOT_MACHINE.get(), Direction.WEST));
+            b.set(-14, 2, z, s(Blocks.SEA_LANTERN));
+            b.set(14, 2, z, s(Blocks.SEA_LANTERN));
+        }
+        // столы «орёл/решка» (слева) и рулетки (справа)
+        for (int z : new int[]{6, 11, 16}) {
+            for (int x : new int[]{-9, -7}) b.set(x, 1, z, counter(ModBlocks.COIN_TABLE.get(), Direction.NORTH));
+            for (int x : new int[]{7, 9}) b.set(x, 1, z, counter(ModBlocks.ROULETTE_TABLE.get(), Direction.NORTH));
+            for (int x : new int[]{-10, -8, -6, 6, 8, 10}) {
+                b.set(x, 1, z - 1, s(Blocks.DARK_OAK_FENCE));
+                b.set(x, 2, z - 1, s(Blocks.RED_CARPET));
+            }
+            for (int x : new int[]{-10, -6, 6, 10}) b.set(x, 1, z, s(Blocks.GREEN_CARPET));
+        }
+        // бар
+        for (int x = -4; x <= 4; x++) b.set(x, 1, 22, s(Blocks.POLISHED_BLACKSTONE_BRICKS));
+        b.set(-4, 2, 22, s(Blocks.LANTERN));
+        b.set(4, 2, 22, s(Blocks.LANTERN));
+        for (int x = -4; x <= 4; x += 2) {
+            b.set(x, 1, 21, s(Blocks.DARK_OAK_FENCE));
+            b.set(x, 2, 21, s(Blocks.RED_CARPET));
+        }
+        b.set(-3, 1, 25, s(Blocks.BARREL));
+        b.set(-2, 1, 25, s(Blocks.BARREL));
+        b.set(2, 1, 25, s(Blocks.BREWING_STAND));
+        b.set(3, 1, 25, s(Blocks.BARREL));
+        fillBar(w, b, new int[][]{{-3, 1, 25}, {-2, 1, 25}, {3, 1, 25}, {2, 1, 25}});
+        spawnSeller(w, b.pos(0, 1, 23), Trades.SELLER_CASINO);
+        // «Мама Анархия» у дальней стены
+        for (int x = -10; x <= 10; x += 4) {
+            b.set(x, 1, 29, counter(ModBlocks.ANARCHY_MACHINE.get(), Direction.NORTH));
+            b.set(x, 2, 29, s(Blocks.RED_STAINED_GLASS));
+            b.set(x, 3, 29, s(Blocks.SHROOMLIGHT));
+        }
+        b.sign(0, 3, 29, s(Blocks.DARK_OAK_WALL_SIGN), Direction.NORTH, "§4§lМАМА", "§4§lАНАРХИЯ", "§0x0 ... x8", "§0хаос решает");
+        b.sign(0, 6, 1, s(Blocks.DARK_OAK_WALL_SIGN), Direction.SOUTH, "", "Здесь нет", "окон и часов", "");
+        claimCity(w, b);
+        // выход — за пределами здания и площадки (туда выносят охрана и забаненных)
+        BlockPos ex = b.pos(0, 0, -8);
+        int ey = ex.getY();
+        for (int y = ex.getY() + 12; y >= ex.getY() - 12; y--) {
+            BlockPos q = new BlockPos(ex.getX(), y, ex.getZ());
+            if (w.isAirBlock(q) && w.isAirBlock(q.up()) && w.getBlockState(q.down()).getMaterial().isSolid()) { ey = y; break; }
+        }
+        register(w, Structure.CASINO, b, protect, new BlockPos(ex.getX(), ey, ex.getZ()), new ArrayList<>());
+        return b;
     }
 }

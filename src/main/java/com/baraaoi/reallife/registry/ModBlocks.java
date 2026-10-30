@@ -1,5 +1,10 @@
 package com.baraaoi.reallife.registry;
 
+import com.baraaoi.reallife.block.PitReceiverBlock;
+import com.baraaoi.reallife.block.LaunderMachineBlock;
+import com.baraaoi.reallife.block.CasinoBlock;
+import com.baraaoi.reallife.economy.CasinoService;
+
 import com.baraaoi.reallife.RealLife;
 import com.baraaoi.reallife.block.BankBlock;
 import com.baraaoi.reallife.block.DecorBlock;
@@ -43,4 +48,24 @@ public class ModBlocks {
 
     public static final RegistryObject<Block> MONEY_PRINTER = BLOCKS.register("money_printer",
             () -> new DecorBlock(AbstractBlock.Properties.create(Material.IRON).hardnessAndResistance(3.0F, 6.0F).sound(SoundType.METAL)));
+
+    /** Приёмник добычи в подвале Шайкина (неразрушимый). */
+    public static final RegistryObject<Block> PIT_RECEIVER = BLOCKS.register("pit_receiver",
+            () -> new PitReceiverBlock(AbstractBlock.Properties.create(Material.IRON).hardnessAndResistance(-1.0F, 3600000.0F).noDrops().sound(SoundType.METAL)));
+
+    public static final RegistryObject<Block> LAUNDER_MACHINE = BLOCKS.register("launder_machine",
+            () -> new LaunderMachineBlock(AbstractBlock.Properties.create(Material.IRON).hardnessAndResistance(3.0F, 6.0F).sound(SoundType.METAL)));
+
+    public static final RegistryObject<Block> COIN_TABLE = BLOCKS.register("coin_table",
+            () -> new CasinoBlock(casino(), CasinoService.COIN));
+    public static final RegistryObject<Block> SLOT_MACHINE = BLOCKS.register("slot_machine",
+            () -> new CasinoBlock(casino().setLightLevel(s -> 9), CasinoService.SLOTS));
+    public static final RegistryObject<Block> ANARCHY_MACHINE = BLOCKS.register("anarchy_machine",
+            () -> new CasinoBlock(casino().setLightLevel(s -> 9), CasinoService.ANARCHY));
+    public static final RegistryObject<Block> ROULETTE_TABLE = BLOCKS.register("roulette_table",
+            () -> new CasinoBlock(casino(), CasinoService.ROULETTE));
+
+    private static AbstractBlock.Properties casino() {
+        return AbstractBlock.Properties.create(Material.WOOD).hardnessAndResistance(2.5F, 1200.0F).sound(SoundType.WOOD);
+    }
 }

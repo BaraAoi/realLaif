@@ -77,6 +77,28 @@ public class Account {
     // --- рейтинг (ручная поправка админом / финмониторинг) ---
     public int ratingBonus;
 
+    // --- ордер на дом, который ещё не построен (не зависит от того, погашена ли ипотека) ---
+    public int pendingHouse = -1;
+
+    // --- подвал Шайкина: сколько ещё рублей добычи сдать в приёмник ---
+    public double pitDebtLeft;
+
+    // --- цех: куплено станков, где стоит ООО ---
+    public int printers;
+    /** Не сохраняется: после обновления мира довезти станки в старый подвал. */
+    public transient boolean needPrinters;
+    public BlockPos launderPos = BlockPos.ZERO;
+
+    // --- ограбление банка ---
+    public boolean robber;
+    public long robberyUntil;
+
+    // --- казино ---
+    public long casinoBanUntil;
+    public long casinoDay = -1;
+    public double casinoProfit;
+    public boolean casinoKick;
+
     // --- взятки ---
     public double policeBribe;
 
@@ -106,7 +128,7 @@ public class Account {
     public double dailyDue() { return loanPayment() + mortPayment(); }
 
     public void clearLoan() { loanPrincipal = 0; loanDays = 0; loanRate = 0; }
-    public void clearMortgage() { mortPrincipal = 0; mortDays = 0; mortRate = 0; mortHouse = -1; houseOrderId = 0; houseBuilt = false; }
+    public void clearMortgage() { mortPrincipal = 0; mortDays = 0; mortRate = 0; mortHouse = -1; }
     public void clearMfo() { mfoDebt = 0; mfoPrincipal = 0; mfoDays = 0; mfoOverdueDays = 0; mfoLethal = false; mfoBurned = false; nextBratkiTick = 0; }
     public void clearArrears() { arrears = 0; overdueDays = 0; laborBlocksLeft = 0; laborPerBlock = 0; }
 
@@ -157,6 +179,16 @@ public class Account {
         t.putLong("cellCenter", cellCenter.toLong());
         t.put("cellSnapshot", cellSnapshot);
         t.putInt("ratingBonus", ratingBonus);
+        t.putInt("pendingHouse", pendingHouse);
+        t.putDouble("pitDebtLeft", pitDebtLeft);
+        t.putInt("printers", printers);
+        t.putLong("launderPos", launderPos.toLong());
+        t.putBoolean("robber", robber);
+        t.putLong("robberyUntil", robberyUntil);
+        t.putLong("casinoBanUntil", casinoBanUntil);
+        t.putLong("casinoDay", casinoDay);
+        t.putDouble("casinoProfit", casinoProfit);
+        t.putBoolean("casinoKick", casinoKick);
         t.putDouble("policeBribe", policeBribe);
         t.putBoolean("hasBusiness", hasBusiness);
         t.putLong("businessChest", businessChest.toLong());
@@ -215,8 +247,24 @@ public class Account {
         a.cellCenter = BlockPos.fromLong(t.getLong("cellCenter"));
         a.cellSnapshot = t.getList("cellSnapshot", 10);
         a.ratingBonus = t.getInt("ratingBonus");
+        if (t.contains("pendingHouse")) {
+            a.pendingHouse = t.getInt("pendingHouse");
+        } else if (a.mortHouse >= 0 && !a.houseBuilt) {
+            a.pendingHouse = a.mortHouse; // версия 2
+        }
+        a.pitDebtLeft = t.getDouble("pitDebtLeft");
+        if (a.pitDebtLeft <= 0 && a.pitBlocksLeft > 0) a.pitDebtLeft = a.pitBlocksLeft * 8.0; // версия 2
+        a.printers = t.getInt("printers");
+        a.launderPos = BlockPos.fromLong(t.getLong("launderPos"));
+        a.robber = t.getBoolean("robber");
+        a.robberyUntil = t.getLong("robberyUntil");
+        a.casinoBanUntil = t.getLong("casinoBanUntil");
+        a.casinoDay = t.contains("casinoDay") ? t.getLong("casinoDay") : -1;
+        a.casinoProfit = t.getDouble("casinoProfit");
+        a.casinoKick = t.getBoolean("casinoKick");
         a.policeBribe = t.getDouble("policeBribe");
         a.hasBusiness = t.getBoolean("hasBusiness");
+        if (a.hasBusiness && !t.contains("printers")) { a.printers = 2; a.needPrinters = true; } // версия 2: в подвале был 1 станок
         a.businessChest = BlockPos.fromLong(t.getLong("businessChest"));
         a.businessMin = BlockPos.fromLong(t.getLong("businessMin"));
         a.businessMax = BlockPos.fromLong(t.getLong("businessMax"));

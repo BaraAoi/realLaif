@@ -20,7 +20,7 @@ import java.util.List;
  * Разрешение на строительство банка / конторы МФО. ПКМ по земле — здание построится перед игроком.
  */
 public class BuildPermitItem extends Item {
-    public enum Kind { BANK, MFO }
+    public enum Kind { BANK, MFO, CASINO }
 
     private final Kind kind;
 
@@ -39,6 +39,9 @@ public class BuildPermitItem extends Item {
         if (kind == Kind.BANK) {
             Buildings.buildBank(world, origin, facing);
             player.sendStatusMessage(new StringTextComponent("§6[Реал Банк] §fОтделение банка открыто! Добро пожаловать."), false);
+        } else if (kind == Kind.CASINO) {
+            Buildings.buildCasino(world, origin, facing, false);
+            player.sendStatusMessage(new StringTextComponent("§5[Казино] §fКазино «Три семёрки» открыто. Ставки сделаны!"), false);
         } else {
             Buildings.buildMfo(world, origin, facing);
             player.sendStatusMessage(new StringTextComponent("§2[Шайкин и Ко] §fКонтора открыта. Деньги — сразу, вопросы — потом."), false);
@@ -51,7 +54,10 @@ public class BuildPermitItem extends Item {
     public void addInformation(ItemStack stack, @Nullable World world, List<ITextComponent> tooltip, ITooltipFlag flag) {
         if (kind == Kind.BANK) {
             tooltip.add(new StringTextComponent("§7ПКМ по земле — построить здание банка"));
-            tooltip.add(new StringTextComponent("§7(13×10 блоков перед вами)"));
+            tooltip.add(new StringTextComponent("§7(19×12 блоков перед вами)"));
+        } else if (kind == Kind.CASINO) {
+            tooltip.add(new StringTextComponent("§7ПКМ по земле — построить казино «Три семёрки»"));
+            tooltip.add(new StringTextComponent("§7(31×31 блок перед вами)"));
         } else {
             tooltip.add(new StringTextComponent("§7ПКМ по земле — построить контору МФО"));
             tooltip.add(new StringTextComponent("§7(8×7 блоков перед вами)"));

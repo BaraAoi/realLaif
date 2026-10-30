@@ -25,5 +25,15 @@
   "block.reallife.money_printer": "Money Printer",
   "item.reallife.dirty_money": "Dirty Money",
   "entity.reallife.inspector": "Building Inspector",
-  "entity.reallife.seller": "Seller"
+  "entity.reallife.seller": "Seller",
+  "item.reallife.casino_permit": "Casino License \"Three Sevens\"",
+  "item.reallife.clover": "Clover of Absolute Luck",
+  "block.reallife.pit_receiver": "Loot Receiver",
+  "block.reallife.launder_machine": "LLC \"Money Laundering\"",
+  "block.reallife.coin_table": "Heads or Tails Table",
+  "block.reallife.slot_machine": "One-Armed Bandit",
+  "block.reallife.anarchy_machine": "\"Mama Anarchy\" Machine",
+  "block.reallife.roulette_table": "Roulette x0-x25",
+  "entity.reallife.cashier": "Cashier",
+  "entity.reallife.ambal": "Casino Bouncer"
 }

@@ -14,6 +14,7 @@ import net.minecraft.item.MerchantOffers;
 public class Trades {
     public static final int SELLER_FOOD = 0;
     public static final int SELLER_GOODS = 1;
+    public static final int SELLER_CASINO = 2;
     public static final int VENDING_FOOD = 0;
     public static final int VENDING_RESOURCES = 1;
     private static final int UNLIMITED = 100000;
@@ -34,6 +35,18 @@ public class Trades {
 
     public static MerchantOffers seller(int variant) {
         MerchantOffers o = new MerchantOffers();
+        if (variant == SELLER_CASINO) {
+            net.minecraft.potion.Potion[] drinks = {net.minecraft.potion.Potions.SWIFTNESS, net.minecraft.potion.Potions.STRENGTH,
+                    net.minecraft.potion.Potions.LEAPING, net.minecraft.potion.Potions.NIGHT_VISION, net.minecraft.potion.Potions.FIRE_RESISTANCE,
+                    net.minecraft.potion.Potions.REGENERATION, net.minecraft.potion.Potions.WATER_BREATHING};
+            for (net.minecraft.potion.Potion pt : drinks) {
+                o.add(new MerchantOffer(rub(100), net.minecraft.potion.PotionUtils.addPotionToItemStack(new ItemStack(Items.POTION), pt), UNLIMITED, 0, 0.0F));
+            }
+            sell(o, 10, Items.HONEY_BOTTLE, 2);
+            sell(o, 10, Items.MILK_BUCKET, 1);
+            o.add(new MerchantOffer(rub(10000), new ItemStack(ModItems.CLOVER.get()), UNLIMITED, 0, 0.0F));
+            return o;
+        }
         if (variant == SELLER_FOOD) {
             sell(o, 10, Items.BREAD, 3);
             sell(o, 10, Items.BAKED_POTATO, 4);

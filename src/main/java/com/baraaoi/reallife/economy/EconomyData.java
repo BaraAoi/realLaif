@@ -37,6 +37,12 @@ public class EconomyData extends WorldSavedData {
 
     /** Банк и МФО на спавне уже построены. */
     public boolean spawnBuilt;
+    /** Версия городских построек на спавне (3 — неразрушимые, новый банк с кассирами). */
+    public int spawnVersion;
+    /** Казино возле спавна уже построено (или место не найдено). */
+    public boolean casinoBuilt;
+    /** Все постройки мода: банки, МФО, казино. */
+    public final List<Structure> structures = new ArrayList<>();
     /** Центры (уровень пола) всех контор МФО — под ними делается подвал. */
     public final List<BlockPos> mfoCenters = new ArrayList<>();
 
@@ -135,6 +141,32 @@ public class EconomyData extends WorldSavedData {
         markDirty();
     }
 
+    // ------------------------------------------------------------ постройки
+
+    /** Зарегистрировать постройку (заменяет прежнюю того же типа с тем же углом). */
+    public Structure addStructure(Structure st) {
+        structures.removeIf(o -> o.type.equals(st.type) && o.min.equals(st.min));
+        structures.add(st);
+        markDirty();
+        return st;
+    }
+
+    public Structure structureAt(BlockPos p, int grow) {
+        for (Structure st : structures) if (st.contains(p, grow)) return st;
+        return null;
+    }
+
+    public Structure structureAt(BlockPos p, String type, int grow) {
+        for (Structure st : structures) if (st.type.equals(type) && st.contains(p, grow)) return st;
+        return null;
+    }
+
+    /** Блок внутри неразрушимой городской постройки. */
+    public boolean isProtected(BlockPos p) {
+        for (Structure st : structures) if (st.protect && st.contains(p, 0)) return true;
+        return false;
+    }
+
     // ------------------------------------------------------------ NBT
 
     @Override
@@ -151,6 +183,10 @@ public class EconomyData extends WorldSavedData {
         pitBuilt = nbt.getBoolean("pitBuilt");
         pitPos = BlockPos.fromLong(nbt.getLong("pitPos"));
         spawnBuilt = nbt.getBoolean("spawnBuilt");
+        spawnVersion = nbt.getInt("spawnVersion");
+        casinoBuilt = nbt.getBoolean("casinoBuilt");
+        structures.clear();
+        for (INBT n : nbt.getList("structures", 10)) structures.add(Structure.read((CompoundNBT) n));
         mfoCenters.clear();
         for (long l : nbt.getLongArray("mfoCenters")) mfoCenters.add(BlockPos.fromLong(l));
         landOwners.clear();
@@ -178,6 +214,11 @@ public class EconomyData extends WorldSavedData {
         nbt.putBoolean("pitBuilt", pitBuilt);
         nbt.putLong("pitPos", pitPos.toLong());
         nbt.putBoolean("spawnBuilt", spawnBuilt);
+        nbt.putInt("spawnVersion", spawnVersion);
+        nbt.putBoolean("casinoBuilt", casinoBuilt);
+        ListNBT sl = new ListNBT();
+        for (Structure st : structures) sl.add(st.write());
+        nbt.put("structures", sl);
         long[] mc = new long[mfoCenters.size()];
         for (int i = 0; i < mc.length; i++) mc[i] = mfoCenters.get(i).toLong();
         nbt.putLongArray("mfoCenters", mc);

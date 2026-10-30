@@ -37,10 +37,35 @@ public class ForgeEvents {
         DebtManager.onServerStarted(event.getServer());
     }
 
-    @SubscribeEvent
+    /** Блок внутри неразрушимой городской постройки (банк/МФО на спавне, казино). */
+    private static boolean cityProtected(net.minecraft.world.IWorld world, net.minecraft.util.math.BlockPos pos) {
+        if (!(world instanceof net.minecraft.world.server.ServerWorld)) return false;
+        net.minecraft.world.server.ServerWorld w = (net.minecraft.world.server.ServerWorld) world;
+        if (w.getDimensionKey() != net.minecraft.world.World.OVERWORLD) return false;
+        return EconomyData.get(w.getServer()).isProtected(pos);
+    }
+
+    @SubscribeEvent(priority = EventPriority.HIGH)
     public void onPlace(BlockEvent.EntityPlaceEvent event) {
         if (event.getWorld().isRemote() || !(event.getEntity() instanceof ServerPlayerEntity)) return;
-        DebtManager.onPlace((ServerPlayerEntity) event.getEntity(), event.getPos());
+        ServerPlayerEntity p = (ServerPlayerEntity) event.getEntity();
+        if (!p.isCreative() && cityProtected(event.getWorld(), event.getPos())) {
+            BankService.actionBar(p, "§cГородская собственность — строить здесь нельзя.");
+            event.setCanceled(true);
+            return;
+        }
+        if (!p.isCreative() && EconomyData.get(p.getServer()).get(p).captivity != Account.FREE) {
+            BankService.actionBar(p, "§cВ камере строить нельзя.");
+            event.setCanceled(true);
+            return;
+        }
+        DebtManager.onPlace(p, event.getPos());
+    }
+
+    @SubscribeEvent
+    public void onExplosion(net.minecraftforge.event.world.ExplosionEvent.Detonate event) {
+        if (event.getWorld().isRemote) return;
+        event.getAffectedBlocks().removeIf(pos -> cityProtected(event.getWorld(), pos));
     }
 
     @SubscribeEvent
@@ -92,6 +117,11 @@ public class ForgeEvents {
     @SubscribeEvent
     public void onBreak(BlockEvent.BreakEvent event) {
         if (event.getWorld().isRemote() || !(event.getPlayer() instanceof ServerPlayerEntity)) return;
+        if (!event.getPlayer().isCreative() && cityProtected(event.getWorld(), event.getPos())) {
+            BankService.actionBar(event.getPlayer(), "§cГородская собственность под охраной — ломать нельзя.");
+            event.setCanceled(true);
+            return;
+        }
         if (DebtManager.onBreak((ServerPlayerEntity) event.getPlayer(), event.getPos(), event.getState())) {
             event.setCanceled(true);
         }
@@ -103,6 +133,16 @@ public class ForgeEvents {
     public void onInteract(PlayerInteractEvent.EntityInteract event) {
         if (event.getWorld().isRemote || !(event.getPlayer() instanceof ServerPlayerEntity)) return;
         Entity t = event.getTarget();
+        if (t instanceof com.baraaoi.reallife.entity.CashierEntity && event.getHand() == net.minecraft.util.Hand.MAIN_HAND) {
+            ServerPlayerEntity p = (ServerPlayerEntity) event.getPlayer();
+            net.minecraft.util.math.BlockPos pos = t.getPosition();
+            net.minecraftforge.fml.network.NetworkHooks.openGui(p, new net.minecraft.inventory.container.SimpleNamedContainerProvider(
+                    (id, inv, pl) -> new com.baraaoi.reallife.container.FinanceContainer(id, inv, pos, false),
+                    new net.minecraft.util.text.StringTextComponent("Касса «Реал Банка»")), pos);
+            BankService.sync(p);
+            event.setCanceled(true);
+            return;
+        }
         if (t instanceof InspectorEntity && event.getHand() == net.minecraft.util.Hand.MAIN_HAND) {
             ServerPlayerEntity p = (ServerPlayerEntity) event.getPlayer();
             InspectorEntity ins = (InspectorEntity) t;
