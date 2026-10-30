@@ -92,9 +92,9 @@ public final class Malls {
         return false;
     }
 
-    static StringTextComponent button(String label, String cmd) {
-        StringTextComponent c = Component.literal(label);
-        c.setStyle(Style.EMPTY.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, cmd)));
+    static net.minecraft.network.chat.MutableComponent button(String label, String cmd) {
+        net.minecraft.network.chat.MutableComponent c = Component.literal(label);
+        c.setStyle(Style.EMPTY.withClickEvent(new ClickEvent.RunCommand(cmd)));
         return c;
     }
 
@@ -169,7 +169,7 @@ public final class Malls {
             BankService.msg(p, TC + "§cПодойдите к помещению — покупку оформляют на месте.");
             return;
         }
-        String why = buyCore(data, m, u, a, p.getGameProfile().getName(), BankService.today(server));
+        String why = buyCore(data, m, u, a, p.getGameProfile().name(), BankService.today(server));
         if (why != null) {
             BankService.msg(p, TC + "§cНе вышло: §f" + why + ".");
             return;
@@ -179,7 +179,7 @@ public final class Malls {
         BankService.msg(p, TC + "§a§lПомещение №" + (u.idx + 1) + " ваше! §r§fСписано §c" + Finance.money(u.price)
                 + "§f. Аренда §e" + Finance.money(u.rent) + "/день§f спишется утром со счёта. Стройте внутри что угодно; заведение — ПКМ лицензией по полу помещения.");
         ServerPlayer op = m.owner == null ? null : server.getPlayerList().getPlayer(m.owner);
-        if (op != null) BankService.msg(op, TC + "§a" + p.getGameProfile().getName() + " купил помещение №" + (u.idx + 1) + " в вашем ТЦ: +"
+        if (op != null) BankService.msg(op, TC + "§a" + p.getGameProfile().name() + " купил помещение №" + (u.idx + 1) + " в вашем ТЦ: +"
                 + Finance.money(u.price) + "§f, дальше аренда " + Finance.money(u.rent) + "/день.");
     }
 
@@ -198,7 +198,7 @@ public final class Malls {
             BankService.msg(p, TC + "§cПомещение уже занято.");
             return;
         }
-        assign(m, u, p.getUUID(), p.getGameProfile().getName(), BankService.today(server));
+        assign(m, u, p.getUUID(), p.getGameProfile().name(), BankService.today(server));
         data.setDirty();
         updateSign(p.level(), data, m, u);
         BankService.msg(p, TC + "§aПомещение №" + (u.idx + 1) + " теперь ваше (без аренды). §fЖильё, склад или любое заведение — ПКМ лицензией по полу помещения.");

@@ -42,7 +42,7 @@ public class ModCommands {
                 .then(Commands.literal("rival")
                         .then(Commands.literal("buyout").then(Commands.argument("id", IntegerArgumentType.integer())
                                 .executes(c -> { com.baraaoi.reallife.economy.Rivals.buyout(c.getSource().getPlayerOrException(), IntegerArgumentType.getInteger(c, "id")); return 1; }))))
-                .then(Commands.literal("admin").requires(s -> s.hasPermissionLevel(2))
+                .then(Commands.literal("admin").requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
                         .then(Commands.literal("rival").executes(c -> { com.baraaoi.reallife.economy.Rivals.forceSpawn(c.getSource().getPlayerOrException()); return 1; }))
                         .then(Commands.literal("event").then(Commands.argument("kind", com.mojang.brigadier.arguments.StringArgumentType.word())
                                 .suggests((c, b) -> net.minecraft.commands.SharedSuggestionProvider.suggest(com.baraaoi.reallife.event.Visitors.eventIds(), b))
@@ -114,7 +114,7 @@ public class ModCommands {
         Account a = acc(p);
         long today = BankService.today(p.level().getServer());
         int score = CreditRating.score(a, today);
-        BankService.msg(p, "§6===== Реал Банк: " + p.getGameProfile().getName() + " ===== §8(Real Life v" + com.baraaoi.reallife.RealLife.version() + ")");
+        BankService.msg(p, "§6===== Реал Банк: " + p.getGameProfile().name() + " ===== §8(Real Life v" + com.baraaoi.reallife.RealLife.version() + ")");
         BankService.msg(p, "Баланс: §e" + Finance.money(a.balance) + "§f, рейтинг: §b" + score + " " + CreditRating.category(score));
         BankService.msg(p, "Доступный кредит: §a" + Finance.money(CreditRating.maxLoan(a, today)) + "§f под " + Finance.percent(CreditRating.loanRate(score)) + "/день");
         if (a.hasLoan()) BankService.msg(p, "Кредит: " + Finance.money(a.loanPrincipal) + ", платёж " + Finance.money(a.loanPayment()) + "/день, осталось " + a.loanDays + " дн.");
@@ -135,7 +135,7 @@ public class ModCommands {
         a.ratingBonus = CreditRating.bonusFor(a, today, value);
         data.setDirty();
         int now = CreditRating.score(a, today);
-        src.sendFeedback(Component.literal("§aРейтинг " + p.getGameProfile().getName() + ": §b" + now + " " + CreditRating.category(now)
+        src.sendSuccess(() -> Component.literal("§aРейтинг " + p.getGameProfile().name() + ": §b" + now + " " + CreditRating.category(now)
                 + " §7(поправка " + (a.ratingBonus >= 0 ? "+" : "") + a.ratingBonus + ")"), true);
         if (src.getEntity() != p) BankService.msg(p, BankService.BANK + "Ваш кредитный рейтинг пересмотрен: §b" + now);
         return 1;
@@ -204,7 +204,7 @@ public class ModCommands {
     private static int nextDay(CommandSourceStack src) {
         MinecraftServer server = src.getServer();
         BankService.processDay(server, EconomyData.get(server));
-        src.sendFeedback(Component.literal("§aОбработан один банковский день."), true);
+        src.sendSuccess(() -> Component.literal("§aОбработан один банковский день."), true);
         return 1;
     }
 

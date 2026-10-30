@@ -238,7 +238,7 @@ public class CasinoService {
         }
         if (mult >= 8) {
             for (ServerPlayer o : p.level().getServer().getPlayerList().getPlayers()) {
-                if (o != p && o.distanceToSqr(p) < 48 * 48) BankService.msg(o, CASINO + "§e" + p.getGameProfile().getName()
+                if (o != p && o.distanceToSqr(p) < 48 * 48) BankService.msg(o, CASINO + "§e" + p.getGameProfile().name()
                         + " сорвал куш: " + Finance.money(win) + "!");
             }
         }

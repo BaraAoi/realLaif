@@ -246,7 +246,7 @@ public final class LegalBiz {
                 BankService.msg(p, BIZ + "§cМесто под кассу занято.");
                 return false;
             }
-            LegalBusiness b = Malls.openInUnit(data, world, mall, u, pos, facing, type, p.getUUID(), p.getGameProfile().getName());
+            LegalBusiness b = Malls.openInUnit(data, world, mall, u, pos, facing, type, p.getUUID(), p.getGameProfile().name());
             BankService.msg(p, BIZ + "§a§lЗаведение «" + type.title + "» открыто в ТЦ (помещение №" + (u.idx + 1) + ")! §r§fПрибыль §a+50%§f, безопасный отмыв §a"
                     + Math.round(Mall.SAFE_SHARE * 100) + "%§f вчерашней прибыли. Зона заведения — всё помещение " + u.width + "×" + u.depth
                     + ". Комплект на работника: §e" + kitText(type) + "§f + склад §e" + baseText(type) + "§f.");
@@ -263,7 +263,7 @@ public final class LegalBiz {
             BankService.msg(p, BIZ + "§cМесто под кассу занято.");
             return false;
         }
-        LegalBusiness b = register(data, world, pos, facing, type, p.getUUID(), p.getGameProfile().getName());
+        LegalBusiness b = register(data, world, pos, facing, type, p.getUUID(), p.getGameProfile().name());
         int claimed = com.baraaoi.reallife.structure.Buildings.claimArea(data, p.getUUID(), pos, pos, true);
         data.setDirty();
         BankService.msg(p, BIZ + "§aОткрыто заведение «" + type.title + "»! §fЭто главная касса. Зона заведения — §e±" + LegalBusiness.R_XZ
@@ -760,7 +760,7 @@ public final class LegalBiz {
         }
         for (ServerPlayer other : server.getPlayerList().getPlayers()) {
             if (other != p) BankService.msg(other, "§9[Новости] §fНалоговая накрыла «" + b.type.title + "» игрока §e"
-                    + p.getGameProfile().getName() + "§f: отмывание денег.");
+                    + p.getGameProfile().name() + "§f: отмывание денег.");
         }
     }
 

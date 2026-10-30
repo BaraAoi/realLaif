@@ -460,7 +460,7 @@ public class DebtManager {
                 + (house != null ? ", дом «" + house + "»" : "") + (land > 0 ? ", участков: " + land : "") + ". Долг " + Finance.money(debt) + " закрыт за счёт конфискации.");
         BankService.msg(p, "§7Срок: " + (Config.JAIL_TICKS.get() / 1200) + " мин. Кредитная история испорчена.");
         for (ServerPlayer other : server.getPlayerList().getPlayers()) {
-            if (other != p) BankService.msg(other, "§9[Новости] §fИгрок §e" + p.getGameProfile().getName()
+            if (other != p) BankService.msg(other, "§9[Новости] §fИгрок §e" + p.getGameProfile().name()
                     + "§f арестован за долги перед «Реал Банком».");
         }
     }

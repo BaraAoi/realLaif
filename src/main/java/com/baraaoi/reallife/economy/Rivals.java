@@ -304,8 +304,8 @@ public final class Rivals {
         BankService.msg(p, RIV + "«" + r.name + "» — " + BizBuild.shortTitle(r.type) + ", бот-конкурент. Отбивает "
                 + Math.round(PER_RIVAL * 100) + "% выручки у заведений того же вида " + (r.inMall() ? "в этом ТЦ" : "в радиусе " + RADIUS + " блоков")
                 + ". Разорится примерно через " + left + " дн.");
-        StringTextComponent b = Component.literal("§c§l[Выкупить и закрыть за " + Finance.money(buyoutPrice(r)) + "]");
-        b.setStyle(Style.EMPTY.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/reallife rival buyout " + r.id)));
+        net.minecraft.network.chat.MutableComponent b = Component.literal("§c§l[Выкупить и закрыть за " + Finance.money(buyoutPrice(r)) + "]");
+        b.setStyle(Style.EMPTY.withClickEvent(new ClickEvent.RunCommand("/reallife rival buyout " + r.id)));
         p.sendMessage(Component.literal("§c  ").append(b), p.getUUID());
     }
 

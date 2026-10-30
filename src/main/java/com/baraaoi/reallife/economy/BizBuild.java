@@ -135,7 +135,7 @@ public final class BizBuild {
             BankService.msg(p, BUILD + "§cБригада отказалась строить: §f" + problem + ". §7Здание 15×18 встаёт перед вами, вход — к вам.");
             return false;
         }
-        LegalBusiness lb = buildTurnkeyAt(data, p.level(), origin, facing, type, p.getUUID(), p.getGameProfile().getName());
+        LegalBusiness lb = buildTurnkeyAt(data, p.level(), origin, facing, type, p.getUUID(), p.getGameProfile().name());
         LegalBiz.Scan s = LegalBiz.scan(p.level(), lb);
         BankService.msg(p, BUILD + "§a§lГотово! §r§f«" + type.title + "» построено и оборудовано: комплектов §e" + s.sets + "§f из "
                 + type.maxWorkers + ", склад " + (s.warehouse ? "§aесть" : "§cнет") + "§f. Касса — в центре зала.");
@@ -195,7 +195,7 @@ public final class BizBuild {
                     + ". §7Здание 73×57 встаёт перед вами (вход к вам, по 36 блоков влево и вправо, 57 вглубь).");
             return false;
         }
-        Mall m = buildMallAt(data, p.level(), origin, facing, p.getUUID(), p.getGameProfile().getName());
+        Mall m = buildMallAt(data, p.level(), origin, facing, p.getUUID(), p.getGameProfile().name());
         BankService.msg(p, BUILD + "§a§lТорговый центр построен! §r§fАтриум с фонтаном и §e" + m.units.size()
                 + "§f помещений разного размера — от киоска до большого зала.");
         BankService.msg(p, BUILD + "Над входом каждого помещения табличка: §eПКМ§f — цена, аренда, кнопки. Своё помещение можно §aзанять бесплатно§f, "

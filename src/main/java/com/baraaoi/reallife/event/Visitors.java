@@ -456,7 +456,7 @@ public final class Visitors {
     }
 
     private static Component button(String label, String cmd) {
-        return Component.literal(label).setStyle(Style.EMPTY.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, cmd)));
+        return Component.literal(label).setStyle(Style.EMPTY.withClickEvent(new ClickEvent.RunCommand(cmd)));
     }
 
     private static void ask(Session s, Player p, String question, long now) {

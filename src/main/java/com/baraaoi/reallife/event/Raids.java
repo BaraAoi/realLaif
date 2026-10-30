@@ -423,7 +423,7 @@ public final class Raids {
         end(w, r);
         DebtManager.jailFor(server, data, p, a, Config.RAID_JAIL_TICKS.get(), "изготовление фальшивых денег");
         for (ServerPlayer other : server.getPlayerList().getPlayers()) {
-            if (other != p) BankService.msg(other, "§9[Новости] §fОБЭП накрыл подпольный цех игрока §e" + p.getGameProfile().getName() + "§f.");
+            if (other != p) BankService.msg(other, "§9[Новости] §fОБЭП накрыл подпольный цех игрока §e" + p.getGameProfile().name() + "§f.");
         }
     }
 
