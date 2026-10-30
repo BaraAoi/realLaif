@@ -18,7 +18,10 @@ public class CreditRating {
         s += Math.min(150, a.onTimePayments * 5);
         s -= Math.min(300, a.lateDaysTotal * 15);
         s -= a.defaults * 200;
-        s += Math.min(100, Math.log10(1 + Math.max(0, a.balance)) * 25);
+        // v1.8: считается лучший достигнутый остаток — потратил накопленное, рейтинг не падает
+        s += Math.min(100, Math.log10(1 + Math.max(0, Math.max(a.balance, a.peakBalance))) * 25);
+        // v1.8: каждый день работы прибыльного бизнеса поднимает рейтинг (до +120)
+        s += Math.min(120, a.bizDays * 4);
         s += Math.min(80, a.lifetimeDeposited / 250.0);
         s += Math.min(50, accountAge(a, today) * 2);
         if (a.hasMfo()) s -= 40;
@@ -63,6 +66,18 @@ public class CreditRating {
     /** Дневная ставка по ипотеке — в два раза ниже. */
     public static double mortgageRate(int score) {
         return loanRate(score) / 2.0;
+    }
+
+    /**
+     * v1.8: лимит автокредита — сколько банк сам доплатит в долг, если счёт ушёл в минус или повис штраф/просрочка.
+     * Считается без учёта самой просрочки (иначе её никогда нельзя было бы закрыть). 0 — банк не даст.
+     */
+    public static double autoCreditLimit(Account a, long today) {
+        if (a.captivity != Account.FREE) return 0;
+        double sc = Math.max(300, Math.min(850, base(a, today) + a.ratingBonus + (a.arrears > 0.01 ? 60 : 0)));
+        if (sc < 400) return 0;
+        double base = 500 + a.lifetimeDeposited * 0.3 + Math.max(0, a.peakBalance) * 0.2;
+        return Math.max(0, Math.floor(base * (sc - 350) / 150.0 / 10) * 10);
     }
 
     /** Максимальная сумма кредита. 0 = отказ. */

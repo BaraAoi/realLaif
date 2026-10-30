@@ -77,8 +77,12 @@ public final class LegalBiz {
 
     public static final int BAD = 0, NORMAL = 1, GOOD = 2, JACKPOT = 3;
 
-    private static final String[] BAD_DAYS = {"СЭС закрыла на полдня", "сломался кассовый аппарат", "отключили свет",
-            "ремонт дороги перед входом", "кассир перепутал сдачу", "пожарная проверка", "залило соседи сверху"};
+    /** v1.8: плохие дни реже (5%), разнообразнее и не идут два дня подряд; «отключили свет» — лишь одна из многих причин. */
+    private static final String[] BAD_DAYS = {"СЭС закрыла на полдня", "сломался кассовый аппарат", "отключили свет на пару часов",
+            "ремонт дороги перед входом", "кассир перепутал сдачу", "пожарная проверка", "залило соседи сверху",
+            "лёг интернет — терминал не принимал карты", "поставщик опоздал на полдня", "кассир заболел, работали без него",
+            "прорвало трубу у входа", "налоговая проверка документов", "ливень — улица пустая"};
+    public static final double BAD_CHANCE = 0.05;
     private static final String[] GOOD_DAYS = {"рядом открылась остановка", "блогер снял обзор", "праздники — очереди",
             "конкурент закрылся на ремонт", "хорошая погода", "день зарплаты в городе"};
     private static final String[] JACKPOT_DAYS = {"заведение попало в топ на картах", "свадьба сняла всё целиком",
@@ -86,12 +90,18 @@ public final class LegalBiz {
 
     /** luckBonus — прибавка к множителю от эффекта «Удача» (минус — от «Невезения»). */
     public static Roll roll(Random r, double luckBonus) {
+        return roll(r, luckBonus, false);
+    }
+
+    /** lastBad — вчера был плохой день: сегодня плохого не будет (неудачи подряд не идут). */
+    public static Roll roll(Random r, double luckBonus, boolean lastBad) {
         double x = r.nextDouble();
+        if (lastBad && x < BAD_CHANCE) x = BAD_CHANCE + r.nextDouble() * (0.80 - BAD_CHANCE);
         double m;
         String note;
         int kind;
-        if (x < 0.10) {
-            m = r.nextDouble() * 0.4;
+        if (x < BAD_CHANCE) {
+            m = 0.2 + r.nextDouble() * 0.4;
             note = BAD_DAYS[r.nextInt(BAD_DAYS.length)];
             kind = BAD;
         } else if (x < 0.80) {
@@ -108,6 +118,12 @@ public final class LegalBiz {
             kind = JACKPOT;
         }
         return new Roll(Math.max(0, m + luckBonus), note, kind);
+    }
+
+    public static boolean isBadNote(String note) {
+        if (note == null) return false;
+        for (String s : BAD_DAYS) if (note.startsWith(s)) return true;
+        return false;
     }
 
     public static double luckBonus(ServerPlayerEntity p) {
@@ -760,6 +776,7 @@ public final class LegalBiz {
 
     public static void processDay(MinecraftServer server, EconomyData data) {
         ServerWorld ow = EconomyData.overworld(server);
+        java.util.Set<UUID> rated = new java.util.HashSet<>();
         for (LegalBusiness b : new ArrayList<>(data.businesses)) {
             if (b.owner == null) continue;
             Account a = data.getOrCreate(b.owner);
@@ -773,7 +790,7 @@ public final class LegalBiz {
             b.cacheStock = s.stock;
             double fraction = need > 0 ? used / (double) need : 0;
             double wages = b.type.wage() * hired;
-            Roll r = roll(R, luckBonus(p));
+            Roll r = roll(R, luckBonus(p), isBadNote(b.lastNote));
             double revenue = revenue(b.type, working, r.mult, fraction);
             double profit = revenue - wages;
             String note;
@@ -788,12 +805,15 @@ public final class LegalBiz {
             b.lastNote = note;
             b.totalProfit += profit;
             if (working > 0) b.days++;
+            boolean ratingUp = working > 0 && profit > 0 && rated.add(b.owner);
+            if (ratingUp) a.bizDays++;
             if (p != null) {
                 String color = working == 0 || used == 0 ? "§c" : r.kind == BAD ? "§c" : r.kind == NORMAL ? "§f" : r.kind == GOOD ? "§a" : "§6§l";
                 BankService.msg(p, BIZ + "СМС «" + b.type.title + "»: " + color + note + "§f. Работает " + working + "/" + hired
                         + ", сырья ушло " + used + "/" + need + ". Выручка §a" + Finance.money(revenue) + "§f, зарплаты §c−"
                         + Finance.money(wages) + "§f → итог " + (profit >= 0 ? "§a+" : "§c") + Finance.money(profit) + "§f на счёт."
-                        + (customers > 0 ? " §7Покупателей заходило при вас: " + customers + "." : ""));
+                        + (customers > 0 ? " §7Покупателей заходило при вас: " + customers + "." : "")
+                        + (ratingUp ? " §aКредитный рейтинг растёт: банк видит рабочий бизнес." : ""));
                 if (working > 0 && s.stock < need) BankService.msg(p, BIZ + "§eСырья на завтра мало (" + s.stock + " из " + need
                         + "). Телефон → Опт → «" + b.type.supplyName + "».");
             }

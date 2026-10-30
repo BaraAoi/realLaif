@@ -3,6 +3,7 @@ package com.baraaoi.reallife.client;
 import com.baraaoi.reallife.economy.Actions;
 import com.baraaoi.reallife.economy.BizEquip;
 import com.baraaoi.reallife.economy.BizType;
+import com.baraaoi.reallife.economy.Crypto;
 import com.baraaoi.reallife.economy.Finance;
 import com.baraaoi.reallife.economy.Wholesale;
 import com.baraaoi.reallife.network.ActionPacket;
@@ -31,6 +32,7 @@ public class PhoneScreen extends Screen {
     private static int page;
     private static int bizType;
     private static int bizSub;
+    private static int coin;
     private static final String[] SHORT = {"шаурма", "маркет", "мойка", "карьер", "ломбард", "АЗС", "техника"};
     private static final int EQ_PAGE = 6;
 
@@ -134,11 +136,25 @@ public class PhoneScreen extends Screen {
                 }
                 break;
             }
-            default:
-                btn(8, 130, 74, "Продать 25%", b -> send(Actions.PHONE_SELL_BTC, 25, 0));
-                btn(86, 130, 74, "Продать 50%", b -> send(Actions.PHONE_SELL_BTC, 50, 0));
-                btn(164, 130, 76, "§cПродать всё", b -> send(Actions.PHONE_SELL_BTC, 100, 0));
+            default: {
+                Crypto.Coin[] cs = Crypto.Coin.values();
+                coin = Math.max(0, Math.min(cs.length - 1, coin));
+                for (int i = 0; i < cs.length; i++) {
+                    final int ci = i;
+                    btn(8 + i * 58, 38, 56, (coin == i ? "§e" : "") + cs[i].ticker, b -> { coin = ci; rebuild(); });
+                }
+                int[] buys = {1000, 10000, 100000};
+                String[] bl = {"+1 000₽", "+10 000₽", "+100 000₽"};
+                for (int i = 0; i < buys.length; i++) {
+                    final int r = buys[i];
+                    btn(8 + i * 58, 118, 56, "§a" + bl[i], b -> send(Actions.PHONE_BUY_CRYPTO, coin, r));
+                }
+                btn(182, 118, 58, "§aНа всё", b -> send(Actions.PHONE_BUY_CRYPTO, coin, 0));
+                btn(8, 138, 74, "Продать 25%", b -> send(Actions.PHONE_SELL_BTC, 25, coin));
+                btn(86, 138, 74, "Продать 50%", b -> send(Actions.PHONE_SELL_BTC, 50, coin));
+                btn(164, 138, 76, "§cПродать всё", b -> send(Actions.PHONE_SELL_BTC, 100, coin));
                 break;
+            }
         }
     }
 
@@ -210,9 +226,9 @@ public class PhoneScreen extends Screen {
             small(ms, "§2МФО «Шайкин и Ко»: §c" + Finance.money(t.getDouble("mfoDebt")), 8, y);
             y += 10;
         }
-        double btc = t.getDouble("crypto");
-        if (btc > 0) {
-            small(ms, "§eКриптокошелёк: " + String.format(Locale.ROOT, "%.6f ₿", btc) + " ≈ " + Finance.money(btc * t.getDouble("btcRate")), 8, y);
+        double cv = t.getDouble("cryptoValue");
+        if (cv > 0.5) {
+            small(ms, "§eКриптопортфель: ≈ " + Finance.money(cv), 8, y);
             y += 10;
         }
         ListNBT biz = t.getList("bizList", 10);
@@ -319,16 +335,56 @@ public class PhoneScreen extends Screen {
     }
 
     private void drawCrypto(MatrixStack ms, CompoundNBT t) {
-        text(ms, "§e§lКриптобиржа", 8, 44);
-        double rate = t.getDouble("btcRate");
-        double prev = t.getDouble("btcBase");
-        double btc = t.getDouble("crypto");
-        text(ms, "Курс BTC: §e" + Finance.money(rate), 8, 60);
-        if (prev > 0) small(ms, (rate >= prev ? "§a▲ " : "§c▼ ") + String.format(Locale.ROOT, "%+.1f%%", (rate / prev - 1) * 100) + " §7к среднему", 8, 72);
-        text(ms, "Кошелёк: §e" + String.format(Locale.ROOT, "%.6f ₿", btc), 8, 88);
-        text(ms, "≈ §a" + Finance.money(btc * rate), 8, 100);
-        small(ms, "§7Комиссия биржи 1%. Деньги — на банковский счёт.", 8, 152);
-        small(ms, "§7Майнить: майнинг-ферма + комплектующие (материнка, процессор,", 8, 164);
-        small(ms, "§7память, блок питания, кулер и 1–4 видеокарты). Курс меняется раз в минуту.", 8, 174);
+        ListNBT coins = t.getList("coins", 10);
+        Crypto.Coin c = Crypto.Coin.byId(coin);
+        if (c == null || coin >= coins.size()) {
+            text(ms, "§7Биржа загружается...", 8, 62);
+            return;
+        }
+        CompoundNBT ct = coins.getCompound(coin);
+        double rate = ct.getDouble("rate"), base = ct.getDouble("base"), held = ct.getDouble("held");
+        ListNBT hist = ct.getList("hist", 6);
+        double prev = hist.size() >= 2 ? hist.getDouble(hist.size() - 2) : rate;
+        text(ms, "§e" + c.title + ": §f" + Crypto.price(rate), 8, 60);
+        small(ms, (rate >= prev ? "§a▲ " : "§c▼ ") + String.format(Locale.ROOT, "%+.2f%%", prev > 0 ? (rate / prev - 1) * 100 : 0) + " §7за 20 с", 8, 72);
+        if (base > 0) small(ms, "§7к среднему " + (rate >= base ? "§a" : "§c") + String.format(Locale.ROOT, "%+.1f%%", (rate / base - 1) * 100), 8, 80);
+        small(ms, "Кошелёк: §e" + Crypto.fmt(c, held), 8, 92);
+        small(ms, "≈ §a" + Finance.money(held * rate), 8, 100);
+        // график последних ~13 минут
+        int gx = 118, gy = 58, gw = 122, gh = 54;
+        fill(ms, left + gx - 1, top + gy - 1, left + gx + gw + 1, top + gy + gh + 1, 0xFF33475F);
+        fill(ms, left + gx, top + gy, left + gx + gw, top + gy + gh, 0xFF0A1220);
+        int n = hist.size();
+        if (n >= 2) {
+            double mn = Double.MAX_VALUE, mx = -Double.MAX_VALUE;
+            for (int i = 0; i < n; i++) { mn = Math.min(mn, hist.getDouble(i)); mx = Math.max(mx, hist.getDouble(i)); }
+            if (mx - mn < mx * 1e-4) { mx += mx * 0.01; mn -= mn * 0.01; }
+            int px = -1, py = -1;
+            for (int i = 0; i < n; i++) {
+                int x = gx + 1 + (int) Math.round(i * (gw - 3) / (double) (n - 1));
+                int y = gy + gh - 2 - (int) Math.round((hist.getDouble(i) - mn) / (mx - mn) * (gh - 4));
+                if (px >= 0) {
+                    int col = hist.getDouble(i) < hist.getDouble(i - 1) ? 0xFFE05050 : 0xFF50E070;
+                    int last = py;
+                    for (int xx = px + 1; xx <= x; xx++) {
+                        int yy = py + (y - py) * (xx - px) / Math.max(1, x - px);
+                        fill(ms, left + xx, top + Math.min(yy, last), left + xx + 1, top + Math.max(yy, last) + 1, col);
+                        last = yy;
+                    }
+                }
+                px = x;
+                py = y;
+            }
+            small(ms, "§7" + Crypto.price(mx), gx + 2, gy + 2);
+            small(ms, "§7" + Crypto.price(mn), gx + 2, gy + gh - 8);
+        } else {
+            small(ms, "§7график копится...", gx + 4, gy + gh / 2 - 3);
+        }
+        small(ms, "§7Купить (со счёта):", 8, 110);
+        double total = t.getDouble("cryptoValue");
+        small(ms, "Весь портфель: §a" + Finance.money(total) + "§f  на счёте §e" + Finance.money(t.getDouble("balance")), 8, 160);
+        small(ms, "§7Комиссия биржи 1% на покупку и продажу. Курс меняется каждые 20 с,", 8, 170);
+        small(ms, "§7бывают новости со скачками ±15–40%. BTC ещё и майнится на ферме", 8, 179);
+        small(ms, "§7(материнка, процессор, память, БП, кулер, 1–4 видеокарты).", 8, 188);
     }
 }

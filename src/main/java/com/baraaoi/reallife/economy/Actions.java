@@ -34,4 +34,5 @@ public class Actions {
     public static final int PHONE_BUY_BIZ = 65;
     public static final int PHONE_SELL_BTC = 66;
     public static final int PHONE_BUY_EQUIP = 67;
+    public static final int PHONE_BUY_CRYPTO = 68;
 }

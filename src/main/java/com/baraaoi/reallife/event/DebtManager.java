@@ -191,6 +191,12 @@ public class DebtManager {
             spawn(ModEntities.INSPECTOR.get(), w, p, 5, 9);
         }
 
+        // ---------------- v1.8: автокредит (счёт в минусе / штрафы / просрочка)
+        if (a.arrears > 0.01 || a.balance < -0.5) {
+            BankService.autoCredit(p, a, BankService.today(server));
+            data.markDirty();
+        }
+
         // ---------------- банк
         int bs = bankStage(a);
         if (bs == 3 && !a.wanted) {
@@ -714,18 +720,64 @@ public class DebtManager {
         a.jailUntil = 0;
         if (was == Account.PIT) p.inventory.clear(); // всё, что накопал, остаётся Шайкину
         data.markDirty();
-        ServerWorld ow = EconomyData.overworld(server);
-        IWorldInfo info = ow.getWorldInfo();
-        int x = info.getSpawnX(), z = info.getSpawnZ();
-        int y = ow.getHeight(Heightmap.Type.MOTION_BLOCKING_NO_LEAVES, x, z);
-        // сначала увозим на спавн, потом разбираем камеру
-        p.teleport(ow, x + 0.5, y, z + 0.5, p.rotationYaw, p.rotationPitch);
+        // сначала увозим домой (кровать → дом → спавн мира), потом разбираем камеру
+        String where = sendHome(server, p, a);
         restoreCell(server, data, a);
+        BankService.msg(p, "§7Вас довезли: " + where + ".");
         if (was == Account.JAIL) {
             BankService.msg(p, "§9[Полиция] §fВы освобождены. Начните жизнь с чистого листа. И больше не берите кредитов, которые не можете вернуть.");
         } else {
             BankService.msg(p, BankService.MFO + "§fЛадно, отработал. Кирку и всё, что в карманах, оставь — это наше. Вали отсюда. Нужны деньги — заходи!");
         }
+    }
+
+    /**
+     * Отвезти игрока «домой»: к его точке возрождения (кровать / якорь / /spawnpoint), если её нет — к ипотечному дому,
+     * и только потом — на общий спавн мира. Возвращает описание, куда отвезли.
+     */
+    public static String sendHome(MinecraftServer server, ServerPlayerEntity p, Account a) {
+        BlockPos bed = p.func_241140_K_();
+        if (bed != null) {
+            ServerWorld bw = server.getWorld(p.func_241141_L_());
+            if (bw != null) {
+                BlockPos at = standNear(bw, bed, 3);
+                if (at != null) {
+                    p.teleport(bw, at.getX() + 0.5, at.getY(), at.getZ() + 0.5, p.rotationYaw, p.rotationPitch);
+                    return "к вашей кровати (точке возрождения)";
+                }
+            }
+        }
+        ServerWorld ow = EconomyData.overworld(server);
+        if (a.hasHouse && !a.houseMin.equals(BlockPos.ZERO)) {
+            BlockPos c = new BlockPos((a.houseMin.getX() + a.houseMax.getX()) / 2, a.houseMin.getY() + 1, (a.houseMin.getZ() + a.houseMax.getZ()) / 2);
+            BlockPos at = standNear(ow, c, 4);
+            if (at != null) {
+                p.teleport(ow, at.getX() + 0.5, at.getY(), at.getZ() + 0.5, p.rotationYaw, p.rotationPitch);
+                return "к вашему дому";
+            }
+        }
+        IWorldInfo info = ow.getWorldInfo();
+        int x = info.getSpawnX(), z = info.getSpawnZ();
+        int y = ow.getHeight(Heightmap.Type.MOTION_BLOCKING_NO_LEAVES, x, z);
+        p.teleport(ow, x + 0.5, y, z + 0.5, p.rotationYaw, p.rotationPitch);
+        return "на точку спавна мира (кровати и дома нет — поставьте кровать и поспите в ней)";
+    }
+
+    /** Ближайшее место, где можно стоять (2 блока воздуха, под ногами твёрдое), в радиусе r от pos. */
+    @javax.annotation.Nullable
+    public static BlockPos standNear(ServerWorld w, BlockPos pos, int r) {
+        for (int d = 0; d <= r; d++)
+            for (int dy = 0; dy <= 2; dy++)
+                for (int sy = 1; sy >= -1; sy -= 2)
+                    for (int dx = -d; dx <= d; dx++)
+                        for (int dz = -d; dz <= d; dz++) {
+                            if (Math.max(Math.abs(dx), Math.abs(dz)) != d) continue;
+                            BlockPos q = pos.add(dx, dy * sy, dz);
+                            if (q.getY() < 1 || q.getY() > 254) continue;
+                            if (w.isAirBlock(q) && w.isAirBlock(q.up()) && w.getBlockState(q.down()).getMaterial().isSolid()
+                                    && !w.getBlockState(q.down()).getMaterial().isLiquid()) return q;
+                        }
+        return null;
     }
 
     /** Сдать добычу в приёмник подвала. */

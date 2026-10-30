@@ -17,6 +17,7 @@ public class Config {
     public static final ForgeConfigSpec.IntValue POLICE_COUNT;
     public static final ForgeConfigSpec.IntValue JAIL_TICKS;
     public static final ForgeConfigSpec.DoubleValue MORTGAGE_DOWN_PAYMENT;
+    public static final ForgeConfigSpec.BooleanValue AUTO_CREDIT;
 
     // ===== МФО =====
     public static final ForgeConfigSpec.DoubleValue MFO_DAILY_RATE;
@@ -100,6 +101,8 @@ public class Config {
                 .defineInRange("jailTicks", 12000, 200, 1000000);
         MORTGAGE_DOWN_PAYMENT = b.comment("Первоначальный взнос по ипотеке (0.2 = 20%)")
                 .defineInRange("mortgageDownPayment", 0.2, 0.0, 1.0);
+        AUTO_CREDIT = b.comment("Автокредит: если счёт ушёл в минус или висит просрочка/штраф, банк сам оформляет кредит (в пределах лимита по рейтингу)")
+                .define("autoCredit", true);
         b.pop();
 
         b.comment("МФО «Шайкин и Ко»").push("mfo");

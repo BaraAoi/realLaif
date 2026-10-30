@@ -49,6 +49,10 @@ public class EconomyData extends WorldSavedData {
     /** Курс BTC в рублях и когда он последний раз менялся (игровые тики). */
     public double btcRate;
     public long btcUpdated;
+    /** v1.8: курсы остальных монет (индекс = Crypto.Coin.ordinal(); [0] — не используется, BTC в btcRate). */
+    public final double[] altRates = new double[8];
+    /** История курсов для графика (не сохраняется): снимки всех монет, последние 40 шагов. */
+    public final java.util.ArrayDeque<double[]> cryptoHist = new java.util.ArrayDeque<>();
     /** Центры (уровень пола) всех контор МФО — под ними делается подвал. */
     public final List<BlockPos> mfoCenters = new ArrayList<>();
 
@@ -220,6 +224,7 @@ public class EconomyData extends WorldSavedData {
         for (LegalBusiness b : businesses) nextBizId = Math.max(nextBizId, b.id + 1);
         btcRate = nbt.getDouble("btcRate");
         btcUpdated = nbt.getLong("btcUpdated");
+        for (int i = 1; i < altRates.length; i++) altRates[i] = nbt.getDouble("altRate" + i);
         mfoCenters.clear();
         for (long l : nbt.getLongArray("mfoCenters")) mfoCenters.add(BlockPos.fromLong(l));
         landOwners.clear();
@@ -258,6 +263,7 @@ public class EconomyData extends WorldSavedData {
         nbt.putInt("nextBizId", nextBizId);
         nbt.putDouble("btcRate", btcRate);
         nbt.putLong("btcUpdated", btcUpdated);
+        for (int i = 1; i < altRates.length; i++) if (altRates[i] > 0) nbt.putDouble("altRate" + i, altRates[i]);
         long[] mc = new long[mfoCenters.size()];
         for (int i = 0; i < mc.length; i++) mc[i] = mfoCenters.get(i).toLong();
         nbt.putLongArray("mfoCenters", mc);

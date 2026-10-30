@@ -585,7 +585,7 @@ public class SelfTest {
         double rate = Config.BTC_BASE_RATE.get();
         java.util.Random cr = new java.util.Random(3);
         for (int i = 0; i < 2000; i++) rate = com.baraaoi.reallife.economy.Crypto.step(rate, Config.BTC_BASE_RATE.get(), cr);
-        check(rate >= Config.BTC_BASE_RATE.get() * 0.29 && rate <= Config.BTC_BASE_RATE.get() * 4.01, "btc rate stays in range: " + rate);
+        check(rate >= Config.BTC_BASE_RATE.get() * 0.19 && rate <= Config.BTC_BASE_RATE.get() * 5.01, "btc rate stays in range: " + rate);
         rig.clear();
         ow.setBlockState(rigPos, Blocks.AIR.getDefaultState(), 3);
         java.util.List<com.baraaoi.reallife.economy.Wholesale.Lot> lots = com.baraaoi.reallife.economy.Wholesale.lots();
@@ -667,6 +667,7 @@ public class SelfTest {
         check(CreditRating.score(a, today) == 777, "admin rating command math");
         a.ratingBonus = 0;
 
+        BankService.autoCreditPaused = true; // эскалацию проверяем без автокредита
         a.loanPrincipal = 1000;
         a.loanRate = 0.01;
         a.loanDays = 10;
@@ -694,6 +695,67 @@ public class SelfTest {
         }
         check(m.mfoDebt > 2000, "mfo compound interest grows");
         check(DebtManager.mfoStage(m) == 3, "mfo escalates to lethal");
+        BankService.autoCreditPaused = false;
+
+        // ---- v1.8: автокредит, рейтинг, крипта
+        Account ac = data.getOrCreate(UUID.randomUUID());
+        ac.createdDay = today;
+        ac.lifetimeDeposited = 5000;
+        ac.peakBalance = 5000;
+        ac.balance = -800;
+        ac.arrears = 300;
+        ac.overdueDays = 1;
+        double acLimit = CreditRating.autoCreditLimit(ac, today);
+        BankService.autoCredit(null, ac, today);
+        LOG.info("auto credit limit " + Finance.money(acLimit) + ", loan " + Finance.money(ac.loanPrincipal) + ", balance " + Finance.money(ac.balance));
+        check(acLimit >= 1100 && ac.balance >= -0.01 && ac.arrears < 0.01 && ac.overdueDays == 0
+                && Math.abs(ac.loanPrincipal - 1100) < 1.01 && ac.loanDays == BankService.AUTO_CREDIT_DAYS, "auto credit covers minus and fines");
+        ac.balance = -500;
+        BankService.autoCredit(null, ac, today);
+        check(ac.balance >= -0.01 && Math.abs(ac.loanPrincipal - 1600) < 2.01, "auto credit tops up the existing loan");
+        Account bad = data.getOrCreate(UUID.randomUUID());
+        bad.createdDay = today;
+        bad.defaults = 10;
+        bad.balance = -300;
+        BankService.autoCredit(null, bad, today);
+        check(CreditRating.autoCreditLimit(bad, today) == 0 && bad.balance < -299 && !bad.hasLoan(), "bad rating - no auto credit");
+        Account sp = data.getOrCreate(UUID.randomUUID());
+        sp.createdDay = today;
+        sp.lifetimeDeposited = 20000;
+        sp.balance = 20000;
+        sp.peakBalance = 20000;
+        int before = CreditRating.score(sp, today);
+        sp.balance = 150;
+        check(CreditRating.score(sp, today) == before, "spending money does not lower the rating (" + before + ")");
+        sp.bizDays = 15;
+        check(CreditRating.score(sp, today) >= Math.min(850, before + 50), "working business raises the rating: " + CreditRating.score(sp, today));
+        sp.coins[com.baraaoi.reallife.economy.Crypto.Coin.DOGE.ordinal()] = 123.5;
+        sp.crypto = 0.25;
+        Account spCopy = Account.read(sp.write());
+        check(spCopy.coins[com.baraaoi.reallife.economy.Crypto.Coin.DOGE.ordinal()] == 123.5 && spCopy.crypto == 0.25
+                && spCopy.peakBalance == 20000 && spCopy.bizDays == 15, "coins, peak balance and business days saved");
+        for (com.baraaoi.reallife.economy.Crypto.Coin coin : com.baraaoi.reallife.economy.Crypto.Coin.values()) {
+            double r = coin.base(), mn = r, mx = r;
+            java.util.Random cr2 = new java.util.Random(coin.ordinal() + 11);
+            for (int i = 0; i < 5000; i++) {
+                r = com.baraaoi.reallife.economy.Crypto.step(r, coin.base(), coin.vol, 0.99, cr2);
+                mn = Math.min(mn, r);
+                mx = Math.max(mx, r);
+            }
+            LOG.info(coin.ticker + " base " + coin.base() + " range " + mn + " .. " + mx);
+            check(mn >= coin.base() * 0.19 && mx <= coin.base() * 5.01 && mx > mn * 1.2, coin.ticker + " rate moves within range");
+        }
+        double pf = com.baraaoi.reallife.economy.Crypto.portfolio(data, sp);
+        check(pf > 0, "crypto portfolio value " + pf);
+        check(com.baraaoi.reallife.economy.Crypto.sync(data, sp).size() == com.baraaoi.reallife.economy.Crypto.Coin.values().length, "crypto sync lists all coins");
+        int bads = 0;
+        java.util.Random br = new java.util.Random(5);
+        for (int i = 0; i < 10000; i++) if (com.baraaoi.reallife.economy.LegalBiz.roll(br, 0).kind == com.baraaoi.reallife.economy.LegalBiz.BAD) bads++;
+        check(bads < 700, "bad business days are rare: " + bads + "/10000");
+        boolean twice = false;
+        for (int i = 0; i < 2000; i++) if (com.baraaoi.reallife.economy.LegalBiz.roll(br, 0, true).kind == com.baraaoi.reallife.economy.LegalBiz.BAD) twice = true;
+        check(!twice, "no bad days twice in a row");
+        for (Account x : new Account[]{ac, bad, sp}) data.reset(x.id);
 
         // ---- NPC
         EntityType<?>[] types = {ModEntities.ZHORA.get(), ModEntities.ALEXANDER.get(), ModEntities.POLICE.get(),

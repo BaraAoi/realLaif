@@ -114,6 +114,12 @@ public class Account {
     public boolean hasLaundering;
     /** Криптокошелёк (BTC). */
     public double crypto;
+    /** v1.8: кошельки остальных монет (индекс = Crypto.Coin.ordinal(), [0] не используется — BTC лежит в crypto). */
+    public final double[] coins = new double[8];
+    /** v1.8: самый большой остаток на счёте — рейтинг не падает, когда тратишь накопленное. */
+    public double peakBalance;
+    /** v1.8: сколько дней у игрока работал прибыльный бизнес — рейтинг растёт. */
+    public int bizDays;
 
     // --- самострой ---
     public boolean landCase;
@@ -207,6 +213,9 @@ public class Account {
         t.putLong("businessMax", businessMax.toLong());
         t.putBoolean("hasLaundering", hasLaundering);
         t.putDouble("crypto", crypto);
+        for (int i = 1; i < coins.length; i++) if (coins[i] != 0) t.putDouble("coin" + i, coins[i]);
+        t.putDouble("peakBalance", peakBalance);
+        t.putInt("bizDays", bizDays);
         t.putBoolean("landCase", landCase);
         t.putLong("landChunk", landChunk);
         t.putLong("landDeadline", landDeadline);
@@ -286,6 +295,9 @@ public class Account {
         a.businessMax = BlockPos.fromLong(t.getLong("businessMax"));
         a.hasLaundering = t.getBoolean("hasLaundering");
         a.crypto = t.getDouble("crypto");
+        for (int i = 1; i < a.coins.length; i++) a.coins[i] = t.getDouble("coin" + i);
+        a.peakBalance = t.contains("peakBalance") ? t.getDouble("peakBalance") : Math.max(0, a.balance);
+        a.bizDays = t.getInt("bizDays");
         a.landCase = t.getBoolean("landCase");
         a.landChunk = t.getLong("landChunk");
         a.landDeadline = t.getLong("landDeadline");

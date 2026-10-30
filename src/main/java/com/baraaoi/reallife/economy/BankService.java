@@ -214,9 +214,12 @@ public class BankService {
         t.putBoolean("ownsBiz", data.ownsBusiness(a.id));
         t.putDouble("safeShare", Config.LAUNDER_SAFE_SHARE.get());
         t.putDouble("launderTax", Config.LAUNDER_TAX.get());
+        a.peakBalance = Math.max(a.peakBalance, a.balance);
         t.putDouble("crypto", a.crypto);
         t.putDouble("btcRate", Crypto.rate(data));
         t.putDouble("btcBase", Config.BTC_BASE_RATE.get());
+        t.put("coins", Crypto.sync(data, a));
+        t.putDouble("cryptoValue", Crypto.portfolio(data, a));
         if (p.openContainer instanceof com.baraaoi.reallife.container.BizContainer) {
             LegalBusiness ob = LegalBiz.bizForCounter(data, ((com.baraaoi.reallife.container.BizContainer) p.openContainer).getPos());
             if (ob != null) t.put("openBiz", LegalBiz.info(p.world, ob, today, true));
@@ -280,7 +283,7 @@ public class BankService {
             if (action == Actions.CASINO_PLAY && cc.canInteractWith(p)) CasinoService.play(p, cc, arg1, arg2);
             return;
         }
-        if (action >= Actions.PHONE_SYNC && action <= Actions.PHONE_BUY_EQUIP) {
+        if (action >= Actions.PHONE_SYNC && action <= Actions.PHONE_BUY_CRYPTO) {
             phone(p, action, arg1, arg2);
             return;
         }
@@ -367,7 +370,8 @@ public class BankService {
             case Actions.PHONE_WHOLESALE: Wholesale.buy(p, a, data, arg1); break;
             case Actions.PHONE_BUY_BIZ: LegalBiz.buyPermit(p, a, arg1); break;
             case Actions.PHONE_BUY_EQUIP: LegalBiz.buyEquip(p, a, arg1, arg2); break;
-            case Actions.PHONE_SELL_BTC: Crypto.sell(p, a, arg1); break;
+            case Actions.PHONE_SELL_BTC: Crypto.sell(p, a, arg1, arg2); break;
+            case Actions.PHONE_BUY_CRYPTO: Crypto.buy(p, a, arg1, arg2); break;
             default: break;
         }
         data.markDirty();
@@ -399,6 +403,54 @@ public class BankService {
         if (!notes) a.lifetimeDeposited += v;
         msg(p, BANK + "Зачислено §a+" + Finance.money(v) + "§f. Баланс: §e" + Finance.money(a.balance));
         autoPayArrears(p, a);
+    }
+
+    /** Срок автокредита в днях. */
+    public static final int AUTO_CREDIT_DAYS = 10;
+    /** Для самотеста: временно выключить автокредит (проверка эскалации долгов). */
+    public static boolean autoCreditPaused;
+    private static final java.util.Map<java.util.UUID, Long> AUTO_REFUSED = new java.util.HashMap<>();
+
+    /**
+     * v1.8: автокредит. Если счёт в минусе или висит просрочка/штраф — банк сам оформляет (или увеличивает) кредит
+     * на нужную сумму в пределах лимита {@link CreditRating#autoCreditLimit}. Чего не хватило — остаётся долгом,
+     * и тогда как обычно: Жора, Александр, полиция.
+     */
+    public static void autoCredit(@javax.annotation.Nullable PlayerEntity p, Account a, long today) {
+        if (!Config.AUTO_CREDIT.get() || autoCreditPaused || a.captivity != Account.FREE) return;
+        autoPayArrears(p, a);
+        double need = Math.max(0, a.arrears) + Math.max(0, -a.balance);
+        if (need < 1) return;
+        double room = CreditRating.autoCreditLimit(a, today) - Math.max(0, a.loanPrincipal);
+        if (room < 10) {
+            Long last = AUTO_REFUSED.get(a.id);
+            if (p != null && (last == null || last != today)) {
+                AUTO_REFUSED.put(a.id, today);
+                msg(p, BANK + "§cАвтокредит недоступен: лимит исчерпан или рейтинг слишком низкий. §fДолг " + Finance.money(need)
+                        + " — пополните счёт, иначе придёт наш сотрудник.");
+            }
+            return;
+        }
+        double amt = Math.ceil(Math.min(need, room));
+        int score = CreditRating.score(a, today);
+        if (a.hasLoan()) {
+            a.loanPrincipal += amt;
+            a.loanDays = Math.max(a.loanDays, AUTO_CREDIT_DAYS);
+        } else {
+            a.loanPrincipal = amt;
+            a.loanRate = CreditRating.loanRate(score);
+            a.loanDays = AUTO_CREDIT_DAYS;
+        }
+        double toArrears = Math.min(Math.max(0, a.arrears), amt);
+        a.arrears -= toArrears;
+        a.balance += amt - toArrears;
+        if (a.arrears <= 0.01) a.clearArrears();
+        if (p != null) {
+            msg(p, BANK + "§eАвтокредит: §fсчёт ушёл в минус / был долг — банк перевёл §e" + Finance.money(amt) + "§f в кредит"
+                    + (toArrears > 0 ? " (из них " + Finance.money(toArrears) + " — в погашение просрочки и штрафов)" : "") + ".");
+            msg(p, BANK + "§7Долг по кредиту: " + Finance.money(a.loanPrincipal) + ", ставка " + Finance.percent(a.loanRate) + "/день, платёж "
+                    + Finance.money(a.loanPayment()) + "/день, " + a.loanDays + " дн. Отключить: bank.autoCredit в настройках.");
+        }
     }
 
     public static void autoPayArrears(PlayerEntity p, Account a) {
@@ -625,9 +677,11 @@ public class BankService {
         double dep = Config.DEPOSIT_DAILY_RATE.get();
         double pen = Config.LATE_PENALTY.get();
         List<Account> list = new ArrayList<>(data.all());
+        long today = today(server);
         for (Account a : list) {
             if (a.captivity != Account.FREE) continue;
             ServerPlayerEntity p = server.getPlayerList().getPlayerByUUID(a.id);
+            a.peakBalance = Math.max(a.peakBalance, a.balance);
 
             // проценты по вкладу
             if (a.balance > 0 && a.arrears <= 0.01) {
@@ -665,6 +719,7 @@ public class BankService {
                 double paid = Math.min(Math.max(0, a.balance), a.arrears);
                 a.balance -= paid;
                 a.arrears -= paid;
+                if (a.arrears > 0.01 && a.laborBlocksLeft <= 0) autoCredit(p, a, today); // v1.8: не хватило — банк сам кредитует
                 if (a.arrears > 0.01 && a.laborBlocksLeft > 0) {
                     // идёт отработка у Александра: новые платежи добавляют блоков, дни просрочки не растут
                     int extra = (int) Math.min(64, Math.ceil(due / Math.max(1.0, a.laborPerBlock)));
