@@ -133,7 +133,7 @@ public class Config {
                 .define("enabled", true);
         LAND_THRESHOLD = b.comment("Сколько блоков игрок может поставить в чужом/ничейном чанке, прежде чем это сочтут самостроем")
                 .defineInRange("blocksThreshold", 48, 1, 100000);
-        LAND_PRICE = b.comment("Цена одного участка (чанка 16x16)")
+        LAND_PRICE = b.comment("Цена одного чанка 16x16 (участок покупается сразу 3x3 чанка: цена × число свободных чанков)")
                 .defineInRange("chunkPrice", 300, 0, 10000000);
         LAND_FINE = b.comment("Штраф за самострой")
                 .defineInRange("fine", 150, 0, 10000000);
@@ -212,8 +212,8 @@ public class Config {
 
         b.comment("Случайные гости: налоговая, сантехник, цыганка, гопник, конокрад и другие").push("events");
         EVENTS_ENABLED = b.comment("Включить случайных гостей").define("enabled", true);
-        EVENTS_MIN_MINUTES = b.comment("Минимальный интервал между гостями (реальные минуты)").defineInRange("minMinutes", 6, 1, 1000);
-        EVENTS_MAX_MINUTES = b.comment("Максимальный интервал между гостями (реальные минуты)").defineInRange("maxMinutes", 15, 1, 1000);
+        EVENTS_MIN_MINUTES = b.comment("Минимальный интервал между гостями (реальные минуты). Бездомным и путешественникам гости приходят ещё в 1.4 раза чаще").defineInRange("intervalMinMinutes", 3, 1, 1000);
+        EVENTS_MAX_MINUTES = b.comment("Максимальный интервал между гостями (реальные минуты)").defineInRange("intervalMaxMinutes", 7, 1, 1000);
         b.pop();
         SPEC = b.build();
     }

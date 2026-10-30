@@ -58,7 +58,7 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Случайные гости. Раз в 6–15 минут к игроку кто-нибудь приходит: налоговая, сантехник, цыганка,
+ * Случайные гости. Раз в 3–7 минут (бездомным и путешественникам — чаще) к игроку кто-нибудь приходит: налоговая, сантехник, цыганка,
  * гопник, конокрад, риелтор, бабушка с пирожками... На вопросы отвечают кликом в чате [Да]/[Нет]
  * (команда /reallife npc yes|no), ПКМ по гостю = «да», молчание 30 секунд = «нет».
  * Состояние не сохраняется: после перезапуска сервера гости исчезают.
@@ -206,6 +206,35 @@ public final class Visitors {
         return Math.max(1800L, (long) (base / (1.0 + 0.15 * printers)));
     }
 
+    /** Интервал до следующего гостя: станки ускоряют, бездомным и путешественникам гости приходят в 1.4 раза чаще. */
+    static long intervalFor(ServerPlayerEntity p, Account a) {
+        long t = interval(a.printerList.size());
+        if (nomad(p, a) || underground(p)) t = Math.max(1200L, (long) (t / 1.4));
+        return t;
+    }
+
+    /** Гости кочевников: бездомных, шахтёров и путешественников. */
+    static final Set<VisitorKind> NOMAD_KINDS = new HashSet<>(Arrays.asList(VisitorKind.UCHASTKOVY, VisitorKind.BLACK_DIGGER,
+            VisitorKind.LOST_CAVER, VisitorKind.ECO_INSPECTOR, VisitorKind.HITCHHIKER, VisitorKind.PEDDLER, VisitorKind.HOBO,
+            VisitorKind.TREASURE_HUNTER, VisitorKind.DPS));
+    /** Кто вообще может прийти под землю. */
+    static final Set<VisitorKind> UNDERGROUND_KINDS = new HashSet<>(Arrays.asList(VisitorKind.BLACK_DIGGER, VisitorKind.LOST_CAVER,
+            VisitorKind.ECO_INSPECTOR, VisitorKind.PEDDLER, VisitorKind.GOPNIK, VisitorKind.PHILOSOPHER, VisitorKind.BANK_SCAMMER,
+            VisitorKind.COURIER, VisitorKind.HOBO));
+
+    /** Игрок под землёй: ниже 56 и не видит неба. */
+    public static boolean underground(PlayerEntity p) {
+        return p.getPosY() < 56 && !p.world.canSeeSky(p.getPosition().up());
+    }
+
+    /** Кочевник: нет своего дома или ушёл от него дальше 250 блоков. */
+    public static boolean nomad(PlayerEntity p, Account a) {
+        if (!a.hasHouse) return true;
+        double cx = (a.houseMin.getX() + a.houseMax.getX()) / 2.0, cz = (a.houseMin.getZ() + a.houseMax.getZ()) / 2.0;
+        double dx = p.getPosX() - cx, dz = p.getPosZ() - cz;
+        return dx * dx + dz * dz > 250 * 250;
+    }
+
     public static void tick(MinecraftServer server) {
         ServerWorld ow = EconomyData.overworld(server);
         if (ow == null) return;
@@ -258,11 +287,16 @@ public final class Visitors {
             Account a = data.get(p);
             if (a.captivity != Account.FREE) continue;
             Long next = NEXT.get(id);
-            if (next == null || next - now > maxWait()) { NEXT.put(id, now + interval(a.printerList.size())); continue; }
+            if (next == null || next - now > maxWait()) { NEXT.put(id, now + intervalFor(p, a)); continue; }
             if (now < next) continue;
-            NEXT.put(id, now + interval(a.printerList.size()));
+            NEXT.put(id, now + intervalFor(p, a));
             List<VisitorKind> ok = new ArrayList<>();
-            for (VisitorKind k : eventKinds()) if (applicable(k, p, a, ow)) ok.add(k);
+            boolean nomad = nomad(p, a) || underground(p);
+            for (VisitorKind k : eventKinds()) {
+                if (!applicable(k, p, a, ow)) continue;
+                ok.add(k);
+                if (nomad && NOMAD_KINDS.contains(k)) ok.add(k); // бездомным/шахтёрам «их» гости — вдвое чаще
+            }
             if (!ok.isEmpty()) start(p, a, ok.get(R.nextInt(ok.size())), now, false);
         }
     }
@@ -277,7 +311,25 @@ public final class Visitors {
     }
 
     public static boolean applicable(VisitorKind k, ServerPlayerEntity p, Account a, World w) {
+        boolean under = underground(p);
+        if (under && !UNDERGROUND_KINDS.contains(k)) return false;
         switch (k) {
+            case BLACK_DIGGER:
+            case LOST_CAVER:
+                return under;
+            case ECO_INSPECTOR:
+                return under || nomad(p, a);
+            case PEDDLER:
+                return nomad(p, a);
+            case UCHASTKOVY:
+                return !a.hasHouse;
+            case HOBO:
+                return !a.hasHouse;
+            case HITCHHIKER:
+            case TREASURE_HUNTER:
+                return nomad(p, a) && !p.isPassenger();
+            case DPS:
+                return p.isPassenger() || nomad(p, a);
             case TAX:
             case PLUMBER:
             case ELECTRIC:
@@ -389,6 +441,10 @@ public final class Visitors {
     }
 
     private static String pick(String... v) {
+        return v[R.nextInt(v.length)];
+    }
+
+    private static ItemStack pick(ItemStack... v) {
         return v[R.nextInt(v.length)];
     }
 
@@ -570,6 +626,7 @@ public final class Visitors {
         if ((k == VisitorKind.TAX || k == VisitorKind.PLUMBER || k == VisitorKind.ELECTRIC || k == VisitorKind.REALTOR
                 || k == VisitorKind.FIRE_INSPECTOR || k == VisitorKind.NEIGHBOR) && !houseOk(a)) return "нужен свой дом";
         if (k == VisitorKind.HORSE_THIEF && findHorse(p) == null) return "нужна своя осёдланная лошадь в 64 блоках";
+        if ((k == VisitorKind.BLACK_DIGGER || k == VisitorKind.LOST_CAVER) && !underground(p)) return "нужно быть под землёй (ниже 56, без неба над головой)";
         return start(p, a, k, now, false) == null ? "не получилось" : null;
     }
 
@@ -697,6 +754,63 @@ public final class Visitors {
                 ACTIVE.remove(p.getUniqueID());
                 startRealtor(p, now, 1);
                 return ACTIVE.get(p.getUniqueID());
+            case UCHASTKOVY:
+                spawn(s, w, p, k, 3, 6);
+                ask(s, p, "Старший лейтенант Анискин, участковый. Документики! Регистрация по месту пребывания есть? "
+                        + "Нету... Проживание без регистрации — штраф 300₽. Или решим вопрос на месте за 150₽?", now);
+                break;
+            case BLACK_DIGGER: {
+                spawn(s, w, p, k, 2, 5);
+                double v = oreValue(p);
+                if (v < 20) {
+                    s.stage = 1;
+                    s.price = 300;
+                    ask(s, p, "Тсс, коллега... Руды у тебя кот наплакал. Тогда купи у меня кирку — алмазная, почти новая, «с объекта». 300₽?", now);
+                } else {
+                    s.price = (int) Math.ceil(v * 1.25 / 10.0) * 10;
+                    ask(s, p, "Здорово, коллега. Руду сдаёшь? Беру всё ценное — без документов и налогов. Банк дал бы "
+                            + Finance.money(v) + ", я даю §e" + Finance.money(s.price) + "§f наличкой. По рукам?", now);
+                }
+                break;
+            }
+            case LOST_CAVER:
+                spawn(s, w, p, k, 2, 5);
+                ask(s, p, "Ох, живой человек! Я третий день тут блуждаю, фонарик сел, бутерброды кончились... "
+                        + "Выведи на поверхность, а? Заплачу, честно!", now);
+                break;
+            case ECO_INSPECTOR:
+                spawn(s, w, p, k, 3, 6);
+                ask(s, p, (underground(p) ? "Росприроднадзор! Незаконная добыча полезных ископаемых без лицензии на недропользование. "
+                        : "Росприроднадзор! Самовольная стоянка и вырубка в природоохранной зоне. ")
+                        + "Штраф по КоАП — 600₽. Оплатите на месте — скидка 50%, 300₽. Оплачиваем?", now);
+                break;
+            case HITCHHIKER:
+                spawn(s, w, p, k, 3, 6);
+                s.spots.add(p.getPosition());
+                ask(s, p, "Привет! Я Гоша, еду автостопом до Владивостока. Можно я с тобой немного пройдусь? "
+                        + "Блоков двести — и я заплачу. Деньгами, не песнями!", now);
+                break;
+            case PEDDLER:
+                spawn(s, w, p, k, 3, 6);
+                s.price = 160;
+                ask(s, p, "Коробейник Ашот! Набор путешественника: 32 факела, 8 хлеба, 4 стейка и кровать — всего 160₽! "
+                        + "Дешевле только даром, дорогой!", now);
+                break;
+            case HOBO:
+                spawn(s, w, p, k, 3, 6);
+                ask(s, p, "Братишка, ты тоже без хаты? Уважаю. Дай двадцатку на хлебушек — Валера добро помнит!", now);
+                break;
+            case TREASURE_HUNTER:
+                spawn(s, w, p, k, 3, 6);
+                s.price = 250;
+                ask(s, p, "Карту клада продам! Старинную, дед мой рисовал. Сам бы выкопал, да спина не та. Всего 250₽. Берёшь?", now);
+                break;
+            case DPS:
+                spawn(s, w, p, k, 3, 6);
+                ask(s, p, (p.isPassenger() ? "Инспектор ДПС, сержант Петренко. Превышаем, гражданин? Сто сорок в зоне шестьдесят! "
+                        : "Инспектор ДПС, сержант Петренко. Пешеход, переходим в неположенном месте! ")
+                        + "Штраф 400₽... Или по-быстрому 150₽ — и разъехались?", now);
+                break;
             default:
                 ACTIVE.remove(p.getUniqueID());
                 return null;
@@ -971,9 +1085,208 @@ public final class Visitors {
                     leave(s, now, 80);
                 }
                 break;
+            case UCHASTKOVY:
+            case DPS: {
+                boolean dps = s.kind == VisitorKind.DPS;
+                int fine = dps ? 400 : 300;
+                if (yes && BankService.charge(p, a, 150)) {
+                    if (R.nextDouble() < 0.2) {
+                        forceCharge(p, a, fine);
+                        say(s, p, "§cДача взятки должностному лицу! " + (dps ? "Видеорегистратор всё записал." : "Это была контрольная закупка.")
+                                + " §fИ штраф " + Finance.money(fine) + " сверху.");
+                    } else {
+                        say(s, p, dps ? "Счастливого пути. Пристегнитесь." : "Свободен. И купи уже себе дом, бродяга. Ипотеку дают!");
+                    }
+                } else if (R.nextBoolean()) {
+                    forceCharge(p, a, fine);
+                    say(s, p, "§cПротокол составлен. Штраф " + Finance.money(fine) + ". Распишитесь вот тут.");
+                } else {
+                    say(s, p, dps ? "Ладно, на первый раз — устное предупреждение. Аккуратнее там."
+                            : "Ладно, вижу — человек честный. Но в следующий раз — в обезьянник до выяснения.");
+                }
+                leave(s, now, 100);
+                break;
+            }
+            case BLACK_DIGGER:
+                if (s.stage == 1) {
+                    if (yes && BankService.charge(p, a, s.price)) {
+                        if (R.nextDouble() < 0.6) {
+                            ItemStack pick = named(Items.DIAMOND_PICKAXE, 1, "§bКирка «с объекта»", "§7Без документов. Не спрашивай.");
+                            pick.setDamage(pick.getMaxDamage() * 2 / 3);
+                            BankService.give(p, pick);
+                            say(s, p, "Держи. Почти новая. Если что — ты меня не видел.");
+                        } else {
+                            BankService.give(p, named(Items.WOODEN_PICKAXE, 1, "§bКирка «алмазная»", "§7Покрашена голубой краской"));
+                            say(s, p, "Держи. Алмазная, мамой клянусь! §8*быстро исчезает в темноте*");
+                        }
+                    } else {
+                        say(s, p, "Ну и копай руками.");
+                    }
+                } else if (yes) {
+                    double v = sellOres(p);
+                    int pay = (int) Math.ceil(v * 1.25 / 10.0) * 10;
+                    if (v <= 0) {
+                        say(s, p, "Э, а руда где? Пока болтали — всё растерял?");
+                    } else if (R.nextDouble() < 0.15) {
+                        BankService.give(p, com.baraaoi.reallife.item.DirtyMoneyItem.of(100, Math.max(1, pay / 100)));
+                        say(s, p, "Держи налик. Свеженький, ещё краской пахнет. §8*это грязные деньги — отмывай*");
+                    } else {
+                        BankService.giveCash(p, pay);
+                        say(s, p, "Держи " + Finance.money(pay) + ". Приятно иметь дело. Будет ещё — я тут, в штреке.");
+                    }
+                } else {
+                    say(s, p, "Тащи в банк, там тебе меньше дадут. И налоговую в придачу.");
+                }
+                leave(s, now, 80);
+                break;
+            case LOST_CAVER:
+                if (yes) {
+                    VisitorEntity m = s.main();
+                    if (m != null) { m.mode = VisitorEntity.FOLLOW; m.followDist = 2.2D; }
+                    say(s, p, "Спасибо! Иду за тобой. Только не беги — я уже ног не чувствую.");
+                    s.stage = 1;
+                    s.nextStep = now + 4800;
+                } else {
+                    say(s, p, "Эх... Ладно. Нацарапаю на стене: «Здесь был Вася». Может, кто прочтёт.");
+                    leave(s, now, 80);
+                }
+                break;
+            case ECO_INSPECTOR:
+                if (yes) {
+                    forceCharge(p, a, 300);
+                    say(s, p, "Квитанция ваша. Берегите природу — мать вашу.");
+                } else if (R.nextBoolean()) {
+                    forceCharge(p, a, 600);
+                    say(s, p, "§cТогда полный штраф: 600₽. Квитанция придёт на Госуслуги.");
+                } else {
+                    say(s, p, "Ладно, на первый раз — предупреждение. Но я вас запомнил. Фото есть.");
+                }
+                leave(s, now, 100);
+                break;
+            case HITCHHIKER:
+                if (yes) {
+                    VisitorEntity m = s.main();
+                    if (m != null) { m.mode = VisitorEntity.FOLLOW; m.followDist = 2.6D; }
+                    say(s, p, "Огонь! Погнали. Я буду рассказывать истории. Ты не против? Я всё равно буду.");
+                    s.stage = 1;
+                    s.nextStep = now + 5000;
+                } else {
+                    say(s, p, "Понял, не дурак. Удачи на трассе!");
+                    leave(s, now, 80);
+                }
+                break;
+            case PEDDLER:
+                if (yes && BankService.charge(p, a, s.price)) {
+                    BankService.give(p, new ItemStack(Items.TORCH, 32));
+                    BankService.give(p, new ItemStack(Items.BREAD, 8));
+                    BankService.give(p, new ItemStack(Items.COOKED_BEEF, 4));
+                    BankService.give(p, new ItemStack(Items.RED_BED, 1));
+                    if (R.nextDouble() < 0.25) BankService.give(p, named(Items.COMPASS, 1, "§fКомпас (китайский)", "§7Показывает куда-то"));
+                    say(s, p, "Носи на здоровье, дорогой! Кровать — ортопедическая. Почти.");
+                } else {
+                    BankService.give(p, new ItemStack(Items.TORCH, 1));
+                    say(s, p, "Ай, обидел! Ладно, держи факел в подарок — вспомнишь Ашота!");
+                }
+                leave(s, now, 80);
+                break;
+            case HOBO:
+                if (yes && BankService.charge(p, a, 20)) {
+                    int r = R.nextInt(3);
+                    if (r == 0) {
+                        say(s, p, "Спасибо, братан. Лайфхак за лайфхак: " + pick(HOBO_TIPS));
+                    } else if (r == 1) {
+                        ItemStack gift = pick(new ItemStack(Items.IRON_INGOT, 3), new ItemStack(Items.GOLDEN_CARROT, 2),
+                                named(Items.EMERALD, 1, "§aНайденный изумруд", "§7Валера нашёл. Валера делится."), new ItemStack(Items.COOKED_COD, 4));
+                        BankService.give(p, gift);
+                        say(s, p, "Держи, нашёл тут недалеко. Мне без надобности, а тебе пригодится.");
+                    } else {
+                        p.addPotionEffect(new EffectInstance(Effects.LUCK, 3600, 0));
+                        say(s, p, "Ты добрый человек. Удача к таким возвращается — сам увидишь.");
+                    }
+                } else {
+                    BankService.give(p, new ItemStack(Items.BREAD, 1));
+                    say(s, p, "Даже двадцатки нет? Да ты беднее меня! На, держи хлеб. Держись, братишка.");
+                }
+                leave(s, now, 100);
+                break;
+            case TREASURE_HUNTER:
+                if (yes && BankService.charge(p, a, s.price)) {
+                    BlockPos at = R.nextDouble() < 0.7 ? buryTreasure(w, p) : null;
+                    BlockPos shown = at != null ? at : p.getPosition().add(R.nextInt(81) - 40, 0, R.nextInt(81) - 40);
+                    BankService.give(p, named(Items.PAPER, 1, "§6Карта клада", "§7X: " + shown.getX() + "  Z: " + shown.getZ(),
+                            "§7Копать на 3–4 блока вглубь", "§8Подпись: Семёныч"));
+                    say(s, p, "Вот. X " + shown.getX() + ", Z " + shown.getZ() + ". Копай метра на три. Если пусто — значит, кто-то успел раньше!");
+                } else {
+                    say(s, p, "Ну и ходи без клада. А там, между прочим, золото!");
+                }
+                leave(s, now, 80);
+                break;
             default:
                 leave(s, now, 60);
         }
+    }
+
+    private static final String[] HOBO_TIPS = {
+            "участок можно купить сразу 3×3 чанка: /reallife land buy. Строй сколько влезет — и никакой инспектор.",
+            "не ходи в МФО. Я вот ходил. Видишь, где я теперь живу?",
+            "банк проверяет кредитный рейтинг. Плати вовремя — и даже ипотеку дадут.",
+            "в вендинге продают справочник «Как выжить». Я по нему и выживаю.",
+            "чёрный копатель под землёй берёт руду дороже банка. Только деньги у него иногда... пахнут.",
+            "шаурмичная окупается быстрее, чем кажется. Главное — склад и поставки.",
+            "налоговая смотрит сундуки дома. Меня вот не смотрит — у меня нет дома. Плюсы!"};
+
+    private static final Set<Item> ORE_ITEMS = new HashSet<>(Arrays.asList(Items.COAL, Items.IRON_ORE, Items.IRON_INGOT, Items.GOLD_ORE,
+            Items.GOLD_INGOT, Items.REDSTONE, Items.LAPIS_LAZULI, Items.DIAMOND, Items.EMERALD, Items.QUARTZ, Items.ANCIENT_DEBRIS,
+            Items.NETHERITE_SCRAP));
+
+    /** Сколько банк дал бы за руду в инвентаре. */
+    static double oreValue(PlayerEntity p) {
+        double v = 0;
+        for (ItemStack st : p.inventory.mainInventory) if (ORE_ITEMS.contains(st.getItem())) v += ItemValues.stackValue(st);
+        return v;
+    }
+
+    /** Забрать руду из инвентаря, вернуть её банковскую стоимость. */
+    static double sellOres(PlayerEntity p) {
+        double v = 0;
+        for (int i = 0; i < p.inventory.mainInventory.size(); i++) {
+            ItemStack st = p.inventory.mainInventory.get(i);
+            if (!ORE_ITEMS.contains(st.getItem())) continue;
+            v += ItemValues.stackValue(st);
+            p.inventory.mainInventory.set(i, ItemStack.EMPTY);
+        }
+        return v;
+    }
+
+    /** Закопать сундук с кладом в 30–60 блоках на ничейной земле. null — не вышло. */
+    static BlockPos buryTreasure(ServerWorld w, PlayerEntity p) {
+        MinecraftServer server = w.getServer();
+        EconomyData data = EconomyData.get(server);
+        for (int i = 0; i < 12; i++) {
+            double ang = R.nextDouble() * Math.PI * 2;
+            int r = 30 + R.nextInt(31);
+            int x = (int) Math.round(p.getPosX() + Math.cos(ang) * r), z = (int) Math.round(p.getPosZ() + Math.sin(ang) * r);
+            int top = w.getHeight(Heightmap.Type.OCEAN_FLOOR, x, z);
+            BlockPos pos = new BlockPos(x, top - 4, z);
+            if (pos.getY() < 6 || data.owner(EconomyData.chunkKey(pos)) != null) continue;
+            if (!w.getFluidState(pos.up(4)).isEmpty()) continue;
+            w.setBlockState(pos, Blocks.CHEST.getDefaultState(), 2);
+            TileEntity te = w.getTileEntity(pos);
+            if (!(te instanceof IInventory)) continue;
+            IInventory inv = (IInventory) te;
+            List<ItemStack> loot = new ArrayList<>();
+            int cash = 200 + R.nextInt(5) * 100;
+            for (int c = 0; c < cash / 100; c++) loot.add(new ItemStack(BankService.noteItem(100)));
+            loot.add(new ItemStack(Items.GOLD_INGOT, 2 + R.nextInt(4)));
+            loot.add(new ItemStack(Items.IRON_INGOT, 3 + R.nextInt(6)));
+            if (R.nextBoolean()) loot.add(new ItemStack(Items.EMERALD, 1 + R.nextInt(3)));
+            if (R.nextDouble() < 0.25) loot.add(new ItemStack(Items.DIAMOND, 1 + R.nextInt(2)));
+            loot.add(named(Items.GOLD_NUGGET, 3, "§6Царский червонец", "§7Найден по карте Семёныча"));
+            for (int k = 0; k < loot.size() && k < inv.getSizeInventory(); k++) inv.setInventorySlotContents(k * 2 % inv.getSizeInventory(), loot.get(k));
+            te.markDirty();
+            return pos;
+        }
+        return null;
     }
 
     private static ItemStack parcel() {
@@ -1159,6 +1472,48 @@ public final class Visitors {
                     }
                 }
                 break;
+            case LOST_CAVER:
+                if (s.stage == 1 && m != null) {
+                    if (m.getDistanceSq(p) < 12 * 12 && w.canSeeSky(m.getPosition().up())) {
+                        int pay = 150 + R.nextInt(6) * 50;
+                        BankService.giveCash(p, pay);
+                        BankService.give(p, named(Items.LEATHER_HELMET, 1, "§eКаска спелеолога", "§7Подарок от Васи. Фонарик сел."));
+                        p.giveExperiencePoints(15);
+                        say(s, p, "§aСОЛНЦЕ!!! §fСпасибо, спаситель! Вот " + Finance.money(pay) + " и моя каска. Больше — ни ногой под землю!");
+                        leave(s, now, 100);
+                    } else if (now >= s.nextStep) {
+                        say(s, p, "Ладно... Пойду по сквозняку. Говорят, он всегда к выходу. Спасибо, что пытался.");
+                        leave(s, now, 80);
+                    } else if ((now - s.start) % 600 == 0) {
+                        say(s, p, pick("Ты уверен, что нам туда?", "Тут уже были... или нет? Всё одинаковое!", "Это вода капает или мне кажется?",
+                                "А тут криперы водятся? Чисто для справки.", "Свет! Это свет? А, это лава. Обходим."));
+                    }
+                }
+                break;
+            case HITCHHIKER:
+                if (s.stage == 1 && m != null && !s.spots.isEmpty()) {
+                    BlockPos from = s.spots.get(0);
+                    double dx = p.getPosX() - from.getX(), dz = p.getPosZ() - from.getZ();
+                    if (dx * dx + dz * dz >= 200 * 200 && m.getDistanceSq(p) < 16 * 16) {
+                        int pay = 200 + R.nextInt(5) * 50;
+                        BankService.giveCash(p, pay);
+                        BankService.give(p, pick(named(Items.PAPER, 1, "§bМагнитик «Владивосток»", "§7Гоша там ещё не был, но магнитик уже купил"),
+                                new ItemStack(Items.COOKED_PORKCHOP, 4), named(Items.MAP, 1, "§bАтлас автодорог 1987 г.")));
+                        say(s, p, "Вот тут я и сойду! Держи " + Finance.money(pay) + " и сувенир. Если будешь во Владике — я там буду. Когда-нибудь.");
+                        leave(s, now, 100);
+                    } else if (now >= s.nextStep) {
+                        BankService.giveCash(p, 50);
+                        say(s, p, "Ты как-то кругами ходишь... Ладно, дальше сам. Держи полтинник за компанию.");
+                        leave(s, now, 80);
+                    } else if ((now - s.start) % 500 == 0) {
+                        say(s, p, pick("А вот однажды меня подвозил дальнобойщик Толя. Три дня ехали, он всё про жену рассказывал...",
+                                "Знаешь, почему я автостопом? Потому что ипотека. Квартиру сдал — и в путь!",
+                                "Ещё пару километров — и будет кафе «У Ашота». Там шаурма... ну, не отравишься.",
+                                "Главное правило трассы: никогда не садись к конокраду.",
+                                "Уже " + (int) Math.sqrt(dx * dx + dz * dz) + " блоков! До Владивостока осталось... много."));
+                    }
+                }
+                break;
             default:
                 if (now - s.start > 1200) leave(s, now, 60);
         }
@@ -1283,11 +1638,25 @@ public final class Visitors {
                     leave(s, now, 60);
                 }
                 return false;
+            case LOST_CAVER:
+            case HITCHHIKER:
+            case HOBO:
+            case PEDDLER:
+            case TREASURE_HUNTER:
+            case BLACK_DIGGER:
+                if (s.leaveAt < 0) {
+                    say(s, p, pick("§cАй! Ты чего?!", "§cПсих! Помогите!", "§cВсё-всё, ухожу!"));
+                    leave(s, now, 60);
+                }
+                return false;
             case TAX:
             case TAX_POLICE:
             case BAILIFF:
             case FIRE_INSPECTOR:
             case FIREMAN:
+            case UCHASTKOVY:
+            case ECO_INSPECTOR:
+            case DPS:
                 if (!s.fined) {
                     s.fined = true;
                     Account a = EconomyData.get(p.getServer()).get(p);
@@ -1312,6 +1681,8 @@ public final class Visitors {
         if (s.asking) answer(p, true);
         else if (s.kind == VisitorKind.GRANDPA) sayAs(e.getKind(), p, "Не перебивай деда!");
         else if (s.kind == VisitorKind.PROMOTER) sayAs(e.getKind(), p, "Вот визитка! Звоните! §8*суёт листовку*");
+        else if (s.kind == VisitorKind.LOST_CAVER) sayAs(e.getKind(), p, "Я тут, я иду! Только к небу, пожалуйста.");
+        else if (s.kind == VisitorKind.HITCHHIKER) sayAs(e.getKind(), p, "Идём-идём! Ещё немного — и я сойду.");
     }
 
     public static void onBreak(ServerPlayerEntity p, BlockPos pos, BlockState state) {

@@ -51,7 +51,7 @@ public class InspectorEntity extends DebtNpcEntity {
             long left = Math.max(0, a.landDeadline - world.getGameTime()) / 20;
             say(p, String.format("§fГражданин, постройка без документов! Снесите её или купите участок за §e%s§f "
                     + "(ПКМ по мне). Иначе через §c%d:%02d§f — снос всего участка до коренной породы.",
-                    Finance.money(Config.LAND_PRICE.get()), left / 60, left % 60));
+                    com.baraaoi.reallife.event.DebtManager.landQuote(p.getServer(), p.getUniqueID(), a.landChunk), left / 60, left % 60));
         }
     }
 }

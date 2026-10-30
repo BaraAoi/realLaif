@@ -35,6 +35,8 @@ public class LegalBusiness {
     /** Кэш последней проверки оборудования (если чанк не загружен). */
     public int cacheSets;
     public int cacheStock;
+    /** Сколько покупателей-NPC дошло до кассы сегодня (косметика, не сохраняется). */
+    public transient int customersToday;
 
     public void setCounter(BlockPos c) {
         counter = c.toImmutable();

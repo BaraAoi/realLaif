@@ -33,7 +33,8 @@ public class SupplyItem extends Item {
     @Override
     public void addInformation(ItemStack stack, @Nullable World world, List<ITextComponent> tooltip, ITooltipFlag flag) {
         tooltip.add(new StringTextComponent("§7Сырьё для: §a" + type.title));
-        tooltip.add(new StringTextComponent("§7Каждый работник расходует §e" + BizType.SUPPLY_PER_WORKER + "§7 шт. в день."));
-        tooltip.add(new StringTextComponent("§8Держи на полках, стеллажах, в холодильниках или сундуках в зоне заведения."));
+        tooltip.add(new StringTextComponent("§7Каждый работник расходует §e" + BizType.SUPPLY_PER_WORKER + "§7 коробку в день."));
+        tooltip.add(new StringTextComponent("§8Не стакается: одна коробка — один слот. Храни на складских стеллажах,"));
+        tooltip.add(new StringTextComponent("§8полках, в холодильниках или сундуках в зоне заведения."));
     }
 }

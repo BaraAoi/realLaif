@@ -917,7 +917,7 @@ public class DebtManager {
         int limit = Config.LAND_THRESHOLD.get();
         if (n == Math.max(1, limit - 10) && !a.landCase) {
             BankService.msg(p, "§3[Администрация] §7Вы строите на " + (owner == null ? "ничейной" : "чужой") + " земле. "
-                    + "Купите участок (§f/reallife land buy§7, " + Finance.money(Config.LAND_PRICE.get()) + "), иначе придёт инспектор.");
+                    + "Купите участок (§f/reallife land buy§7, " + landQuote(server, p.getUniqueID(), chunk) + "), иначе придёт инспектор.");
         }
         if (n >= limit && !a.landCase) openLandCase(server, data, p, a, chunk, owner);
     }
@@ -942,38 +942,63 @@ public class DebtManager {
         BankService.msg(p, "§3§l[Администрация] §r§cСамовольное строительство! §fШтраф " + Finance.money(fine)
                 + (fine - take > 0.01 ? " (не хватило — §c" + Finance.money(fine - take) + "§f записано в долг банку)" : " списан со счёта") + ".");
         BankService.msg(p, "§3[Администрация] §fВ течение §c" + min + " мин.§f снесите постройку или купите участок за §e"
-                + Finance.money(Config.LAND_PRICE.get()) + "§f (ПКМ по инспектору или §7/reallife land buy§f). Иначе — выселение и снос всего чанка.");
+                + landQuote(server, p.getUniqueID(), chunk) + "§f (ПКМ по инспектору или §7/reallife land buy§f). Иначе — выселение и снос всего чанка.");
         if (owner != null && !owner.equals(Buildings.CITY)) {
             BankService.msg(p, "§3[Администрация] §7Участок принадлежит другому игроку — при сносе уберут только ваши блоки.");
         }
         if (p.getServerWorld().getDimensionKey() == World.OVERWORLD) spawn(ModEntities.INSPECTOR.get(), p.getServerWorld(), p, 5, 9);
     }
 
-    /** Купить участок: со счёта, если не хватает — наличными. */
+    /** Свободные чанки участка 3×3 вокруг chunk, которые игрок может купить. */
+    public static java.util.List<Long> plotChunks(EconomyData data, UUID player, long chunk) {
+        net.minecraft.util.math.ChunkPos c = new net.minecraft.util.math.ChunkPos(chunk);
+        java.util.List<Long> l = new ArrayList<>();
+        for (int dx = -1; dx <= 1; dx++)
+            for (int dz = -1; dz <= 1; dz++) {
+                long k = net.minecraft.util.math.ChunkPos.asLong(c.x + dx, c.z + dz);
+                if (data.owner(k) == null) l.add(k);
+            }
+        return l;
+    }
+
+    /** Текст цены участка 3×3 вокруг chunk для игрока. */
+    public static String landQuote(MinecraftServer server, UUID player, long chunk) {
+        int n = plotChunks(EconomyData.get(server), player, chunk).size();
+        return Finance.money(plotPrice(Math.max(1, n))) + " (участок 3×3 чанка, свободных: " + n + ")";
+    }
+
+    /** Цена участка из n свободных чанков. */
+    public static int plotPrice(int n) {
+        return Config.LAND_PRICE.get() * n;
+    }
+
+    /** Купить участок 3×3 чанка вокруг chunk (только свободные чанки): со счёта, если не хватает — наличными. */
     public static boolean buyLand(ServerPlayerEntity p, Account a, long chunk) {
         MinecraftServer server = p.getServer();
         if (server == null) return false;
         EconomyData data = EconomyData.get(server);
         UUID owner = data.owner(chunk);
-        if (p.getUniqueID().equals(owner)) {
-            BankService.msg(p, "§3[Администрация] §fЭтот участок уже ваш.");
+        if (owner != null && !owner.equals(p.getUniqueID())) {
+            BankService.msg(p, "§3[Администрация] §cЦентр участка " + (owner.equals(Buildings.CITY) ? "городской" : "принадлежит другому игроку") + " и не продаётся.");
             return false;
         }
-        if (owner != null) {
-            BankService.msg(p, "§3[Администрация] §cУчасток " + (owner.equals(Buildings.CITY) ? "городской" : "принадлежит другому игроку") + " и не продаётся.");
+        java.util.List<Long> free = plotChunks(data, p.getUniqueID(), chunk);
+        if (free.isEmpty()) {
+            BankService.msg(p, "§3[Администрация] §fВся земля 3×3 вокруг уже оформлена — покупать нечего.");
             return false;
         }
-        int price = Config.LAND_PRICE.get();
+        int price = plotPrice(free.size());
         if (!BankService.charge(p, a, price)) {
-            BankService.msg(p, "§3[Администрация] §cНе хватает денег: участок стоит " + Finance.money(price) + " (счёт + наличные).");
+            BankService.msg(p, "§3[Администрация] §cНе хватает денег: участок (" + free.size() + " чанк(ов) из 3×3) стоит " + Finance.money(price) + " (счёт + наличные).");
             return false;
         }
-        data.claim(p.getUniqueID(), chunk);
-        if (a.landCase && a.landChunk == chunk) a.landCase = false;
+        for (long k : free) data.claim(p.getUniqueID(), k);
+        if (a.landCase && data.owner(a.landChunk) != null && p.getUniqueID().equals(data.owner(a.landChunk))) a.landCase = false;
         data.markDirty();
         net.minecraft.util.math.ChunkPos cp = new net.minecraft.util.math.ChunkPos(chunk);
-        BankService.msg(p, "§3[Администрация] §aУчасток оформлен в собственность §f(чанк " + cp.x + ", " + cp.z
-                + ", блоки X " + cp.getXStart() + ".." + cp.getXEnd() + ", Z " + cp.getZStart() + ".." + cp.getZEnd() + "). Стройте на здоровье!");
+        BankService.msg(p, "§3[Администрация] §aУчасток 3×3 чанка оформлен в собственность §f(" + free.size() + " новых чанк(ов) за "
+                + Finance.money(price) + "; блоки X " + (cp.getXStart() - 16) + ".." + (cp.getXEnd() + 16) + ", Z " + (cp.getZStart() - 16)
+                + ".." + (cp.getZEnd() + 16) + "). Стройте на здоровье!");
         return true;
     }
 

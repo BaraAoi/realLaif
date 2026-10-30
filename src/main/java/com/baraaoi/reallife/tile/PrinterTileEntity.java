@@ -187,8 +187,11 @@ public class PrinterTileEntity extends TileEntity implements ITickableTileEntity
         }
         for (int i = 0; i < size && !stack.isEmpty(); i++) {
             if (inv.getStackInSlot(i).isEmpty() && inv.isItemValidForSlot(i, stack)) {
-                inv.setInventorySlotContents(i, stack.copy());
-                stack.setCount(0);
+                int n = Math.min(stack.getCount(), Math.min(stack.getMaxStackSize(), inv.getInventoryStackLimit()));
+                ItemStack put = stack.copy();
+                put.setCount(n);
+                inv.setInventorySlotContents(i, put);
+                stack.shrink(n);
             }
         }
         return stack.isEmpty();

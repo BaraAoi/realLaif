@@ -26,6 +26,12 @@ public class RealLife {
     public static final String MODID = "reallife";
     public static final org.apache.logging.log4j.Logger LOG = org.apache.logging.log4j.LogManager.getLogger("RealLife");
 
+    /** Версия мода (из mods.toml / gradle.properties: mod_version). */
+    public static String version() {
+        return net.minecraftforge.fml.ModList.get().getModContainerById(MODID)
+                .map(c -> c.getModInfo().getVersion().toString()).orElse("?");
+    }
+
     public RealLife() {
         IEventBus bus = FMLJavaModLoadingContext.get().getModEventBus();
         ModBlocks.BLOCKS.register(bus);

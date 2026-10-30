@@ -212,7 +212,8 @@ public final class LegalBiz {
         int claimed = com.baraaoi.reallife.structure.Buildings.claimArea(data, p.getUniqueID(), pos, pos, true);
         data.markDirty();
         BankService.msg(p, BIZ + "§aОткрыто заведение «" + type.title + "»! §fЭто главная касса. Зона заведения — §e±" + LegalBusiness.R_XZ
-                + "§f блоков вокруг неё. Комплект на 1 работника: §e" + kitText(type) + "§f (≈" + Finance.money(type.kitPrice()) + ").");
+                + "§f блоков вокруг неё. Комплект на 1 работника: §e" + kitText(type) + "§f (≈" + Finance.money(type.kitPrice()) + ")"
+                + ", плюс на всё заведение — §e" + baseText(type) + "§f (склад). Больше стеллажей — больше запас сырья.");
         BankService.msg(p, BIZ + "Купи оборудование в телефоне (§eБизнес → Оборудование§f), сырьё — в §eОпт§f; потом ПКМ по кассе → «Нанять».");
         if (claimed > 0) BankService.msg(p, "§3[Администрация] §fУчасток под кассой оформлен на вас.");
         return true;
@@ -291,12 +292,30 @@ public final class LegalBiz {
         return sb.toString();
     }
 
+    /** Оборудование, нужное один раз на всё заведение (склад). */
+    public static String baseText(BizType t) {
+        StringBuilder sb = new StringBuilder();
+        for (BizEquip e : BizEquip.values()) {
+            int n = t.baseNeed(e);
+            if (n <= 0) continue;
+            if (sb.length() > 0) sb.append(", ");
+            sb.append(e.title).append(n > 1 ? " ×" + n : "");
+        }
+        return sb.toString();
+    }
+
     // ------------------------------------------------------------------ осмотр зоны
 
     /** Итог осмотра зоны заведения. */
     public static final class Scan {
         public final int[] count = new int[BizEquip.values().length];
         public final List<IInventory> stores = new ArrayList<>();
+        /** Витринные хранилища (полки, холодильники, витрины, сейфы) — заполняются первыми, расходуются последними. */
+        public final List<IInventory> visible = new ArrayList<>();
+        /** Склад: стеллажи, сундуки, бочки — запас; работники берут отсюда в первую очередь. */
+        public final List<IInventory> back = new ArrayList<>();
+        /** Есть ли склад (складской стеллаж). Без него заведение не работает. */
+        public boolean warehouse;
         public final List<BlockPos> spots = new ArrayList<>();
         public int stock;
         public int sets;
@@ -311,6 +330,7 @@ public final class LegalBiz {
 
     public static Scan scan(World w, LegalBusiness b) {
         Scan s = new Scan();
+        s.warehouse = true;
         s.counterOk = w.getBlockState(b.counter).getBlock() == ModBlocks.BIZ_COUNTER.get();
         BlockPos.Mutable m = new BlockPos.Mutable();
         for (int x = b.min.getX(); x <= b.max.getX(); x++)
@@ -330,6 +350,8 @@ public final class LegalBiz {
                         if (te instanceof IInventory && isStore(block, te)) {
                             IInventory inv = (IInventory) te;
                             s.stores.add(inv);
+                            boolean shown = (te instanceof ShelfTileEntity && block != ModBlocks.STORAGE_RACK.get()) || te instanceof FridgeTileEntity;
+                            (shown ? s.visible : s.back).add(inv);
                             for (int i = 0; i < inv.getSizeInventory(); i++) {
                                 ItemStack it = inv.getStackInSlot(i);
                                 if (SupplyItem.typeOf(it) == b.type) s.stock += it.getCount();
@@ -342,7 +364,8 @@ public final class LegalBiz {
             int need = b.type.need(e);
             if (need > 0) sets = Math.min(sets, s.count[e.ordinal()] / need);
         }
-        if (!s.counterOk) sets = 0;
+        for (BizEquip e : BizEquip.values()) if (s.count[e.ordinal()] < b.type.baseNeed(e)) s.warehouse = false;
+        if (!s.counterOk || !s.warehouse) sets = 0;
         s.sets = sets == Integer.MAX_VALUE ? 0 : sets;
         s.allowed = Math.min(b.type.maxWorkers, s.sets);
         b.cacheSets = s.sets;
@@ -353,7 +376,9 @@ public final class LegalBiz {
     /** Списать до amount единиц сырья из хранилищ зоны. Возвращает, сколько списано. */
     static int consume(Scan s, BizType type, int amount) {
         int left = amount;
-        for (IInventory inv : s.stores) {
+        List<IInventory> order = new ArrayList<>(s.back); // сначала со склада — полки остаются полными, пока есть запас
+        order.addAll(s.visible);
+        for (IInventory inv : order) {
             for (int i = 0; i < inv.getSizeInventory() && left > 0; i++) {
                 ItemStack it = inv.getStackInSlot(i);
                 if (SupplyItem.typeOf(it) != type) continue;
@@ -373,10 +398,9 @@ public final class LegalBiz {
     public static ItemStack deliver(World w, LegalBusiness b, ItemStack stack) {
         Scan s = scan(w, b);
         ItemStack rest = stack.copy();
-        // сначала — полки и холодильники (их видно), потом сундуки
-        List<IInventory> order = new ArrayList<>();
-        for (IInventory inv : s.stores) if (inv instanceof ShelfTileEntity || inv instanceof FridgeTileEntity) order.add(inv);
-        for (IInventory inv : s.stores) if (!order.contains(inv)) order.add(inv);
+        // сначала — полки и холодильники (их видно), потом склад: стеллажи и сундуки
+        List<IInventory> order = new ArrayList<>(s.visible);
+        order.addAll(s.back);
         // раскладываем порциями по 8, по кругу — чтобы заполнялись все полки, а не одна
         boolean progress = true;
         while (!rest.isEmpty() && progress) {
@@ -444,7 +468,8 @@ public final class LegalBiz {
             if (b.workers.size() >= b.type.maxWorkers) {
                 BankService.msg(p, BIZ + "§eБольше " + b.type.maxWorkers + " работников в «" + b.type.title + "» не нужно.");
             } else {
-                BankService.msg(p, BIZ + "§cНе хватает оборудования на ещё одного работника. Нужен ещё комплект: §e" + kitText(b.type)
+                if (!s.warehouse) BankService.msg(p, BIZ + "§cНет склада: поставь в зоне §e" + baseText(b.type) + "§c — один на всё заведение.");
+                else BankService.msg(p, BIZ + "§cНе хватает оборудования на ещё одного работника. Нужен ещё комплект: §e" + kitText(b.type)
                         + "§c (в зоне ±" + LegalBusiness.R_XZ + " блоков от главной кассы).");
             }
             return;
@@ -459,7 +484,7 @@ public final class LegalBiz {
         if (spawnWorker(w, b, at) == null) { a.balance += cost; return; }
         EconomyData.get(p.getServer()).markDirty();
         BankService.msg(p, BIZ + "§aНанят работник (" + b.workers.size() + "/" + s.allowed + "). §fЗарплата " + Finance.money(b.type.wage())
-                + "/день, расход сырья " + BizType.SUPPLY_PER_WORKER + " шт./день.");
+                + "/день, расход сырья " + BizType.SUPPLY_PER_WORKER + " коробка/день.");
     }
 
     static void fire(ServerPlayerEntity p, LegalBusiness b) {
@@ -533,6 +558,7 @@ public final class LegalBiz {
 
     static String closedReason(LegalBusiness b, @Nullable Scan s, int sets, int stock) {
         if (s != null && !s.counterOk) return "нет главной кассы";
+        if (s != null && !s.warehouse) return "нет склада (" + baseText(b.type) + ")";
         if (sets <= 0) return "не хватает оборудования";
         if (b.workers.isEmpty()) return "нет работников";
         if (stock <= 0) return "нет сырья";
@@ -566,12 +592,13 @@ public final class LegalBiz {
         if (s != null) {
             ListNBT eq = new ListNBT();
             for (BizEquip e : BizEquip.values()) {
-                int need = b.type.need(e);
-                if (need <= 0) continue;
+                int need = b.type.need(e), base = b.type.baseNeed(e);
+                if (need <= 0 && base <= 0) continue;
                 CompoundNBT q = new CompoundNBT();
                 q.putString("n", e.title);
                 q.putInt("h", s.count[e.ordinal()]);
                 q.putInt("q", need);
+                q.putInt("b", base);
                 eq.add(q);
             }
             t.put("equip", eq);
@@ -648,6 +675,81 @@ public final class LegalBiz {
         }
     }
 
+    // ------------------------------------------------------------------ покупатели (v1.7, косметика)
+
+    /** Открыто ли заведение по кэшу последнего осмотра. */
+    public static boolean isOpen(LegalBusiness b) {
+        return !b.workers.isEmpty() && b.cacheSets > 0 && b.cacheStock > 0;
+    }
+
+    /** Раз в 2 секунды: к открытым заведениям рядом с игроками заходят покупатели. */
+    public static void tickCustomers(MinecraftServer server) {
+        ServerWorld ow = EconomyData.overworld(server);
+        if (ow == null || ow.getGameTime() % 40 != 7) return;
+        EconomyData data = EconomyData.get(server);
+        boolean night = ow.getDayTime() % 24000L >= 13000L && ow.getDayTime() % 24000L <= 23000L;
+        for (LegalBusiness b : data.businesses) {
+            if (b.owner == null || !isOpen(b) || !ow.isBlockLoaded(b.counter)) continue;
+            BlockPos c = b.counter;
+            if (ow.getClosestPlayer(c.getX() + 0.5, c.getY(), c.getZ() + 0.5, 64.0D, false) == null) continue;
+            int working = Math.min(b.workers.size(), Math.max(1, b.cacheSets));
+            double chance = 0.07 * working * (night ? 0.3 : 1.0);
+            if (R.nextDouble() >= chance) continue;
+            int cap = Math.min(6, 1 + working);
+            int have = ow.getEntitiesWithinAABB(com.baraaoi.reallife.entity.CustomerEntity.class, new AxisAlignedBB(c).grow(32.0D),
+                    e -> e.bizId == b.id).size();
+            if (have >= cap) continue;
+            spawnCustomer(ow, b);
+        }
+    }
+
+    /** Покупатель приходит со стороны (10–18 блоков от кассы), обходит пару единиц оборудования и идёт к кассе. */
+    @Nullable
+    public static com.baraaoi.reallife.entity.CustomerEntity spawnCustomer(ServerWorld w, LegalBusiness b) {
+        com.baraaoi.reallife.entity.CustomerEntity e = ModEntities.CUSTOMER.get().create(w);
+        if (e == null) return null;
+        BlockPos at = customerSpawn(w, b);
+        if (at == null) return null;
+        Scan s = scan(w, b);
+        List<BlockPos> equip = new ArrayList<>(s.spots);
+        equip.remove(b.counter);
+        java.util.Collections.shuffle(equip, R);
+        e.setLocationAndAngles(at.getX() + 0.5, at.getY(), at.getZ() + 0.5, R.nextFloat() * 360F, 0F);
+        e.setVariant(R.nextInt(com.baraaoi.reallife.entity.CustomerEntity.VARIANTS));
+        e.bizId = b.id;
+        e.counter = b.counter;
+        e.life = 2400 + R.nextInt(1200);
+        for (int i = 0; i < equip.size() && i < 1 + R.nextInt(2); i++) e.targets.add(equip.get(i));
+        e.targets.add(b.counter);
+        w.addEntity(e);
+        return e;
+    }
+
+    /** Точка появления покупателя: снаружи зоны, на уровне кассы ±6, где можно стоять. */
+    @Nullable
+    static BlockPos customerSpawn(ServerWorld w, LegalBusiness b) {
+        BlockPos c = b.counter;
+        for (int i = 0; i < 30; i++) {
+            double ang = R.nextDouble() * Math.PI * 2;
+            int r = 10 + R.nextInt(9);
+            int x = c.getX() + (int) Math.round(Math.cos(ang) * r), z = c.getZ() + (int) Math.round(Math.sin(ang) * r);
+            if (!w.isBlockLoaded(new BlockPos(x, c.getY(), z))) continue;
+            for (int dy = 0; dy <= 6; dy++) {
+                for (int sign = -1; sign <= 1; sign += 2) {
+                    BlockPos p = new BlockPos(x, c.getY() + dy * sign, z);
+                    if (w.isAirBlock(p) && w.isAirBlock(p.up()) && w.getBlockState(p.down()).getMaterial().isSolid()
+                            && !w.getBlockState(p.down()).getMaterial().isLiquid()) return p;
+                }
+            }
+        }
+        // запасной вариант — прямо в зоне, рядом с кассой
+        for (int i = 0; i < 30; i++) {
+            BlockPos p = c.add(R.nextInt(9) - 4, R.nextInt(3) - 1, R.nextInt(9) - 4);
+            if (w.isAirBlock(p) && w.isAirBlock(p.up()) && w.getBlockState(p.down()).getMaterial().isSolid()) return p;
+        }
+        return null;
+    }
+
     // ------------------------------------------------------------------ день
 
     /** Выручка дня до вычета зарплат. */
@@ -680,6 +782,8 @@ public final class LegalBiz {
             else if (used == 0) note = "простой: нет сырья";
             else note = r.note + (used < need ? ", сырья хватило на " + Math.round(fraction * 100) + "%" : "");
             a.balance += profit;
+            int customers = b.customersToday;
+            b.customersToday = 0;
             b.lastProfit = profit;
             b.lastNote = note;
             b.totalProfit += profit;
@@ -688,7 +792,8 @@ public final class LegalBiz {
                 String color = working == 0 || used == 0 ? "§c" : r.kind == BAD ? "§c" : r.kind == NORMAL ? "§f" : r.kind == GOOD ? "§a" : "§6§l";
                 BankService.msg(p, BIZ + "СМС «" + b.type.title + "»: " + color + note + "§f. Работает " + working + "/" + hired
                         + ", сырья ушло " + used + "/" + need + ". Выручка §a" + Finance.money(revenue) + "§f, зарплаты §c−"
-                        + Finance.money(wages) + "§f → итог " + (profit >= 0 ? "§a+" : "§c") + Finance.money(profit) + "§f на счёт.");
+                        + Finance.money(wages) + "§f → итог " + (profit >= 0 ? "§a+" : "§c") + Finance.money(profit) + "§f на счёт."
+                        + (customers > 0 ? " §7Покупателей заходило при вас: " + customers + "." : ""));
                 if (working > 0 && s.stock < need) BankService.msg(p, BIZ + "§eСырья на завтра мало (" + s.stock + " из " + need
                         + "). Телефон → Опт → «" + b.type.supplyName + "».");
             }

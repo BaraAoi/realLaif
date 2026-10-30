@@ -805,4 +805,43 @@ crate((60, 30, 30), (230, 190, 50), 'supply_pawnshop')
 crate((200, 40, 30), (240, 200, 40), 'supply_gas_station', 'barrel')
 crate((235, 235, 240), (40, 40, 45), 'supply_electronics')
 
+# ---------------- v1.7: гости для кочевников и покупатели
+def vest(c):
+    def f(im):
+        rect(im, 20, 20, 27, 31, c); rect(im, 22, 20, 25, 31, (240, 240, 240))
+    return f
+
+
+def backpack(c):
+    def f(im):
+        rect(im, 32, 20, 39, 31, c); rect(im, 28, 20, 31, 31, c)
+    return f
+
+
+def headlamp(im):
+    rect(im, 8, 8, 15, 8, (60, 60, 60)); rect(im, 11, 8, 12, 9, (255, 250, 180))
+
+
+def dirt(im):
+    for p in [(21, 24), (25, 27), (23, 30), (44, 26), (9, 12), (14, 13), (10, 20), (5, 22)]: im.putpixel(p, (90, 70, 45, 255))
+
+
+vis('uchastkovy', SKIN, (60, 45, 30), (60, 70, 90), (45, 50, 65), (15, 15, 15), hat=(40, 50, 80), extra=combo(badge((230, 190, 50)), mustache))
+vis('black_digger', (200, 160, 130), (40, 30, 20), (60, 55, 45), (45, 40, 35), (30, 25, 20), hat=(50, 50, 50), extra=combo(headlamp, stubble, dirt))
+vis('lost_caver', SKIN, (150, 100, 50), (230, 120, 30), (80, 80, 90), (50, 35, 25), hat=(240, 200, 30), extra=combo(headlamp, dirt, stubble))
+vis('eco_inspector', SKIN, (110, 80, 50), (50, 110, 60), (40, 70, 45), (25, 20, 15), hat=(40, 90, 50), extra=combo(badge((230, 230, 230)), glasses))
+vis('hitchhiker', (225, 180, 150), (180, 120, 60), (220, 80, 60), (60, 80, 140), (90, 60, 40), hat=(220, 220, 60), extra=backpack((60, 120, 60)))
+vis('peddler', (200, 150, 110), (20, 15, 10), (140, 90, 40), (50, 45, 40), (40, 30, 20), hat=(60, 40, 30), extra=combo(mustache, apron((200, 160, 60))))
+vis('hobo', (190, 150, 120), (90, 80, 70), (90, 85, 70), (60, 55, 50), (40, 35, 30), hat=(70, 60, 50), extra=combo(stubble, dirt), beard=(110, 100, 90))
+vis('treasure_hunter', (215, 175, 145), (180, 180, 180), (110, 90, 50), (70, 60, 40), (50, 35, 20), hat=(120, 90, 50), extra=combo(white_beard, backpack((90, 70, 40))))
+vis('dps', SKIN, (60, 45, 30), (40, 60, 110), (30, 40, 80), (15, 15, 15), hat=(30, 45, 90), extra=combo(vest((210, 230, 40)), badge((230, 190, 50))))
+
+os.makedirs(f'{R}/entity/customer', exist_ok=True)
+skin('customer/c0', SKIN, (90, 60, 35), (70, 120, 190), (50, 50, 60), (30, 30, 30))
+skin('customer/c1', (230, 190, 165), (200, 160, 60), (200, 70, 90), (40, 40, 60), (60, 30, 30), extra=scarf((200, 70, 90)))
+skin('customer/c2', (200, 150, 110), (30, 25, 20), (60, 60, 65), (40, 50, 90), (20, 20, 20), extra=stubble)
+skin('customer/c3', (225, 180, 150), (190, 190, 190), (120, 90, 70), (70, 60, 50), (40, 30, 20), hat=(90, 90, 95), extra=gray_hair)
+skin('customer/c4', SKIN, (120, 60, 30), (90, 160, 90), (60, 60, 70), (240, 240, 240), extra=backpack((40, 40, 120)))
+skin('customer/c5', (210, 170, 140), (60, 40, 25), (240, 200, 60), (40, 40, 45), (30, 25, 20), extra=glasses)
+
 print('ok')

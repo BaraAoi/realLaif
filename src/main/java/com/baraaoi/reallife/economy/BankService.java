@@ -72,6 +72,8 @@ public class BankService {
     }
 
     public static void give(PlayerEntity p, ItemStack stack) {
+        int max = Math.max(1, stack.getMaxStackSize());
+        while (stack.getCount() > max) give(p, stack.split(max)); // нестакающиеся (коробки сырья) — по одной
         if (!p.inventory.addItemStackToInventory(stack) && !stack.isEmpty()) {
             p.dropItem(stack, false);
         }

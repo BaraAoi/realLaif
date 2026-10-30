@@ -174,7 +174,7 @@ public class PhoneScreen extends Screen {
         long time = this.minecraft != null && this.minecraft.world != null ? this.minecraft.world.getDayTime() % 24000L : 0;
         int hh = (int) ((time / 1000 + 6) % 24), mm = (int) (time % 1000 * 60 / 1000);
         small(ms, String.format(Locale.ROOT, "§f%02d:%02d   §6Реал Банк §7онлайн", hh, mm), 6, 4);
-        small(ms, "§a▮▮▮▮ §f100%", W - 40, 4);
+        small(ms, "§8v" + com.baraaoi.reallife.RealLife.version() + "  §a▮▮▮▮ §f100%", W - 72, 4);
         fill(ms, left + 4, top + 38, left + W - 4, top + 39, 0xFF335577);
         switch (tab) {
             case 0: drawAccount(ms, t); break;
@@ -288,9 +288,9 @@ public class PhoneScreen extends Screen {
         small(ms, "Лицензия: §e" + Finance.money(bt.price) + "§f  выручка §a" + Finance.money(bt.base) + "§f/день на работника, до §e"
                 + bt.maxWorkers + "§f раб.", 8, 146);
         small(ms, "Комплект на 1 работника (≈" + Finance.money(bt.kitPrice()) + "):", 8, 155);
-        small(ms, "§e" + com.baraaoi.reallife.economy.LegalBiz.kitText(bt), 8, 164);
+        small(ms, "§e" + com.baraaoi.reallife.economy.LegalBiz.kitText(bt) + " §f+ склад: §e" + com.baraaoi.reallife.economy.LegalBiz.baseText(bt), 8, 164);
         small(ms, "Сырьё: " + bt.supplyName + " §a" + Finance.money(bt.supplyPrice()) + "§f/шт, " + BizType.SUPPLY_PER_WORKER
-                + "/день; зарплата " + Finance.money(bt.wage()), 8, 173);
+                + " кор./день на раб.; зарплата " + Finance.money(bt.wage()), 8, 173);
     }
 
     private void drawEquip(MatrixStack ms, CompoundNBT t) {
@@ -302,6 +302,10 @@ public class PhoneScreen extends Screen {
             int y = 64 + i * 20;
             small(ms, "§f" + e.title + "  §a" + Finance.money(e.price), 8, y + 1);
             StringBuilder sb = new StringBuilder();
+            if (e == BizEquip.RACK) {
+                small(ms, "§8склад: 1 на любое заведение, больше — запас сырья", 8, y + 9);
+                continue;
+            }
             for (BizType bt : BizType.values()) {
                 int n = bt.need(e);
                 if (n <= 0) continue;

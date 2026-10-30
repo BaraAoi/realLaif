@@ -103,7 +103,7 @@ public class ModItems {
 
     static {
         for (com.baraaoi.reallife.economy.BizType t : com.baraaoi.reallife.economy.BizType.values()) {
-            SUPPLY.put(t, ITEMS.register("supply_" + t.id(), () -> new com.baraaoi.reallife.item.SupplyItem(t, props())));
+            SUPPLY.put(t, ITEMS.register("supply_" + t.id(), () -> new com.baraaoi.reallife.item.SupplyItem(t, props().maxStackSize(1))));
         }
     }
     public static final RegistryObject<Item> CRYPTO_RIG = ITEMS.register("crypto_rig",

@@ -63,6 +63,11 @@ public class ModEntities {
             () -> EntityType.Builder.<com.baraaoi.reallife.entity.SnoopEntity>create(com.baraaoi.reallife.entity.SnoopEntity::new, EntityClassification.MISC)
                     .size(0.6F, 1.8F).build(RealLife.MODID + ":snoop"));
 
+    /** Покупатель заведения (v1.7) — косметика, «живость». */
+    public static final RegistryObject<EntityType<com.baraaoi.reallife.entity.CustomerEntity>> CUSTOMER = ENTITIES.register("customer",
+            () -> EntityType.Builder.<com.baraaoi.reallife.entity.CustomerEntity>create(com.baraaoi.reallife.entity.CustomerEntity::new, EntityClassification.MISC)
+                    .size(0.6F, 1.8F).build(RealLife.MODID + ":customer"));
+
     private static AttributeModifierMap attrs(double health, double speed, double damage) {
         return MobEntity.func_233666_p_()
                 .createMutableAttribute(Attributes.MAX_HEALTH, health)
@@ -82,6 +87,7 @@ public class ModEntities {
         GlobalEntityTypeAttributes.put(AMBAL.get(), attrs(80, 0.38, 6));
         GlobalEntityTypeAttributes.put(VISITOR.get(), attrs(20, 0.32, 2));
         GlobalEntityTypeAttributes.put(SNOOP.get(), attrs(16, 0.3, 1));
+        GlobalEntityTypeAttributes.put(CUSTOMER.get(), attrs(16, 0.28, 1));
         GlobalEntityTypeAttributes.put(WORKER.get(), MobEntity.func_233666_p_()
                 .createMutableAttribute(Attributes.MAX_HEALTH, 20)
                 .createMutableAttribute(Attributes.MOVEMENT_SPEED, 0.0D)

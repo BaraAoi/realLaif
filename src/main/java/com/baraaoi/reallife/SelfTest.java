@@ -415,9 +415,11 @@ public class SelfTest {
         BlockPos[] shelves = {lot.add(-3, 0, 3), lot.add(-2, 0, 3), lot.add(-1, 0, 3)};
         for (BlockPos sp : shelves) ow.setBlockState(sp, ModBlocks.SHOP_SHELF.get().getDefaultState(), 3);
         ow.setBlockState(lot.add(1, 0, 3), ModBlocks.FRIDGE.get().getDefaultState(), 3);
+        com.baraaoi.reallife.economy.LegalBiz.Scan scNoRack = com.baraaoi.reallife.economy.LegalBiz.scan(ow, shop);
+        check(!scNoRack.warehouse && scNoRack.sets == 0, "v1.7: without a storage rack (warehouse) the business can't work");
         ow.setBlockState(lot.add(2, 0, 3), ModBlocks.STORAGE_RACK.get().getDefaultState(), 3);
         com.baraaoi.reallife.economy.LegalBiz.Scan sc1 = com.baraaoi.reallife.economy.LegalBiz.scan(ow, shop);
-        check(sc1.sets == 1 && sc1.allowed == 1 && sc1.stores.size() == 5, "one full kit = one worker (sets " + sc1.sets + ", stores " + sc1.stores.size() + ")");
+        check(sc1.warehouse && sc1.sets == 1 && sc1.allowed == 1 && sc1.stores.size() == 5 && sc1.back.size() == 1 && sc1.visible.size() == 4, "one full kit = one worker (sets " + sc1.sets + ", stores " + sc1.stores.size() + ")");
         BlockPos wspot = com.baraaoi.reallife.economy.LegalBiz.workerSpot(ow, shop, sc1);
         check(wspot != null && shop.contains(wspot, 0), "worker spot in the zone: " + wspot);
         com.baraaoi.reallife.entity.WorkerEntity worker = wspot == null ? null : com.baraaoi.reallife.economy.LegalBiz.spawnWorker(ow, shop, wspot);
@@ -438,6 +440,48 @@ public class SelfTest {
         check(shop.days == 1 && sc3.stock == 64 - com.baraaoi.reallife.economy.BizType.SUPPLY_PER_WORKER && bo.balance != bal0,
                 "working business consumes supplies and earns (" + Finance.money(shop.lastProfit) + ", " + shop.lastNote + ")");
         check(grill.days == 0 && grill.lastProfit == 0, "business without equipment/workers is closed: " + grill.lastNote);
+        // v1.7: коробки не стакаются, склад принимает излишки, одного стеллажа хватает на любое число работников
+        check(new ItemStack(supply).getMaxStackSize() == 1, "supply boxes don't stack");
+        ItemStack rest2 = com.baraaoi.reallife.economy.LegalBiz.deliver(ow, shop, new ItemStack(supply, 60));
+        com.baraaoi.reallife.economy.LegalBiz.Scan sc4 = com.baraaoi.reallife.economy.LegalBiz.scan(ow, shop);
+        net.minecraft.inventory.IInventory rackInv = sc4.back.get(0);
+        int rackUsed = 0;
+        boolean single = true;
+        for (int i = 0; i < rackInv.getSizeInventory(); i++) {
+            ItemStack it = rackInv.getStackInSlot(i);
+            if (it.getCount() > 1) single = false;
+            if (!it.isEmpty()) rackUsed++;
+        }
+        check(single, "one box per slot");
+        check(rest2.isEmpty() && sc4.stock == 63 + 60 && rackUsed > 0, "overflow goes to the warehouse rack: " + rackUsed + ", stock " + sc4.stock);
+        check(com.baraaoi.reallife.tile.ShelfTileEntity.fillFor(0) == 0 && com.baraaoi.reallife.tile.ShelfTileEntity.fillFor(8) == 1
+                && com.baraaoi.reallife.tile.ShelfTileEntity.fillFor(9) == 2 && com.baraaoi.reallife.tile.ShelfTileEntity.fillFor(18) == 3, "shelf fill by slots");
+        for (com.baraaoi.reallife.economy.BizType bt : com.baraaoi.reallife.economy.BizType.values()) {
+            check(bt.need(com.baraaoi.reallife.economy.BizEquip.RACK) == 0 && bt.total(com.baraaoi.reallife.economy.BizEquip.RACK, bt.maxWorkers) == 1,
+                    "one rack is enough for " + bt.id());
+        }
+        // v1.7: покупатели
+        com.baraaoi.reallife.entity.CustomerEntity cust = com.baraaoi.reallife.economy.LegalBiz.spawnCustomer(ow, shop);
+        check(cust != null && cust.bizId == shop.id && !cust.targets.isEmpty() && shop.counter.equals(cust.targets.get(cust.targets.size() - 1)),
+                "customer spawned and heads to the counter");
+        if (cust != null) cust.remove();
+        check(com.baraaoi.reallife.economy.LegalBiz.isOpen(shop), "shop with worker, kit and stock is open for customers");
+        for (int i = 0; i < com.baraaoi.reallife.entity.CustomerEntity.VARIANTS; i++) {
+            java.nio.file.Path ct = net.minecraftforge.fml.ModList.get().getModFileById(RealLife.MODID).getFile()
+                    .findResource("assets/reallife/textures/entity/customer/c" + i + ".png");
+            check(java.nio.file.Files.exists(ct), "customer texture c" + i);
+        }
+        // v1.7: участок 3x3
+        long landC = net.minecraft.util.math.ChunkPos.asLong(5000, 5000);
+        UUID landA = UUID.randomUUID(), landB = UUID.randomUUID();
+        check(com.baraaoi.reallife.event.DebtManager.plotChunks(data, landA, landC).size() == 9, "free 3x3 plot = 9 chunks");
+        data.claim(landB, net.minecraft.util.math.ChunkPos.asLong(5001, 5001));
+        java.util.List<Long> plot = com.baraaoi.reallife.event.DebtManager.plotChunks(data, landA, landC);
+        check(plot.size() == 8 && !plot.contains(net.minecraft.util.math.ChunkPos.asLong(5001, 5001)), "someone else's chunk is skipped");
+        check(com.baraaoi.reallife.event.DebtManager.plotPrice(8) == 8 * Config.LAND_PRICE.get(), "plot price = chunk price x free chunks");
+        // v1.7: версия и новые гости
+        check(!"?".equals(RealLife.version()) && !RealLife.version().startsWith("1.0"), "mod version " + RealLife.version());
+        check(Visitors.eventKinds().contains(VisitorKind.HOBO) && Visitors.eventKinds().contains(VisitorKind.BLACK_DIGGER), "nomad visitors present");
         check(com.baraaoi.reallife.economy.LegalBiz.revenue(com.baraaoi.reallife.economy.BizType.MINIMARKET, 2, 1.0, 1.0) == 1900
                 && com.baraaoi.reallife.economy.LegalBiz.revenue(com.baraaoi.reallife.economy.BizType.MINIMARKET, 1, 1.0, 0.5) == 500, "revenue formula");
         for (com.baraaoi.reallife.economy.BizType bt : com.baraaoi.reallife.economy.BizType.values()) {

@@ -103,7 +103,7 @@ public class ModCommands {
         Account a = acc(p);
         long today = BankService.today(p.getServer());
         int score = CreditRating.score(a, today);
-        BankService.msg(p, "§6===== Реал Банк: " + p.getGameProfile().getName() + " =====");
+        BankService.msg(p, "§6===== Реал Банк: " + p.getGameProfile().getName() + " ===== §8(Real Life v" + com.baraaoi.reallife.RealLife.version() + ")");
         BankService.msg(p, "Баланс: §e" + Finance.money(a.balance) + "§f, рейтинг: §b" + score + " " + CreditRating.category(score));
         BankService.msg(p, "Доступный кредит: §a" + Finance.money(CreditRating.maxLoan(a, today)) + "§f под " + Finance.percent(CreditRating.loanRate(score)) + "/день");
         if (a.hasLoan()) BankService.msg(p, "Кредит: " + Finance.money(a.loanPrincipal) + ", платёж " + Finance.money(a.loanPayment()) + "/день, осталось " + a.loanDays + " дн.");
@@ -137,8 +137,12 @@ public class ModCommands {
         java.util.UUID owner = data.owner(chunk);
         net.minecraft.util.math.ChunkPos cp = new net.minecraft.util.math.ChunkPos(chunk);
         String who;
-        if (owner == null) who = "§7ничей (можно купить: §f/reallife land buy§7, " + Finance.money(com.baraaoi.reallife.Config.LAND_PRICE.get()) + ")";
-        else if (owner.equals(p.getUniqueID())) who = "§aваш";
+        if (owner == null) who = "§7ничей (купить участок 3×3 чанка вокруг: §f/reallife land buy§7, "
+                + Finance.money(DebtManager.plotPrice(DebtManager.plotChunks(data, p.getUniqueID(), chunk).size())) + ")";
+        else if (owner.equals(p.getUniqueID())) {
+            int free = DebtManager.plotChunks(data, p.getUniqueID(), chunk).size();
+            who = "§aваш" + (free > 0 ? " §7(докупить соседние " + free + " чанк(ов) 3×3: §f/reallife land buy§7, " + Finance.money(DebtManager.plotPrice(free)) + ")" : "");
+        }
         else if (owner.equals(Buildings.CITY)) who = "§6городской (банк/МФО)";
         else {
             Account o = data.get(owner);

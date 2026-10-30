@@ -33,6 +33,7 @@ public class ForgeEvents {
             DebtManager.serverTick(server);
             Visitors.tick(server);
             Raids.tick(server);
+            com.baraaoi.reallife.economy.LegalBiz.tickCustomers(server);
             com.baraaoi.reallife.economy.Crypto.tick(server);
         }
     }
@@ -166,6 +167,11 @@ public class ForgeEvents {
         Entity t = event.getTarget();
         if (t instanceof com.baraaoi.reallife.entity.VisitorEntity && event.getHand() == net.minecraft.util.Hand.MAIN_HAND) {
             Visitors.onInteract((ServerPlayerEntity) event.getPlayer(), (com.baraaoi.reallife.entity.VisitorEntity) t);
+            event.setCanceled(true);
+            return;
+        }
+        if (t instanceof com.baraaoi.reallife.entity.CustomerEntity && event.getHand() == net.minecraft.util.Hand.MAIN_HAND) {
+            ((com.baraaoi.reallife.entity.CustomerEntity) t).talkTo(event.getPlayer());
             event.setCanceled(true);
             return;
         }

@@ -49,7 +49,8 @@ public final class Wholesale {
     }
 
     private static List<Lot> lots;
-    public static final int SUPPLY_LOT = 16;
+    /** Коробок сырья в одной оптовой партии (коробки не стакаются). */
+    public static final int SUPPLY_LOT = 8;
 
     private static int roundUp10(double v) {
         return (int) (Math.ceil(v / 10.0) * 10);

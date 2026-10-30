@@ -66,12 +66,12 @@ public class BizScreen extends ContainerScreen<BizContainer> {
         int target = Math.min(type.maxWorkers, sets + 1);
         for (int i = 0; i < eq.size(); i++) {
             CompoundNBT q = eq.getCompound(i);
-            int have = q.getInt("h"), need = q.getInt("q") * target;
+            int have = q.getInt("h"), need = q.getInt("b") + q.getInt("q") * target;
             GuiUtil.small(font, ms, (have >= need ? "§a" : "§c") + q.getString("n") + " " + have + "/" + need, 8 + (i % 2) * 110, 37 + (i / 2) * 9);
         }
         int stock = t.getInt("stock"), needS = t.getInt("need");
         GuiUtil.small(font, ms, "Сырьё («" + type.supplyName + "»): " + (stock >= needS && stock > 0 ? "§a" : "§c") + stock + "§f, расход "
-                + needS + "/день", 8, 56);
+                + needS + "/день §7(коробки по 1 в слоте; склад = запас)", 8, 56);
         double lp = t.getDouble("lastProfit");
         GuiUtil.small(font, ms, "Вчера: " + (lp >= 0 ? "§a+" : "§c") + Finance.money(lp) + " §7" + t.getString("lastNote"), 8, 65);
         GuiUtil.small(font, ms, "Всего: §a" + Finance.money(t.getDouble("total")) + "§f за " + t.getInt("days") + " раб. дн.  §7выручка "

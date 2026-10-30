@@ -51,12 +51,16 @@ public class ShelfTileEntity extends LockableLootTileEntity {
         this.items = itemsIn;
     }
 
-    /** 0 — пусто, 1 — немного (до 15 шт.), 2 — наполовину (до 47), 3 — забито. */
+    /** По занятым слотам (коробки не стакаются): 0 — пусто, 1 — 1–8 слотов, 2 — 9–17, 3 — 18 и больше. */
     public int fillLevel() {
         int n = 0;
-        for (ItemStack s : items) if (!s.isEmpty()) n += s.getCount();
-        if (n == 0) return 0;
-        return n < 16 ? 1 : n < 48 ? 2 : 3;
+        for (ItemStack s : items) if (!s.isEmpty()) n++;
+        return fillFor(n);
+    }
+
+    public static int fillFor(int usedSlots) {
+        if (usedSlots <= 0) return 0;
+        return usedSlots <= 8 ? 1 : usedSlots <= 17 ? 2 : 3;
     }
 
     @Override

@@ -27,6 +27,7 @@ public class ClientSetup {
         RenderingRegistry.registerEntityRenderingHandler(ModEntities.AMBAL.get(), m -> new NpcRenderer<>(m, "ambal"));
         RenderingRegistry.registerEntityRenderingHandler(ModEntities.VISITOR.get(), VisitorRenderer::new);
         RenderingRegistry.registerEntityRenderingHandler(ModEntities.WORKER.get(), WorkerRenderer::new);
+        RenderingRegistry.registerEntityRenderingHandler(ModEntities.CUSTOMER.get(), CustomerRenderer::new);
         RenderingRegistry.registerEntityRenderingHandler(ModEntities.SNOOP.get(), m -> new NpcRenderer<>(m, "visitor/snoop"));
     }
 }
