@@ -69,9 +69,27 @@ public class ModBlocks {
     public static final RegistryObject<Block> ROULETTE_TABLE = BLOCKS.register("roulette_table",
             () -> new CasinoBlock(casino(), CasinoService.ROULETTE));
 
-    /** Касса легального заведения (неразрушимая, ставится бригадой). */
+    /** Касса легального заведения: главная ставится лицензией, дополнительные покупаются. */
     public static final RegistryObject<Block> BIZ_COUNTER = BLOCKS.register("biz_counter",
-            () -> new com.baraaoi.reallife.block.BizCounterBlock(AbstractBlock.Properties.create(Material.WOOD).hardnessAndResistance(-1.0F, 3600000.0F).noDrops().sound(SoundType.WOOD)));
+            () -> new com.baraaoi.reallife.block.BizCounterBlock(AbstractBlock.Properties.create(Material.WOOD).hardnessAndResistance(2.5F, 6.0F).sound(SoundType.WOOD)));
+
+    // ---- оборудование заведений (v6)
+    public static final RegistryObject<Block> SHOP_SHELF = BLOCKS.register("shop_shelf",
+            () -> new com.baraaoi.reallife.block.ShelfBlock(AbstractBlock.Properties.create(Material.WOOD).hardnessAndResistance(2.0F, 3.0F).sound(SoundType.WOOD)));
+    public static final RegistryObject<Block> STORAGE_RACK = BLOCKS.register("storage_rack",
+            () -> new com.baraaoi.reallife.block.ShelfBlock(AbstractBlock.Properties.create(Material.IRON).hardnessAndResistance(2.5F, 6.0F).sound(SoundType.METAL)));
+    public static final RegistryObject<Block> DISPLAY_CASE = BLOCKS.register("display_case",
+            () -> new com.baraaoi.reallife.block.ShelfBlock(AbstractBlock.Properties.create(Material.GLASS).hardnessAndResistance(1.5F, 3.0F).sound(SoundType.GLASS)));
+    public static final RegistryObject<Block> SAFE = BLOCKS.register("safe",
+            () -> new com.baraaoi.reallife.block.ShelfBlock(AbstractBlock.Properties.create(Material.IRON).hardnessAndResistance(6.0F, 1200.0F).sound(SoundType.METAL)));
+    public static final RegistryObject<Block> SHAWARMA_GRILL = BLOCKS.register("shawarma_grill",
+            () -> new DecorBlock(AbstractBlock.Properties.create(Material.IRON).hardnessAndResistance(2.5F, 6.0F).sound(SoundType.METAL).setLightLevel(s -> 8)));
+    public static final RegistryObject<Block> PRESSURE_WASHER = BLOCKS.register("pressure_washer",
+            () -> new DecorBlock(AbstractBlock.Properties.create(Material.IRON).hardnessAndResistance(2.5F, 6.0F).sound(SoundType.METAL)));
+    public static final RegistryObject<Block> STONE_CRUSHER = BLOCKS.register("stone_crusher",
+            () -> new DecorBlock(AbstractBlock.Properties.create(Material.IRON).hardnessAndResistance(4.0F, 6.0F).sound(SoundType.METAL)));
+    public static final RegistryObject<Block> FUEL_PUMP = BLOCKS.register("fuel_pump",
+            () -> new DecorBlock(AbstractBlock.Properties.create(Material.IRON).hardnessAndResistance(3.0F, 6.0F).sound(SoundType.METAL).setLightLevel(s -> 5)));
 
     /** Майнинг-ферма: корпус под комплектующие. */
     public static final RegistryObject<Block> CRYPTO_RIG = BLOCKS.register("crypto_rig",

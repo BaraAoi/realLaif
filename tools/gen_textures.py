@@ -668,4 +668,141 @@ kt = planks((170, 130, 85)); outline(kt, 0, 0, 15, 15, (90, 65, 40)); rect(kt, 9
 kf = planks((150, 110, 70)); outline(kf, 0, 0, 15, 15, (90, 65, 40)); rect(kf, 3, 3, 12, 8, (40, 40, 45)); rect(kf, 4, 4, 11, 7, (90, 200, 120))
 pix(kf, [(5, 5), (6, 5), (8, 6), (9, 6)], (20, 60, 30)); rect(kf, 3, 11, 12, 12, (60, 160, 70)); kf.save(f'{R}/block/biz_counter_front.png')
 
+
+# ---------------- Round 6: оборудование заведений и сырьё
+WOOD = (150, 110, 70)
+GOODS = [(200, 60, 50), (60, 140, 200), (240, 200, 60), (80, 170, 80), (220, 120, 40), (170, 80, 170), (230, 230, 230)]
+
+
+def goods_rows(im, rows, x0, x1, level, step=3):
+    """Заполнить полки товаром: level 0..3 — сколько рядов занято."""
+    rnd = random.Random(7)
+    for ri, (ytop, ybot) in enumerate(rows):
+        if ri >= level:
+            continue
+        x = x0
+        while x <= x1 - 1:
+            c = GOODS[rnd.randrange(len(GOODS))]
+            h = rnd.randint(1, ybot - ytop)
+            rect(im, x, ybot - h + 1, min(x + 1, x1), ybot, c)
+            x += step
+
+
+# торговая полка (дерево)
+ss = planks(WOOD); outline(ss, 0, 0, 15, 15, (90, 65, 40)); ss.save(f'{R}/block/shop_shelf_side.png')
+st_ = planks((170, 130, 85)); outline(st_, 0, 0, 15, 15, (90, 65, 40)); st_.save(f'{R}/block/shop_shelf_top.png')
+for lv in range(4):
+    im = img(); noise(im, (70, 50, 30), 4)
+    outline(im, 0, 0, 15, 15, (110, 80, 50))
+    for y in (5, 10, 15):
+        rect(im, 1, y, 14, y, (160, 120, 75))
+    rect(im, 0, 0, 0, 15, (130, 95, 60)); rect(im, 15, 0, 15, 15, (130, 95, 60))
+    goods_rows(im, [(1, 4), (6, 9), (11, 14)], 2, 13, lv)
+    im.save(f'{R}/block/shop_shelf_front_{lv}.png')
+
+# складской стеллаж (металл)
+rs_ = metal((110, 115, 120), 5); outline(rs_, 0, 0, 15, 15, (60, 65, 70))
+for y in (5, 10): rect(rs_, 1, y, 14, y, (200, 120, 40))
+rs_.save(f'{R}/block/storage_rack_side.png')
+rt_ = metal((100, 105, 110), 4); outline(rt_, 0, 0, 15, 15, (60, 65, 70)); rt_.save(f'{R}/block/storage_rack_top.png')
+for lv in range(4):
+    im = img(); noise(im, (35, 38, 42), 3)
+    rect(im, 0, 0, 1, 15, (60, 90, 160)); rect(im, 14, 0, 15, 15, (60, 90, 160))
+    for y in (0, 7, 14, 15):
+        rect(im, 0, y, 15, y, (220, 130, 40))
+    rnd = random.Random(11)
+    boxes = [(2, 1, 6, 6), (8, 2, 13, 6), (2, 8, 7, 13), (9, 9, 13, 13)]
+    for i, (a, b, c, d) in enumerate(boxes):
+        if i < [0, 1, 3, 4][lv]:
+            rect(im, a, b, c, d, (190, 150, 95)); outline(im, a, b, c, d, (130, 95, 55)); rect(im, a, b + (d - b) // 2, c, b + (d - b) // 2, (215, 190, 120))
+    im.save(f'{R}/block/storage_rack_front_{lv}.png')
+
+# витрина (стекло + товар)
+ds = metal((180, 185, 190), 4); outline(ds, 0, 0, 15, 15, (120, 125, 130)); rect(ds, 1, 2, 14, 13, (170, 210, 225)); ds.save(f'{R}/block/display_case_side.png')
+dt = metal((175, 180, 185), 4); outline(dt, 0, 0, 15, 15, (120, 125, 130)); rect(dt, 2, 2, 13, 13, (190, 225, 235)); dt.save(f'{R}/block/display_case_top.png')
+for lv in range(4):
+    im = img(); noise(im, (180, 185, 190), 3); outline(im, 0, 0, 15, 15, (120, 125, 130))
+    rect(im, 1, 1, 14, 12, (175, 215, 230))
+    rect(im, 1, 7, 14, 7, (230, 240, 245))
+    pix(im, [(2, 2), (3, 2), (2, 3)], (240, 250, 255))
+    goods_rows(im, [(2, 6), (8, 11)], 2, 13, min(2, lv) if lv < 3 else 2, step=3 if lv < 3 else 2)
+    rect(im, 1, 13, 14, 14, (60, 60, 65)); pix(im, [(7, 13), (8, 13)], GOLD)
+    im.save(f'{R}/block/display_case_front_{lv}.png')
+
+# сейф
+sfs = metal((70, 75, 80), 5); outline(sfs, 0, 0, 15, 15, (40, 42, 45)); sfs.save(f'{R}/block/safe_side.png')
+sft = metal((65, 70, 75), 4); outline(sft, 0, 0, 15, 15, (40, 42, 45)); sft.save(f'{R}/block/safe_top.png')
+sff = metal((80, 85, 90), 4); outline(sff, 0, 0, 15, 15, (40, 42, 45)); outline(sff, 2, 2, 13, 13, (50, 52, 56))
+rect(sff, 6, 5, 9, 8, (150, 150, 155)); outline(sff, 6, 5, 9, 8, (40, 40, 45)); pix(sff, [(7, 6), (8, 7)], (220, 220, 225))
+rect(sff, 11, 9, 12, 11, (200, 170, 60)); pix(sff, [(4, 11), (5, 11)], (200, 40, 40))
+sff.save(f'{R}/block/safe_front.png')
+
+# гриль для шаурмы
+gs = metal((190, 192, 195), 5); outline(gs, 0, 0, 15, 15, (120, 122, 126)); gs.save(f'{R}/block/shawarma_grill_side.png')
+gt = metal((60, 60, 62), 4); outline(gt, 0, 0, 15, 15, (120, 122, 126)); rect(gt, 6, 6, 9, 9, (150, 90, 40)); gt.save(f'{R}/block/shawarma_grill_top.png')
+gf = metal((190, 192, 195), 4); outline(gf, 0, 0, 15, 15, (120, 122, 126))
+rect(gf, 2, 1, 4, 13, (230, 90, 30)); rect(gf, 11, 1, 13, 13, (230, 90, 30))           # горелки
+for y in range(1, 14): pix(gf, [(3, y)], (255, 180, 60)); pix(gf, [(12, y)], (255, 180, 60))
+rect(gf, 6, 1, 9, 13, (170, 105, 50)); rect(gf, 7, 0, 8, 15, (90, 90, 95))             # мясо на вертеле
+for y in (2, 5, 8, 11): rect(gf, 6, y, 9, y, (130, 70, 30))
+rect(gf, 0, 14, 15, 15, (90, 90, 95))
+gf.save(f'{R}/block/shawarma_grill_front.png')
+
+# мойка высокого давления
+ws = metal((40, 110, 190), 5); outline(ws, 0, 0, 15, 15, (25, 70, 130)); ws.save(f'{R}/block/pressure_washer_side.png')
+wt = metal((35, 100, 175), 4); outline(wt, 0, 0, 15, 15, (25, 70, 130)); wt.save(f'{R}/block/pressure_washer_top.png')
+wf = metal((45, 120, 200), 4); outline(wf, 0, 0, 15, 15, (25, 70, 130))
+rect(wf, 2, 2, 13, 5, (230, 230, 235)); pix(wf, [(4, 3), (5, 3), (6, 3), (8, 4), (9, 4)], (40, 110, 190))
+for i in range(6): pix(wf, [(3 + i, 7 + i % 3)], (30, 30, 35))
+rect(wf, 9, 7, 10, 13, (30, 30, 35)); rect(wf, 11, 12, 13, 13, (240, 200, 40)); pix(wf, [(13, 8), (12, 9), (13, 10)], (150, 210, 255))
+wf.save(f'{R}/block/pressure_washer_front.png')
+
+# камнедробилка
+cs = metal((220, 170, 40), 6); outline(cs, 0, 0, 15, 15, (140, 105, 20))
+for i in range(0, 16, 4): pix(cs, [(i, 14), (i + 1, 15)], (30, 30, 30))
+cs.save(f'{R}/block/stone_crusher_side.png')
+ct = metal((90, 90, 95), 5); outline(ct, 0, 0, 15, 15, (140, 105, 20)); rect(ct, 3, 3, 12, 12, (40, 40, 42))
+for (x, y) in [(5, 5), (8, 6), (10, 9), (6, 10), (9, 4)]: rect(ct, x, y, x + 1, y + 1, (130, 130, 135))
+ct.save(f'{R}/block/stone_crusher_top.png')
+cf = metal((225, 175, 45), 5); outline(cf, 0, 0, 15, 15, (140, 105, 20))
+rect(cf, 2, 2, 13, 9, (50, 50, 52))
+for x in range(3, 13, 2): pix(cf, [(x, 3), (x + 1, 4), (x, 5), (x + 1, 6), (x, 7), (x + 1, 8)], (150, 150, 155))
+rect(cf, 2, 11, 13, 13, (60, 60, 62)); pix(cf, [(4, 12), (7, 12), (10, 12)], (140, 140, 140))
+cf.save(f'{R}/block/stone_crusher_front.png')
+
+# топливная колонка
+fs_ = metal((230, 230, 232), 4); outline(fs_, 0, 0, 15, 15, (150, 150, 155)); rect(fs_, 0, 0, 15, 2, (220, 40, 30)); fs_.save(f'{R}/block/fuel_pump_side.png')
+ft_ = metal((210, 40, 30), 4); outline(ft_, 0, 0, 15, 15, (150, 25, 20)); ft_.save(f'{R}/block/fuel_pump_top.png')
+ff_ = metal((235, 235, 237), 4); outline(ff_, 0, 0, 15, 15, (150, 150, 155)); rect(ff_, 0, 0, 15, 2, (220, 40, 30))
+rect(ff_, 3, 4, 12, 7, (25, 25, 30)); pix(ff_, [(4, 5), (5, 5), (6, 5), (8, 6), (9, 6), (10, 6)], (240, 160, 40))
+rect(ff_, 3, 9, 6, 13, (40, 40, 45)); rect(ff_, 4, 10, 5, 11, (220, 200, 40))
+for y in range(9, 14): pix(ff_, [(10, y)], (30, 30, 30))
+pix(ff_, [(11, 13), (12, 13), (12, 12)], (30, 30, 30))
+ff_.save(f'{R}/block/fuel_pump_front.png')
+
+
+# сырьё
+def crate(base, mark, name, kind='box'):
+    im = img()
+    if kind == 'barrel':
+        rect(im, 4, 2, 11, 14, base); outline(im, 4, 2, 11, 14, tuple(int(v * 0.6) for v in base))
+        for y in (5, 11): rect(im, 4, y, 11, y, tuple(int(v * 0.6) for v in base))
+        rect(im, 6, 7, 9, 9, mark)
+    elif kind == 'can':
+        rect(im, 4, 4, 11, 14, base); outline(im, 4, 4, 11, 14, tuple(int(v * 0.6) for v in base))
+        rect(im, 8, 1, 10, 3, (40, 40, 45)); rect(im, 5, 2, 7, 3, base); rect(im, 6, 8, 9, 11, mark)
+    else:
+        rect(im, 2, 4, 13, 13, base); outline(im, 2, 4, 13, 13, tuple(int(v * 0.6) for v in base))
+        rect(im, 2, 7, 13, 7, tuple(int(v * 0.75) for v in base)); rect(im, 6, 9, 9, 11, mark)
+    im.save(f'{R}/item/{name}.png')
+
+
+crate((170, 120, 70), (230, 90, 40), 'supply_shawarma')
+crate((200, 160, 100), (60, 140, 200), 'supply_minimarket')
+crate((40, 120, 210), (240, 240, 240), 'supply_car_wash', 'can')
+crate((40, 40, 45), (230, 190, 40), 'supply_quarry', 'barrel')
+crate((60, 30, 30), (230, 190, 50), 'supply_pawnshop')
+crate((200, 40, 30), (240, 200, 40), 'supply_gas_station', 'barrel')
+crate((235, 235, 240), (40, 40, 45), 'supply_electronics')
+
 print('ok')

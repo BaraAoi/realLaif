@@ -36,6 +36,15 @@ public class ModCommands {
                         .then(Commands.literal("event").then(Commands.argument("kind", com.mojang.brigadier.arguments.StringArgumentType.word())
                                 .suggests((c, b) -> net.minecraft.command.ISuggestionProvider.suggest(com.baraaoi.reallife.event.Visitors.eventIds(), b))
                                 .executes(c -> event(c.getSource().asPlayer(), com.mojang.brigadier.arguments.StringArgumentType.getString(c, "kind")))))
+                        .then(Commands.literal("events").executes(c -> {
+                            ServerPlayerEntity ep = c.getSource().asPlayer();
+                            String act = com.baraaoi.reallife.event.Visitors.activeKind(ep);
+                            long t = com.baraaoi.reallife.event.Visitors.ticksToNext(ep);
+                            BankService.msg(ep, act != null ? "§eСейчас у вас гость: " + act
+                                    : "§eСледующий случайный гость примерно через §f" + (t / 1200) + " мин " + (t % 1200 / 20) + " с"
+                                    + (com.baraaoi.reallife.Config.EVENTS_ENABLED.get() ? "" : " §c(события выключены в конфиге!)"));
+                            return 1;
+                        }))
                         .then(Commands.literal("money").then(Commands.argument("amount", IntegerArgumentType.integer())
                                 .executes(c -> money(c.getSource().asPlayer(), IntegerArgumentType.getInteger(c, "amount")))))
                         .then(Commands.literal("rating").then(Commands.argument("value", IntegerArgumentType.integer(300, 850))

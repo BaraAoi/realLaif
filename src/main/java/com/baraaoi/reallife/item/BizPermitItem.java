@@ -19,7 +19,7 @@ import net.minecraft.world.World;
 import javax.annotation.Nullable;
 import java.util.List;
 
-/** Разрешение на открытие заведения (вид — в NBT "BizType"). ПКМ по земле — бригада строит заведение. */
+/** Лицензия на заведение (вид — в NBT "BizType"). ПКМ по блоку — ставится главная касса заведения. */
 public class BizPermitItem extends Item {
     public BizPermitItem(Properties props) {
         super(props);
@@ -45,7 +45,7 @@ public class BizPermitItem extends Item {
     @Override
     public ITextComponent getDisplayName(ItemStack stack) {
         BizType t = typeOf(stack);
-        return new StringTextComponent(t == null ? "Разрешение на заведение" : "Разрешение: " + t.title);
+        return new StringTextComponent(t == null ? "Лицензия на заведение" : "Лицензия: " + t.title);
     }
 
     @Override
@@ -58,9 +58,9 @@ public class BizPermitItem extends Item {
             player.sendStatusMessage(new StringTextComponent("§cРазрешение испорчено."), false);
             return ActionResultType.FAIL;
         }
-        Direction facing = ctx.getPlacementHorizontalFacing();
-        BlockPos origin = ctx.getPos().up().offset(facing, 2);
-        if (LegalBiz.place((ServerPlayerEntity) player, origin, facing, type)) {
+        Direction facing = ctx.getPlacementHorizontalFacing().getOpposite();
+        BlockPos pos = world.getBlockState(ctx.getPos()).getMaterial().isReplaceable() ? ctx.getPos() : ctx.getPos().offset(ctx.getFace());
+        if (LegalBiz.place((ServerPlayerEntity) player, pos, facing, type)) {
             ctx.getItem().shrink(1);
             return ActionResultType.SUCCESS;
         }
@@ -71,11 +71,12 @@ public class BizPermitItem extends Item {
     public void addInformation(ItemStack stack, @Nullable World world, List<ITextComponent> tooltip, ITooltipFlag flag) {
         BizType t = typeOf(stack);
         if (t != null) {
-            tooltip.add(new StringTextComponent("§7Базовая прибыль: §a" + t.base + "₽§7/день"));
+            tooltip.add(new StringTextComponent("§7Выручка: §a" + t.base + "₽§7/день на работника, до §e" + t.maxWorkers + "§7 работников"));
             tooltip.add(new StringTextComponent("§7Зарплата работника: §c" + t.wage() + "₽§7/день"));
+            tooltip.add(new StringTextComponent("§7Комплект на работника: §e" + LegalBiz.kitText(t)));
         }
-        tooltip.add(new StringTextComponent("§7ПКМ по земле — бригада построит заведение 11×11 перед вами."));
-        tooltip.add(new StringTextComponent("§7Нужна ровная свободная площадка."));
-        tooltip.add(new StringTextComponent("§8Без работника заведение закрыто. Нанять — в кассе."));
+        tooltip.add(new StringTextComponent("§7ПКМ по блоку на своей земле — там встанет главная касса."));
+        tooltip.add(new StringTextComponent("§7Здание строишь сам; оборудование ставь в ±8 блоках от кассы."));
+        tooltip.add(new StringTextComponent("§8Сломаешь главную кассу — заведение закроется, лицензия вернётся."));
     }
 }

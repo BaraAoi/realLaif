@@ -1,0 +1,8 @@
+{
+  "parent": "minecraft:block/orientable",
+  "textures": {
+    "top": "reallife:block/pressure_washer_top",
+    "front": "reallife:block/pressure_washer_front",
+    "side": "reallife:block/pressure_washer_side"
+  }
+}

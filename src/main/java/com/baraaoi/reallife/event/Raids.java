@@ -85,22 +85,9 @@ public final class Raids {
         }
     }
 
-    static final class Snoop {
-        final UUID player;
-        final VisitorEntity e;
-        final long until;
-
-        Snoop(UUID player, VisitorEntity e, long until) {
-            this.player = player;
-            this.e = e;
-            this.until = until;
-        }
-    }
-
     private static final Map<UUID, Tip> TIPS = new HashMap<>();
     private static final Map<UUID, Raid> RAIDS = new HashMap<>();
     private static final Map<UUID, Long> NEXT_SNOOP = new HashMap<>();
-    private static final List<Snoop> SNOOPS = new ArrayList<>();
 
     // =====================================================================================
     //  видимость
@@ -128,6 +115,7 @@ public final class Raids {
     }
 
     private static boolean isObserver(Entity e) {
+        if (e instanceof com.baraaoi.reallife.entity.SnoopEntity) return true;
         if (e instanceof VisitorEntity) return ((VisitorEntity) e).getKind() != VisitorKind.OBEP;
         return e instanceof AbstractVillagerEntity || e instanceof DebtNpcEntity;
     }
@@ -157,6 +145,16 @@ public final class Raids {
         return Math.max(1800L, base);
     }
 
+    static long snoopIntervalFor(Account a) {
+        if (!a.printerList.isEmpty()) return snoopInterval(a.printerList.size());
+        return 18000L + R.nextInt(18000);
+    }
+
+    /** Сколько «подозрительных» уже ходит вокруг игрока. */
+    public static int snoopsNear(ServerWorld w, ServerPlayerEntity p) {
+        return w.getEntitiesWithinAABB(com.baraaoi.reallife.entity.SnoopEntity.class, p.getBoundingBox().grow(96, 64, 96), Entity::isAlive).size();
+    }
+
     public static void tick(MinecraftServer server) {
         ServerWorld ow = EconomyData.overworld(server);
         if (ow == null) return;
@@ -171,18 +169,6 @@ public final class Raids {
             } catch (RuntimeException ex) {
                 RealLife.LOG.error("Real Life: raid failed", ex);
                 abort(ow, r, null);
-            }
-        }
-        // любопытные
-        Iterator<Snoop> si = SNOOPS.iterator();
-        while (si.hasNext()) {
-            Snoop s = si.next();
-            if (!s.e.isAlive() || now > s.until + 200) {
-                Visitors.unmanage(s.e);
-                if (s.e.isAlive()) s.e.remove();
-                si.remove();
-            } else if (now > s.until && s.e.mode != VisitorEntity.FLEE) {
-                s.e.mode = VisitorEntity.FLEE;
             }
         }
         // наводки → рейд
@@ -201,10 +187,10 @@ public final class Raids {
         for (ServerPlayerEntity p : server.getPlayerList().getPlayers()) {
             if (p.world != ow || p.isSpectator()) continue;
             Account a = data.get(p);
-            if (a.captivity != Account.FREE || a.printerList.isEmpty()) continue;
+            if (a.captivity != Account.FREE) continue;
             UUID id = p.getUniqueID();
             // кто-то увидел станок?
-            if (!TIPS.containsKey(id) && !RAIDS.containsKey(id)) {
+            if (!a.printerList.isEmpty() && !TIPS.containsKey(id) && !RAIDS.containsKey(id)) {
                 for (BlockPos pos : new ArrayList<>(a.printerList)) {
                     if (!ow.isBlockLoaded(pos) || !isPrinter(ow, pos)) continue;
                     Entity who = spotter(ow, pos);
@@ -216,15 +202,13 @@ public final class Raids {
                     break;
                 }
             }
-            // подозрительный тип
+            // подозрительный тип: к владельцам станков — чаще, к остальным — изредка, просто «погулять»
             Long next = NEXT_SNOOP.get(id);
-            if (next == null) { NEXT_SNOOP.put(id, now + snoopInterval(a.printerList.size())); continue; }
+            if (next == null) { NEXT_SNOOP.put(id, now + snoopIntervalFor(a)); continue; }
             if (now < next) continue;
-            NEXT_SNOOP.put(id, now + snoopInterval(a.printerList.size()));
+            NEXT_SNOOP.put(id, now + snoopIntervalFor(a));
             if (RAIDS.containsKey(id)) continue;
-            boolean has = false;
-            for (Snoop s : SNOOPS) if (s.player.equals(id)) has = true;
-            if (!has) spawnSnoop(ow, p, a, now);
+            if (snoopsNear(ow, p) == 0) spawnSnoop(ow, p, a, now);
         }
     }
 
@@ -266,23 +250,23 @@ public final class Raids {
         return EconomyData.get(w.getServer());
     }
 
-    static void spawnSnoop(ServerWorld w, ServerPlayerEntity p, Account a, long now) {
+    /** Выпустить подозрительного типа: в 16–28 блоках от ближайшего станка (или дома, или самого игрока). */
+    @Nullable
+    public static com.baraaoi.reallife.entity.SnoopEntity spawnSnoop(ServerWorld w, ServerPlayerEntity p, Account a, long now) {
         BlockPos printer = nearestPrinter(w, p, a);
-        if (printer == null) return;
-        VisitorEntity e = ModEntities.VISITOR.get().create(w);
-        if (e == null) return;
-        BlockPos at = surfaceNear(w, printer, 10, 18);
+        BlockPos anchor = printer;
+        if (anchor == null && a.hasHouse && !a.houseMin.equals(BlockPos.ZERO) && w.isBlockLoaded(a.houseMin)
+                && a.houseMin.distanceSq(p.getPosition()) < 64 * 64) anchor = a.houseMin;
+        if (anchor == null) anchor = p.getPosition();
+        com.baraaoi.reallife.entity.SnoopEntity e = ModEntities.SNOOP.get().create(w);
+        if (e == null) return null;
+        BlockPos at = surfaceNear(w, anchor, 16, 28);
         e.setLocationAndAngles(at.getX() + 0.5, at.getY(), at.getZ() + 0.5, R.nextFloat() * 360F, 0F);
-        e.setKind(VisitorKind.SNOOP);
-        e.targetId = p.getUniqueID();
-        e.setCustomName(new StringTextComponent(VisitorKind.SNOOP.display));
-        e.setCustomNameVisible(true);
-        e.mode = VisitorEntity.GOTO;
-        e.gotoPos = printer.toImmutable();
-        Visitors.manage(e);
+        e.targetPlayer = p.getUniqueID();
+        e.life = 6000;
         w.addEntity(e);
-        SNOOPS.add(new Snoop(p.getUniqueID(), e, now + 1200));
-        BankService.actionBar(p, "§8Возле твоих станков крутится какой-то подозрительный тип...");
+        if (printer != null) BankService.actionBar(p, "§8Возле твоих станков крутится какой-то подозрительный тип...");
+        return e;
     }
 
     // =====================================================================================
@@ -301,14 +285,16 @@ public final class Raids {
         if (p.world != ow) return "только в обычном мире";
         Account a = EconomyData.get(server).get(p);
         BlockPos printer = nearestPrinter(ow, p, a);
-        if (printer == null) return "у вас нет подключённых станков";
         long now = ow.getGameTime();
+        if (!obep) {
+            spawnSnoop(ow, p, a, now);
+            return null;
+        }
+        if (printer == null) return "у вас нет подключённых станков";
         if (obep) {
             if (RAIDS.containsKey(p.getUniqueID())) return "рейд уже идёт";
             TIPS.remove(p.getUniqueID());
             startRaid(ow, p, printer, now);
-        } else {
-            spawnSnoop(ow, p, a, now);
         }
         return null;
     }
@@ -467,11 +453,6 @@ public final class Raids {
         }
         RAIDS.clear();
         TIPS.clear();
-        for (Snoop s : SNOOPS) {
-            Visitors.unmanage(s.e);
-            if (s.e.isAlive()) s.e.remove();
-        }
-        SNOOPS.clear();
         NEXT_SNOOP.clear();
     }
 }

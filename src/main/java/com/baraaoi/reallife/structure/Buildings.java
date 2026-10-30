@@ -980,8 +980,9 @@ public class Buildings {
             }
         }
         for (com.baraaoi.reallife.economy.LegalBusiness lb : data.businesses) {
+            if (player.equals(lb.owner)) continue; // своё заведение может стоять хоть в доме
             if (boxesIntersect(min, max, lb.min, lb.max, 1)) {
-                return "здесь стоит заведение «" + lb.type.title + "»" + (player.equals(lb.owner) ? " (ваше)" : "");
+                return "здесь стоит заведение «" + lb.type.title + "»";
             }
         }
         for (int cx = min.getX() >> 4; cx <= max.getX() >> 4; cx++)
@@ -1021,7 +1022,7 @@ public class Buildings {
         if (base - lo > tol || hi - base > tol) return "дом повиснет в воздухе или уйдёт в землю — кликните по земле на ровном месте";
         for (BlockPos p : BlockPos.getAllInBoxMutable(min.up(), max)) {
             if (w.getTileEntity(p) != null) {
-                return "на месте стройки чьё-то имущество (" + w.getBlockState(p).getBlock().getTranslatedName().getString()
+                return "на месте стройки чьё-то имущество (" + new net.minecraft.item.ItemStack(w.getBlockState(p).getBlock()).getDisplayName().getString()
                         + " на " + p.getX() + ", " + p.getY() + ", " + p.getZ() + ")";
             }
         }

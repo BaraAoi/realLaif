@@ -1,0 +1,19 @@
+{
+  "variants": {
+    "facing=north": {
+      "model": "reallife:block/stone_crusher"
+    },
+    "facing=east": {
+      "model": "reallife:block/stone_crusher",
+      "y": 90
+    },
+    "facing=south": {
+      "model": "reallife:block/stone_crusher",
+      "y": 180
+    },
+    "facing=west": {
+      "model": "reallife:block/stone_crusher",
+      "y": 270
+    }
+  }
+}

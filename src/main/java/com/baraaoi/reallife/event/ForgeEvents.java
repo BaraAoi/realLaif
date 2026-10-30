@@ -40,6 +40,7 @@ public class ForgeEvents {
     @SubscribeEvent
     public void onServerStopping(net.minecraftforge.fml.event.server.FMLServerStoppingEvent event) {
         Raids.onStop(event.getServer());
+        Visitors.onStop();
     }
 
     @SubscribeEvent(priority = EventPriority.HIGH)
@@ -77,6 +78,10 @@ public class ForgeEvents {
     public void onExplosion(net.minecraftforge.event.world.ExplosionEvent.Detonate event) {
         if (event.getWorld().isRemote) return;
         event.getAffectedBlocks().removeIf(pos -> cityProtected(event.getWorld(), pos));
+        if (event.getWorld() instanceof net.minecraft.world.server.ServerWorld) {
+            EconomyData d = EconomyData.get(((net.minecraft.world.server.ServerWorld) event.getWorld()).getServer());
+            event.getAffectedBlocks().removeIf(pos -> d.bizAtCounter(pos) != null); // главная касса заведения не взрывается
+        }
     }
 
     @SubscribeEvent
@@ -134,6 +139,10 @@ public class ForgeEvents {
             return;
         }
         if (DebtManager.onBreak((ServerPlayerEntity) event.getPlayer(), event.getPos(), event.getState())) {
+            event.setCanceled(true);
+        }
+        if (!event.isCanceled() && event.getState().getBlock() == com.baraaoi.reallife.registry.ModBlocks.BIZ_COUNTER.get()
+                && com.baraaoi.reallife.economy.LegalBiz.onCounterBreak((ServerPlayerEntity) event.getPlayer(), event.getPos())) {
             event.setCanceled(true);
         }
         if (!event.isCanceled()) {

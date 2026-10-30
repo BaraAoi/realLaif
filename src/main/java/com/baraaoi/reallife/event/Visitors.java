@@ -164,6 +164,35 @@ public final class Visitors {
     //  планировщик
     // =====================================================================================
 
+    /** Дольше этого (5 мин) ни один гость не задерживается. */
+    static final long SESSION_MAX = 6000L;
+    /** Если до следующего события «дольше вечности» — значит, таймер остался от другого мира/сессии. */
+    static long maxWait() {
+        return (Math.max(Config.EVENTS_MIN_MINUTES.get(), Config.EVENTS_MAX_MINUTES.get()) + 2) * 1200L;
+    }
+
+    /** Остановка сервера (в одиночке — выход из мира): сбросить всё состояние, чтобы в другом мире ничего не зависло. */
+    public static void onStop() {
+        for (Session s : ACTIVE.values()) finishQuiet(s);
+        ACTIVE.clear();
+        NEXT.clear();
+        PENDING.clear();
+        MANAGED.clear();
+        BOXES.clear();
+    }
+
+    /** Для /reallife admin events: через сколько тиков следующее событие у игрока (−1 — идёт сейчас). */
+    public static long ticksToNext(ServerPlayerEntity p) {
+        if (ACTIVE.containsKey(p.getUniqueID())) return -1;
+        Long n = NEXT.get(p.getUniqueID());
+        return n == null ? 0 : Math.max(0, n - p.world.getGameTime());
+    }
+
+    public static String activeKind(ServerPlayerEntity p) {
+        Session s = ACTIVE.get(p.getUniqueID());
+        return s == null ? null : s.kind.display;
+    }
+
     private static long interval() {
         int min = Config.EVENTS_MIN_MINUTES.get();
         int max = Math.max(min, Config.EVENTS_MAX_MINUTES.get());
@@ -187,6 +216,13 @@ public final class Visitors {
         for (Session s : new ArrayList<>(ACTIVE.values())) {
             ServerPlayerEntity p = server.getPlayerList().getPlayerByUUID(s.player);
             if (p == null || !p.isAlive() || p.world != ow || data.get(p).captivity != Account.FREE) {
+                finish(s, now);
+                continue;
+            }
+            // сторож: зависшая сессия (время мира «прыгнуло» назад, сущности выгрузились, гость застрял) не должна
+            // навсегда блокировать случайные события
+            if (s.start > now || now - s.start > SESSION_MAX || (s.leaveAt >= 0 && s.leaveAt - now > 1200)) {
+                RealLife.LOG.info("Real Life: visitor session " + s.kind + " force-finished (watchdog)");
                 finish(s, now);
                 continue;
             }
@@ -222,7 +258,7 @@ public final class Visitors {
             Account a = data.get(p);
             if (a.captivity != Account.FREE) continue;
             Long next = NEXT.get(id);
-            if (next == null) { NEXT.put(id, now + interval(a.printerList.size())); continue; }
+            if (next == null || next - now > maxWait()) { NEXT.put(id, now + interval(a.printerList.size())); continue; }
             if (now < next) continue;
             NEXT.put(id, now + interval(a.printerList.size()));
             List<VisitorKind> ok = new ArrayList<>();

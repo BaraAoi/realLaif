@@ -1,6 +1,7 @@
 package com.baraaoi.reallife.client;
 
 import com.baraaoi.reallife.economy.Actions;
+import com.baraaoi.reallife.economy.BizEquip;
 import com.baraaoi.reallife.economy.BizType;
 import com.baraaoi.reallife.economy.Finance;
 import com.baraaoi.reallife.economy.Wholesale;
@@ -29,6 +30,9 @@ public class PhoneScreen extends Screen {
     private static int termIdx = 1;
     private static int page;
     private static int bizType;
+    private static int bizSub;
+    private static final String[] SHORT = {"шаурма", "маркет", "мойка", "карьер", "ломбард", "АЗС", "техника"};
+    private static final int EQ_PAGE = 6;
 
     private int left, top;
     private int ticks;
@@ -108,10 +112,26 @@ public class PhoneScreen extends Screen {
                 break;
             }
             case 4: {
-                int n = BizType.values().length;
-                btn(8, 132, 20, "<", b -> bizType = (bizType + n - 1) % n);
-                btn(220, 132, 20, ">", b -> bizType = (bizType + 1) % n);
-                btn(8, 188, 232, "§aКупить разрешение на стройку", b -> send(Actions.PHONE_BUY_BIZ, bizType, 0));
+                btn(8, 42, 114, (bizSub == 0 ? "§e" : "") + "Заведения", b -> { bizSub = 0; page = 0; rebuild(); });
+                btn(126, 42, 114, (bizSub == 1 ? "§e" : "") + "Оборудование", b -> { bizSub = 1; page = 0; rebuild(); });
+                if (bizSub == 0) {
+                    int n = BizType.values().length;
+                    btn(8, 126, 20, "<", b -> bizType = (bizType + n - 1) % n);
+                    btn(220, 126, 20, ">", b -> bizType = (bizType + 1) % n);
+                    btn(8, 188, 232, "§aКупить лицензию", b -> send(Actions.PHONE_BUY_BIZ, bizType, 0));
+                } else {
+                    BizEquip[] eq = BizEquip.values();
+                    int pages = Math.max(1, (eq.length + EQ_PAGE - 1) / EQ_PAGE);
+                    page = Math.min(page, pages - 1);
+                    for (int i = 0; i < EQ_PAGE; i++) {
+                        final int idx = page * EQ_PAGE + i;
+                        if (idx >= eq.length) break;
+                        btn(160, 64 + i * 20, 38, "×1", b -> send(Actions.PHONE_BUY_EQUIP, idx, 1));
+                        btn(202, 64 + i * 20, 38, "×4", b -> send(Actions.PHONE_BUY_EQUIP, idx, 4));
+                    }
+                    btn(8, 188, 40, "<", b -> { page = Math.max(0, page - 1); rebuild(); });
+                    btn(52, 188, 40, ">", b -> { page = Math.min(pages - 1, page + 1); rebuild(); });
+                }
                 break;
             }
             default:
@@ -230,7 +250,7 @@ public class PhoneScreen extends Screen {
         if (!t.getBoolean("ownsBiz")) {
             small(ms, "§cТолько для владельцев заведений. Купите заведение во вкладке «Бизнес».", 8, 54);
         } else {
-            small(ms, "§7Дешевле розницы. Доставка сразу в инвентарь. Оплата: счёт, потом наличные.", 8, 54);
+            small(ms, "§7Сырьё едет прямо на полки заведения, остальное — в инвентарь.", 8, 54);
         }
         List<Wholesale.Lot> lots = Wholesale.lots();
         for (int i = 0; i < PAGE; i++) {
@@ -246,26 +266,52 @@ public class PhoneScreen extends Screen {
     }
 
     private void drawBusiness(MatrixStack ms, CompoundNBT t) {
-        text(ms, "§a§lМой бизнес", 8, 44);
+        if (bizSub == 1) { drawEquip(ms, t); return; }
         ListNBT biz = t.getList("bizList", 10);
-        long day = t.getLong("today");
         if (biz.isEmpty()) {
-            small(ms, "§7Заведений пока нет. Купите разрешение — бригада построит.", 8, 56);
+            small(ms, "§7Заведений пока нет. Купите лицензию, поставьте кассу на своей земле", 8, 64);
+            small(ms, "§7и расставьте вокруг неё оборудование (вкладка «Оборудование»).", 8, 73);
         }
-        for (int i = 0; i < biz.size() && i < 6; i++) {
+        for (int i = 0; i < biz.size() && i < 5; i++) {
             CompoundNBT b = biz.getCompound(i);
             BizType bt = BizType.byId(b.getInt("type"));
             String name = bt == null ? "?" : bt.title;
             double lp = b.getDouble("lastProfit");
-            small(ms, (b.getBoolean("worker") ? "§a● " : "§c● ") + "§f" + name + " §7вчера: " + (lp >= 0 ? "§a+" : "§c") + Finance.money(lp)
-                    + " §7отмыто: " + Finance.money(b.getDouble("laundered")) + "/" + Finance.money(b.getDouble("safe")), 8, 54 + i * 10);
+            String reason = b.getString("reason");
+            small(ms, (reason.isEmpty() ? "§a● " : "§c● ") + "§f" + name + " §7раб. " + b.getInt("workers") + "/" + b.getInt("allowed")
+                    + " сырьё " + b.getInt("stock") + " вчера " + (lp >= 0 ? "§a+" : "§c") + Finance.money(lp)
+                    + (reason.isEmpty() ? "" : " §c(" + reason + ")"), 8, 64 + i * 10);
         }
-        fill(ms, left + 4, top + 118, left + W - 4, top + 119, 0xFF335577);
+        fill(ms, left + 4, top + 116, left + W - 4, top + 117, 0xFF335577);
         BizType bt = BizType.values()[bizType % BizType.values().length];
-        text(ms, "§e" + bt.title, 32, 136);
-        small(ms, "Разрешение: §e" + Finance.money(bt.price) + "§f   базовая прибыль: §a" + Finance.money(bt.base) + "§f/день", 8, 156);
-        small(ms, "Работник: " + bt.workerName + ", найм " + Finance.money(bt.hireCost()) + ", зарплата " + Finance.money(bt.wage()) + "/день", 8, 166);
-        small(ms, "§7Через кассу можно отмыть без риска до " + Finance.money(bt.base * t.getDouble("safeShare")) + "/день.", 8, 176);
+        text(ms, "§e" + bt.title, 32, 130);
+        small(ms, "Лицензия: §e" + Finance.money(bt.price) + "§f  выручка §a" + Finance.money(bt.base) + "§f/день на работника, до §e"
+                + bt.maxWorkers + "§f раб.", 8, 146);
+        small(ms, "Комплект на 1 работника (≈" + Finance.money(bt.kitPrice()) + "):", 8, 155);
+        small(ms, "§e" + com.baraaoi.reallife.economy.LegalBiz.kitText(bt), 8, 164);
+        small(ms, "Сырьё: " + bt.supplyName + " §a" + Finance.money(bt.supplyPrice()) + "§f/шт, " + BizType.SUPPLY_PER_WORKER
+                + "/день; зарплата " + Finance.money(bt.wage()), 8, 173);
+    }
+
+    private void drawEquip(MatrixStack ms, CompoundNBT t) {
+        BizEquip[] eq = BizEquip.values();
+        for (int i = 0; i < EQ_PAGE; i++) {
+            int idx = page * EQ_PAGE + i;
+            if (idx >= eq.length) break;
+            BizEquip e = eq[idx];
+            int y = 64 + i * 20;
+            small(ms, "§f" + e.title + "  §a" + Finance.money(e.price), 8, y + 1);
+            StringBuilder sb = new StringBuilder();
+            for (BizType bt : BizType.values()) {
+                int n = bt.need(e);
+                if (n <= 0) continue;
+                if (sb.length() > 0) sb.append(", ");
+                sb.append(SHORT[bt.ordinal()]).append(n > 1 ? "×" + n : "");
+            }
+            small(ms, "§8для: " + sb, 8, y + 9);
+        }
+        int pages = Math.max(1, (eq.length + EQ_PAGE - 1) / EQ_PAGE);
+        small(ms, "§7стр. " + (page + 1) + "/" + pages + "  §8ставить в зоне ±8 от главной кассы", 100, 193);
     }
 
     private void drawCrypto(MatrixStack ms, CompoundNBT t) {

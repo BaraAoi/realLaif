@@ -7,13 +7,19 @@ import com.baraaoi.reallife.event.DebtManager;
 import com.baraaoi.reallife.event.Visitors;
 import com.baraaoi.reallife.item.BizPermitItem;
 import com.baraaoi.reallife.item.DirtyMoneyItem;
+import com.baraaoi.reallife.item.SupplyItem;
+import com.baraaoi.reallife.registry.ModBlocks;
 import com.baraaoi.reallife.registry.ModEntities;
 import com.baraaoi.reallife.registry.ModItems;
-import com.baraaoi.reallife.structure.BizBuildings;
-import com.baraaoi.reallife.structure.Blueprint;
-import com.baraaoi.reallife.structure.Buildings;
+import com.baraaoi.reallife.tile.FridgeTileEntity;
+import com.baraaoi.reallife.tile.ShelfTileEntity;
+import com.baraaoi.reallife.tile.PrinterTileEntity;
+import net.minecraft.block.Block;
+import net.minecraft.block.BlockState;
+import net.minecraft.block.HorizontalBlock;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.ServerPlayerEntity;
+import net.minecraft.inventory.IInventory;
 import net.minecraft.inventory.container.SimpleNamedContainerProvider;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.CompoundNBT;
@@ -21,20 +27,31 @@ import net.minecraft.nbt.ListNBT;
 import net.minecraft.potion.EffectInstance;
 import net.minecraft.potion.Effects;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.tileentity.BarrelTileEntity;
+import net.minecraft.tileentity.ChestTileEntity;
+import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.Direction;
+import net.minecraft.util.math.AxisAlignedBB;
 import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.MathHelper;
+import net.minecraft.util.math.ChunkPos;
 import net.minecraft.util.text.StringTextComponent;
 import net.minecraft.world.World;
 import net.minecraft.world.server.ServerWorld;
 import net.minecraftforge.fml.network.NetworkHooks;
 
+import javax.annotation.Nullable;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
 import java.util.Random;
 import java.util.UUID;
 
 /**
- * Легальный бизнес v5: заведения, наёмные работники, ежедневная прибыль «как повезёт»
- * и отмывание грязных денег через кассу (с риском налоговой проверки).
+ * Легальный бизнес v6: игрок САМ строит заведение. Лицензия ставит главную кассу на своей земле, вокруг неё —
+ * зона 17×10×17, где игрок расставляет купленное оборудование (полки, холодильники, гриль, мойки...).
+ * Сколько полных комплектов оборудования — столько работников можно нанять (но не больше потолка вида).
+ * Каждый работник расходует сырьё (закупка в телефоне → «Опт», доставляется прямо на полки/в холодильники зоны).
+ * Отмыв через кассу — в пределах вчерашней прибыли.
  */
 public final class LegalBiz {
     private LegalBiz() {}
@@ -105,118 +122,355 @@ public final class LegalBiz {
 
     // ------------------------------------------------------------------ отмывание
 
-    /** Безопасный дневной объём отмыва для заведения. */
-    public static double safeLimit(BizType t) {
-        return t.base * Config.LAUNDER_SAFE_SHARE.get();
+    /** Безопасный дневной объём отмыва: доля ВЧЕРАШНЕЙ прибыли заведения (убыток/ноль — отмывать нельзя). */
+    public static double safeLimit(LegalBusiness b) {
+        return Math.max(0, b.lastProfit) * Config.LAUNDER_SAFE_SHARE.get();
     }
 
-    /** Шанс, что налоговая заметит отмыв amount, если сегодня уже провели before. */
-    public static double launderChance(int base, double before, double amount) {
+    /** Шанс, что налоговая заметит отмыв amount, если сегодня уже провели before; base — вчерашняя прибыль. */
+    public static double launderChance(double base, double before, double amount) {
+        if (base <= 0) return 0.95;
         double share = Config.LAUNDER_SAFE_SHARE.get();
         double after = before + amount;
         if (after <= base * share + 1e-6) return 0;
         return Math.max(0, Math.min(0.95, (after / base - share) * Config.LAUNDER_RISK_SLOPE.get()));
     }
 
-    // ------------------------------------------------------------------ покупка и стройка
+    // ------------------------------------------------------------------ лицензия и касса
 
     public static void buyPermit(ServerPlayerEntity p, Account a, int typeIdx) {
         BizType t = BizType.byId(typeIdx);
         if (t == null) return;
         if (a.captivity != Account.FREE) { BankService.msg(p, "§cВы сейчас не можете пользоваться услугами."); return; }
         if (!BankService.charge(p, a, t.price)) {
-            BankService.msg(p, BIZ + "§cРазрешение на «" + t.title + "» стоит " + Finance.money(t.price) + ". Счёт + наличка — не хватает.");
+            BankService.msg(p, BIZ + "§cЛицензия на «" + t.title + "» стоит " + Finance.money(t.price) + ". Счёт + наличка — не хватает.");
             return;
         }
         BankService.give(p, BizPermitItem.create(ModItems.BIZ_PERMIT.get(), t));
-        BankService.msg(p, BIZ + "§aРазрешение на «" + t.title + "» оформлено! §fПКМ им по ровной земле — бригада построит заведение 11×11. "
-                + "Потом найми работника в кассе.");
+        BankService.msg(p, BIZ + "§aЛицензия на «" + t.title + "» оформлена! §fПКМ ею по блоку на СВОЕЙ земле — там встанет главная касса. "
+                + "Вокруг неё (±" + LegalBusiness.R_XZ + " блоков) расставь оборудование из телефона (Бизнес → Оборудование) и найми работников в кассе.");
     }
 
-    /** Построить заведение по разрешению. true — построено. */
-    public static boolean place(ServerPlayerEntity p, BlockPos origin, Direction facing, BizType type) {
+    /** Покупка оборудования через телефон. */
+    public static void buyEquip(ServerPlayerEntity p, Account a, int idx, int count) {
+        BizEquip e = BizEquip.byId(idx);
+        if (e == null) return;
+        int n = Math.max(1, Math.min(8, count));
+        if (a.captivity != Account.FREE) return;
+        int cost = e.price * n;
+        if (!BankService.charge(p, a, cost)) {
+            BankService.msg(p, BIZ + "§c«" + e.title + "» ×" + n + " стоит " + Finance.money(cost) + ". Не хватает.");
+            return;
+        }
+        BankService.give(p, new ItemStack(e.block.get(), n));
+        BankService.msg(p, BIZ + "Доставлено: §e" + e.title + " ×" + n + "§f за §c" + Finance.money(cost) + "§f. Поставь в зоне своего заведения.");
+    }
+
+    /** Чем мешает место для главной кассы (null — можно). */
+    @Nullable
+    public static String checkSite(World world, BlockPos pos, EconomyData data, UUID owner) {
+        if (world.getDimensionKey() != World.OVERWORLD) return "заведения открывают только в обычном мире";
+        if (pos.getY() < 2 || pos.getY() > 250) return "слишком высоко или низко";
+        if (data.isProtected(pos)) return "это городская постройка";
+        for (LegalBusiness b : data.businesses) {
+            if (LegalBusiness.zonesOverlap(b.counter, pos)) {
+                return "слишком близко к заведению «" + b.type.title + "»" + (owner.equals(b.owner) ? " (вашему)" : "")
+                        + " — зоны (±" + LegalBusiness.R_XZ + " блоков) не должны пересекаться";
+            }
+        }
+        for (Account o : data.all()) {
+            if (o.id.equals(owner) || !o.hasHouse) continue;
+            if (pos.getX() >= o.houseMin.getX() - 1 && pos.getX() <= o.houseMax.getX() + 1 && pos.getZ() >= o.houseMin.getZ() - 1
+                    && pos.getZ() <= o.houseMax.getZ() + 1 && pos.getY() >= o.houseMin.getY() - 8 && pos.getY() <= o.houseMax.getY() + 2) {
+                return "это дом другого игрока";
+            }
+        }
+        Account a = data.getOrCreate(owner);
+        if (Business.inOwnProperty(data, a, pos)) return null;
+        UUID landOwner = data.owner(EconomyData.chunkKey(pos));
+        if (landOwner == null) return null; // ничья земля — оформим на вас
+        return landOwner.equals(com.baraaoi.reallife.structure.Buildings.CITY) ? "это городская земля" : "участок принадлежит другому игроку";
+    }
+
+    /** Поставить главную кассу по лицензии. true — заведение открыто. */
+    public static boolean place(ServerPlayerEntity p, BlockPos pos, Direction facing, BizType type) {
         World world = p.world;
         MinecraftServer server = p.getServer();
         if (server == null) return false;
-        if (world.getDimensionKey() != World.OVERWORLD) {
-            BankService.msg(p, BIZ + "§cЗаведения строят только в обычном мире.");
-            return false;
-        }
         EconomyData data = EconomyData.get(server);
-        String problem = BizBuildings.checkSite(world, origin, facing, data, p.getUniqueID());
+        String problem = checkSite(world, pos, data, p.getUniqueID());
         if (problem != null) {
-            BankService.msg(p, BIZ + "§cБригада отказалась строить: §f" + problem);
+            BankService.msg(p, BIZ + "§cЗдесь открыть нельзя: §f" + problem);
             return false;
         }
-        LegalBusiness b = register(data, world, origin, facing, type, p.getUniqueID(), p.getGameProfile().getName());
-        int claimed = Buildings.claimArea(data, p.getUniqueID(), b.min.add(-4, 0, -4), b.max.add(4, 0, 4), true);
+        BlockState cur = world.getBlockState(pos);
+        if (!cur.getMaterial().isReplaceable()) {
+            BankService.msg(p, BIZ + "§cМесто под кассу занято.");
+            return false;
+        }
+        LegalBusiness b = register(data, world, pos, facing, type, p.getUniqueID(), p.getGameProfile().getName());
+        int claimed = com.baraaoi.reallife.structure.Buildings.claimArea(data, p.getUniqueID(), pos, pos, true);
         data.markDirty();
-        BankService.msg(p, BIZ + "§aОткрыто заведение «" + type.title + "»! §fБазовая прибыль §a" + Finance.money(type.base)
-                + "§f/день. §eНайми работника в кассе (ПКМ по кассе)§f — без него заведение закрыто.");
-        if (claimed > 0) BankService.msg(p, "§3[Администрация] §fЗемля под заведением оформлена на вас: §e" + claimed + "§f участк(а/ов).");
+        BankService.msg(p, BIZ + "§aОткрыто заведение «" + type.title + "»! §fЭто главная касса. Зона заведения — §e±" + LegalBusiness.R_XZ
+                + "§f блоков вокруг неё. Комплект на 1 работника: §e" + kitText(type) + "§f (≈" + Finance.money(type.kitPrice()) + ").");
+        BankService.msg(p, BIZ + "Купи оборудование в телефоне (§eБизнес → Оборудование§f), сырьё — в §eОпт§f; потом ПКМ по кассе → «Нанять».");
+        if (claimed > 0) BankService.msg(p, "§3[Администрация] §fУчасток под кассой оформлен на вас.");
         return true;
     }
 
-    /** Построить и зарегистрировать (без проверок; используется и самотестом). */
-    public static LegalBusiness register(EconomyData data, World world, BlockPos origin, Direction facing, BizType type, UUID owner, String ownerName) {
-        Blueprint bp = BizBuildings.build(world, origin, facing, type);
+    /** Зарегистрировать заведение с главной кассой в pos (касса ставится, если её там нет). Используется и самотестом. */
+    public static LegalBusiness register(EconomyData data, World world, BlockPos pos, Direction facing, BizType type, UUID owner, String ownerName) {
+        if (world.getBlockState(pos).getBlock() != ModBlocks.BIZ_COUNTER.get()) {
+            world.setBlockState(pos, ModBlocks.BIZ_COUNTER.get().getDefaultState().with(HorizontalBlock.HORIZONTAL_FACING, facing), 3);
+        }
         LegalBusiness b = new LegalBusiness();
         b.id = data.nextBizId++;
         b.owner = owner;
         b.ownerName = ownerName == null ? "" : ownerName;
         b.type = type;
-        b.counter = bp.pos(BizBuildings.COUNTER[0], BizBuildings.COUNTER[1], BizBuildings.COUNTER[2]);
-        b.workerPos = bp.pos(BizBuildings.WORKER[0], BizBuildings.WORKER[1], BizBuildings.WORKER[2]);
-        BlockPos[] box = BizBuildings.box(world, origin, facing);
-        b.min = box[0];
-        b.max = box[1];
+        b.setCounter(pos);
         data.businesses.add(b);
         data.markDirty();
         return b;
     }
 
-    // ------------------------------------------------------------------ работник
-
-    public static WorkerEntity spawnWorker(ServerWorld w, LegalBusiness b) {
-        if (b.workerId != null) {
-            Entity old = w.getEntityByUuid(b.workerId);
-            if (old != null) old.remove();
+    /** Закрыть заведение (главную кассу сломал владелец): уволить всех, вернуть лицензию. */
+    public static void close(MinecraftServer server, EconomyData data, LegalBusiness b, @Nullable ServerPlayerEntity by) {
+        ServerWorld ow = EconomyData.overworld(server);
+        for (UUID u : b.workers) {
+            Entity e = ow.getEntityByUuid(u);
+            if (e != null) e.remove();
         }
+        b.workers.clear();
+        data.businesses.remove(b);
+        data.markDirty();
+        if (by != null) {
+            BankService.give(by, BizPermitItem.create(ModItems.BIZ_PERMIT.get(), b.type));
+            BankService.msg(by, BIZ + "§eЗаведение «" + b.type.title + "» закрыто, работники распущены. §fЛицензия возвращена — "
+                    + "можно открыть заново в другом месте.");
+        }
+    }
+
+    /** Сломали кассу. true — отменить (чужая главная касса или касса в чужой зоне). */
+    public static boolean onCounterBreak(ServerPlayerEntity p, BlockPos pos) {
+        MinecraftServer server = p.getServer();
+        if (server == null) return false;
+        EconomyData data = EconomyData.get(server);
+        LegalBusiness main = data.bizAtCounter(pos);
+        boolean owner = main != null ? p.getUniqueID().equals(main.owner) : true;
+        if (main == null) {
+            LegalBusiness z = bizContaining(data, pos);
+            if (z != null && !p.getUniqueID().equals(z.owner) && !p.isCreative()) {
+                BankService.actionBar(p, "§cЭто касса чужого заведения.");
+                return true;
+            }
+            return false;
+        }
+        if (!owner && !p.isCreative()) {
+            BankService.actionBar(p, "§cЭто главная касса чужого заведения — ломать нельзя.");
+            return true;
+        }
+        close(server, data, main, owner ? p : null);
+        return false;
+    }
+
+    @Nullable
+    public static LegalBusiness bizContaining(EconomyData data, BlockPos pos) {
+        for (LegalBusiness b : data.businesses) if (b.contains(pos, 0)) return b;
+        return null;
+    }
+
+    public static String kitText(BizType t) {
+        StringBuilder sb = new StringBuilder();
+        for (BizEquip e : BizEquip.values()) {
+            int n = t.need(e);
+            if (n <= 0) continue;
+            if (sb.length() > 0) sb.append(", ");
+            sb.append(e.title).append(n > 1 ? " ×" + n : "");
+        }
+        return sb.toString();
+    }
+
+    // ------------------------------------------------------------------ осмотр зоны
+
+    /** Итог осмотра зоны заведения. */
+    public static final class Scan {
+        public final int[] count = new int[BizEquip.values().length];
+        public final List<IInventory> stores = new ArrayList<>();
+        public final List<BlockPos> spots = new ArrayList<>();
+        public int stock;
+        public int sets;
+        public int allowed;
+        public boolean counterOk;
+    }
+
+    static boolean isStore(Block block, TileEntity te) {
+        if (te instanceof ShelfTileEntity || te instanceof ChestTileEntity || te instanceof BarrelTileEntity) return true;
+        return te instanceof FridgeTileEntity && block != ModBlocks.BUSINESS_CHEST.get();
+    }
+
+    public static Scan scan(World w, LegalBusiness b) {
+        Scan s = new Scan();
+        s.counterOk = w.getBlockState(b.counter).getBlock() == ModBlocks.BIZ_COUNTER.get();
+        BlockPos.Mutable m = new BlockPos.Mutable();
+        for (int x = b.min.getX(); x <= b.max.getX(); x++)
+            for (int z = b.min.getZ(); z <= b.max.getZ(); z++)
+                for (int y = Math.max(0, b.min.getY()); y <= Math.min(255, b.max.getY()); y++) {
+                    m.setPos(x, y, z);
+                    BlockState st = w.getBlockState(m);
+                    if (st.isAir()) continue;
+                    Block block = st.getBlock();
+                    BizEquip e = BizEquip.of(block);
+                    if (e != null) {
+                        s.count[e.ordinal()]++;
+                        if (e != BizEquip.SHELF && e != BizEquip.RACK) s.spots.add(m.toImmutable());
+                    }
+                    if (st.hasTileEntity()) {
+                        TileEntity te = w.getTileEntity(m);
+                        if (te instanceof IInventory && isStore(block, te)) {
+                            IInventory inv = (IInventory) te;
+                            s.stores.add(inv);
+                            for (int i = 0; i < inv.getSizeInventory(); i++) {
+                                ItemStack it = inv.getStackInSlot(i);
+                                if (SupplyItem.typeOf(it) == b.type) s.stock += it.getCount();
+                            }
+                        }
+                    }
+                }
+        int sets = Integer.MAX_VALUE;
+        for (BizEquip e : BizEquip.values()) {
+            int need = b.type.need(e);
+            if (need > 0) sets = Math.min(sets, s.count[e.ordinal()] / need);
+        }
+        if (!s.counterOk) sets = 0;
+        s.sets = sets == Integer.MAX_VALUE ? 0 : sets;
+        s.allowed = Math.min(b.type.maxWorkers, s.sets);
+        b.cacheSets = s.sets;
+        b.cacheStock = s.stock;
+        return s;
+    }
+
+    /** Списать до amount единиц сырья из хранилищ зоны. Возвращает, сколько списано. */
+    static int consume(Scan s, BizType type, int amount) {
+        int left = amount;
+        for (IInventory inv : s.stores) {
+            for (int i = 0; i < inv.getSizeInventory() && left > 0; i++) {
+                ItemStack it = inv.getStackInSlot(i);
+                if (SupplyItem.typeOf(it) != type) continue;
+                int n = Math.min(left, it.getCount());
+                it.shrink(n);
+                if (it.isEmpty()) inv.setInventorySlotContents(i, ItemStack.EMPTY);
+                left -= n;
+            }
+            inv.markDirty();
+            if (left <= 0) break;
+        }
+        s.stock -= amount - left;
+        return amount - left;
+    }
+
+    /** Разложить поставку по полкам/холодильникам/сундукам зоны. Возвращает то, что не влезло. */
+    public static ItemStack deliver(World w, LegalBusiness b, ItemStack stack) {
+        Scan s = scan(w, b);
+        ItemStack rest = stack.copy();
+        // сначала — полки и холодильники (их видно), потом сундуки
+        List<IInventory> order = new ArrayList<>();
+        for (IInventory inv : s.stores) if (inv instanceof ShelfTileEntity || inv instanceof FridgeTileEntity) order.add(inv);
+        for (IInventory inv : s.stores) if (!order.contains(inv)) order.add(inv);
+        // раскладываем порциями по 8, по кругу — чтобы заполнялись все полки, а не одна
+        boolean progress = true;
+        while (!rest.isEmpty() && progress) {
+            progress = false;
+            for (IInventory inv : order) {
+                if (rest.isEmpty()) break;
+                ItemStack piece = rest.split(Math.min(8, rest.getCount()));
+                int before = piece.getCount();
+                PrinterTileEntity.insert(inv, piece);
+                if (piece.getCount() < before) { progress = true; inv.markDirty(); }
+                if (!piece.isEmpty()) rest.grow(piece.getCount());
+            }
+        }
+        return rest;
+    }
+
+    // ------------------------------------------------------------------ работники
+
+    @Nullable
+    public static BlockPos workerSpot(ServerWorld w, LegalBusiness b, Scan s) {
+        List<BlockPos> anchors = new ArrayList<>(s.spots);
+        anchors.add(0, b.counter);
+        for (int attempt = 0; attempt < 60; attempt++) {
+            BlockPos a = attempt < 20 ? anchors.get(Math.min(anchors.size() - 1, attempt % anchors.size())) : anchors.get(R.nextInt(anchors.size()));
+            Direction d = Direction.byHorizontalIndex(R.nextInt(4));
+            BlockPos p = a.offset(d);
+            if (attempt >= 30) p = p.add(R.nextInt(3) - 1, R.nextInt(3) - 1, R.nextInt(3) - 1);
+            if (!b.contains(p, 0)) continue;
+            if (!w.isAirBlock(p) || !w.isAirBlock(p.up()) || !w.getBlockState(p.down()).getMaterial().isSolid()) continue;
+            if (!w.getEntitiesWithinAABB(WorkerEntity.class, new AxisAlignedBB(p)).isEmpty()) continue;
+            return p;
+        }
+        return null;
+    }
+
+    public static WorkerEntity spawnWorker(ServerWorld w, LegalBusiness b, BlockPos at) {
         WorkerEntity e = ModEntities.WORKER.get().create(w);
         if (e == null) return null;
-        double dx = b.counter.getX() - b.workerPos.getX(), dz = b.counter.getZ() - b.workerPos.getZ();
-        float yaw = (float) (MathHelper.atan2(dz, dx) * (180D / Math.PI)) - 90.0F;
-        e.setLocationAndAngles(b.workerPos.getX() + 0.5, b.workerPos.getY(), b.workerPos.getZ() + 0.5, yaw, 0F);
+        float yaw = R.nextFloat() * 360F;
+        e.setLocationAndAngles(at.getX() + 0.5, at.getY(), at.getZ() + 0.5, yaw, 0F);
         e.rotationYawHead = yaw;
         e.renderYawOffset = yaw;
         e.setBizType(b.type);
         e.bizId = b.id;
-        e.setCustomName(new StringTextComponent("§a" + b.type.workerName));
+        String name = b.workers.isEmpty() ? b.type.workerName : b.type.workerName + " " + (b.workers.size() + 1) + "-й";
+        e.setCustomName(new StringTextComponent("§a" + name));
         e.setCustomNameVisible(true);
         w.addEntity(e);
-        b.workerId = e.getUniqueID();
-        b.worker = true;
+        b.workers.add(e.getUniqueID());
         return e;
+    }
+
+    /** Убрать из списка работников, которых больше нет (только если зона загружена). */
+    static void pruneWorkers(ServerWorld w, LegalBusiness b) {
+        if (!w.isBlockLoaded(b.counter)) return;
+        b.workers.removeIf(u -> w.getEntityByUuid(u) == null);
     }
 
     static void hire(ServerPlayerEntity p, Account a, LegalBusiness b) {
         ServerWorld w = p.getServerWorld();
-        if (b.worker && b.workerId != null && w.getEntityByUuid(b.workerId) != null) {
-            BankService.msg(p, BIZ + "Работник уже на месте: " + b.type.workerName + ".");
+        pruneWorkers(w, b);
+        Scan s = scan(w, b);
+        if (!s.counterOk) { BankService.msg(p, BIZ + "§cГлавная касса пропала."); return; }
+        if (b.workers.size() >= s.allowed) {
+            if (b.workers.size() >= b.type.maxWorkers) {
+                BankService.msg(p, BIZ + "§eБольше " + b.type.maxWorkers + " работников в «" + b.type.title + "» не нужно.");
+            } else {
+                BankService.msg(p, BIZ + "§cНе хватает оборудования на ещё одного работника. Нужен ещё комплект: §e" + kitText(b.type)
+                        + "§c (в зоне ±" + LegalBusiness.R_XZ + " блоков от главной кассы).");
+            }
             return;
         }
+        BlockPos at = workerSpot(w, b, s);
+        if (at == null) { BankService.msg(p, BIZ + "§cРаботнику негде встать — освободи место (2 блока воздуха) рядом с оборудованием."); return; }
         int cost = b.type.hireCost();
         if (!BankService.charge(p, a, cost)) {
             BankService.msg(p, BIZ + "§cНайм стоит " + Finance.money(cost) + " (подъёмные). Не хватает.");
             return;
         }
-        if (spawnWorker(w, b) == null) {
-            a.balance += cost;
-            return;
-        }
+        if (spawnWorker(w, b, at) == null) { a.balance += cost; return; }
         EconomyData.get(p.getServer()).markDirty();
-        BankService.msg(p, BIZ + "§aНанят работник: " + b.type.workerName + ". §fЗарплата " + Finance.money(b.type.wage())
-                + "/день — вычитается из выручки. Береги его: убьют — нанимай заново.");
+        BankService.msg(p, BIZ + "§aНанят работник (" + b.workers.size() + "/" + s.allowed + "). §fЗарплата " + Finance.money(b.type.wage())
+                + "/день, расход сырья " + BizType.SUPPLY_PER_WORKER + " шт./день.");
+    }
+
+    static void fire(ServerPlayerEntity p, LegalBusiness b) {
+        ServerWorld w = p.getServerWorld();
+        pruneWorkers(w, b);
+        if (b.workers.isEmpty()) { BankService.msg(p, BIZ + "Увольнять некого."); return; }
+        UUID u = b.workers.remove(b.workers.size() - 1);
+        Entity e = w.getEntityByUuid(u);
+        if (e != null) e.remove();
+        EconomyData.get(p.getServer()).markDirty();
+        BankService.msg(p, BIZ + "§eРаботник уволен. §fОсталось: " + b.workers.size() + ".");
     }
 
     public static void onWorkerDeath(WorkerEntity e) {
@@ -224,13 +478,11 @@ public final class LegalBiz {
         if (server == null) return;
         EconomyData data = EconomyData.get(server);
         LegalBusiness b = data.bizById(e.bizId);
-        if (b == null || b.workerId == null || !b.workerId.equals(e.getUniqueID())) return;
-        b.worker = false;
-        b.workerId = null;
+        if (b == null || !b.workers.remove(e.getUniqueID())) return;
         data.markDirty();
         ServerPlayerEntity owner = b.owner == null ? null : server.getPlayerList().getPlayerByUUID(b.owner);
-        if (owner != null) BankService.msg(owner, BIZ + "§cСМС: «" + b.type.workerName + " из «" + b.type.title
-                + "» погиб. Заведение закрыто, пока не наймёшь нового (ПКМ по кассе).»");
+        if (owner != null) BankService.msg(owner, BIZ + "§cСМС: «Работник из «" + b.type.title + "» погиб. Осталось работников: "
+                + b.workers.size() + ". Нанять нового — ПКМ по кассе.»");
     }
 
     public static void workerTalk(ServerPlayerEntity p, WorkerEntity e) {
@@ -241,7 +493,9 @@ public final class LegalBiz {
                 "Директор сказал улыбаться. Я улыбаюсь.", "Скоро обед, приходите после."};
         String text = lines[R.nextInt(lines.length)];
         if (b != null && p.getUniqueID().equals(b.owner)) {
-            text = "Шеф! Вчера вышло " + Finance.money(b.lastProfit) + " (" + (b.lastNote.isEmpty() ? "ещё не считали" : b.lastNote) + ").";
+            int need = BizType.SUPPLY_PER_WORKER * b.workers.size();
+            text = "Шеф! Вчера вышло " + Finance.money(b.lastProfit) + " (" + (b.lastNote.isEmpty() ? "ещё не считали" : b.lastNote) + ")."
+                    + (b.cacheStock < need ? " И сырьё кончается: " + b.cacheStock + " из " + need + " на день!" : "");
         }
         p.sendStatusMessage(new StringTextComponent("§7<§a" + e.getBizType().workerName + "§7> §f" + text), false);
     }
@@ -253,13 +507,15 @@ public final class LegalBiz {
         if (server == null) return;
         EconomyData data = EconomyData.get(server);
         LegalBusiness b = data.bizAtCounter(pos);
+        if (b == null) b = bizContaining(data, pos);
         if (b == null) {
-            BankService.msg(p, BIZ + "§7Касса не зарегистрирована ни за кем.");
+            BankService.msg(p, BIZ + "§7Касса не относится ни к одному заведению. Лицензию покупают в телефоне (Бизнес), "
+                    + "лишние кассы ставят в зоне своего заведения.");
             return;
         }
         if (!p.getUniqueID().equals(b.owner)) {
             BankService.msg(p, BIZ + "«" + b.type.title + "». Владелец: §e" + (b.ownerName.isEmpty() ? "?" : b.ownerName)
-                    + "§f. " + (b.worker ? "§aОткрыто." : "§cЗакрыто — нет работника."));
+                    + "§f. " + (!b.workers.isEmpty() ? "§aОткрыто." : "§cЗакрыто."));
             return;
         }
         final BlockPos at = pos.toImmutable();
@@ -268,27 +524,64 @@ public final class LegalBiz {
         BankService.sync(p);
     }
 
-    /** Данные открытой кассы для окна. */
-    public static CompoundNBT info(LegalBusiness b, long today) {
+    /** Заведение, к которому относится открытая касса. */
+    @Nullable
+    public static LegalBusiness bizForCounter(EconomyData data, BlockPos pos) {
+        LegalBusiness b = data.bizAtCounter(pos);
+        return b != null ? b : bizContaining(data, pos);
+    }
+
+    static String closedReason(LegalBusiness b, @Nullable Scan s, int sets, int stock) {
+        if (s != null && !s.counterOk) return "нет главной кассы";
+        if (sets <= 0) return "не хватает оборудования";
+        if (b.workers.isEmpty()) return "нет работников";
+        if (stock <= 0) return "нет сырья";
+        return "";
+    }
+
+    /** Данные заведения для окон. live — осмотреть зону прямо сейчас (иначе — кэш). */
+    public static CompoundNBT info(World w, LegalBusiness b, long today, boolean live) {
         CompoundNBT t = new CompoundNBT();
+        Scan s = live && w != null && w.isBlockLoaded(b.counter) ? scan(w, b) : null;
+        int sets = s != null ? s.sets : b.cacheSets;
+        int stock = s != null ? s.stock : b.cacheStock;
         t.putInt("id", b.id);
         t.putInt("type", b.type.ordinal());
-        t.putBoolean("worker", b.worker);
+        t.putInt("workers", b.workers.size());
+        t.putInt("sets", sets);
+        t.putInt("allowed", Math.min(b.type.maxWorkers, sets));
+        t.putInt("maxWorkers", b.type.maxWorkers);
+        t.putInt("stock", stock);
+        t.putInt("need", BizType.SUPPLY_PER_WORKER * b.workers.size());
+        t.putString("reason", closedReason(b, s, sets, stock));
         t.putDouble("lastProfit", b.lastProfit);
         t.putString("lastNote", b.lastNote);
         t.putDouble("total", b.totalProfit);
         t.putInt("days", b.days);
         t.putDouble("laundered", b.launderedOn(today));
-        t.putDouble("safe", safeLimit(b.type));
+        t.putDouble("safe", safeLimit(b));
         t.putInt("x", b.counter.getX());
         t.putInt("y", b.counter.getY());
         t.putInt("z", b.counter.getZ());
+        if (s != null) {
+            ListNBT eq = new ListNBT();
+            for (BizEquip e : BizEquip.values()) {
+                int need = b.type.need(e);
+                if (need <= 0) continue;
+                CompoundNBT q = new CompoundNBT();
+                q.putString("n", e.title);
+                q.putInt("h", s.count[e.ordinal()]);
+                q.putInt("q", need);
+                eq.add(q);
+            }
+            t.put("equip", eq);
+        }
         return t;
     }
 
     public static ListNBT infoList(EconomyData data, UUID owner, long today) {
         ListNBT l = new ListNBT();
-        for (LegalBusiness b : data.bizOf(owner)) l.add(info(b, today));
+        for (LegalBusiness b : data.bizOf(owner)) l.add(info(null, b, today, false));
         return l;
     }
 
@@ -296,9 +589,10 @@ public final class LegalBiz {
         MinecraftServer server = p.getServer();
         if (server == null) return;
         EconomyData data = EconomyData.get(server);
-        LegalBusiness b = data.bizAtCounter(c.getPos());
+        LegalBusiness b = bizForCounter(data, c.getPos());
         if (b == null || !p.getUniqueID().equals(b.owner)) return;
         if (action == Actions.BIZ_HIRE) hire(p, a, b);
+        else if (action == Actions.BIZ_FIRE) fire(p, b);
         else if (action == Actions.BIZ_LAUNDER) launder(p, a, b, c);
     }
 
@@ -308,12 +602,17 @@ public final class LegalBiz {
         if (a.captivity != Account.FREE) return;
         ItemStack st = c.getInput().getStackInSlot(0);
         if (st.isEmpty() || !(st.getItem() instanceof DirtyMoneyItem)) { BankService.msg(p, BIZ + "Положи грязные деньги в слот кассы."); return; }
-        if (!b.worker) { BankService.msg(p, BIZ + "§cЗаведение закрыто — без работника выручку не проведёшь. Найми работника."); return; }
+        if (b.workers.isEmpty()) { BankService.msg(p, BIZ + "§cЗаведение закрыто — без работников выручку не проведёшь."); return; }
+        if (b.lastProfit <= 0) {
+            BankService.msg(p, BIZ + "§cВчера заведение " + (b.days == 0 ? "ещё не работало" : b.lastProfit < 0 ? "ушло в минус" : "ничего не заработало")
+                    + " — провести «выручку» не через что. Налоговая сразу заметит. Отмыв доступен в пределах вчерашней прибыли.");
+            return;
+        }
         EconomyData data = EconomyData.get(server);
         long today = BankService.today(server);
         double amount = ItemValues.stackValue(st);
         double before = b.launderedOn(today);
-        double chance = launderChance(b.type.base, before, amount);
+        double chance = launderChance(b.lastProfit, before, amount);
         b.launderDay = today;
         b.launderedToday = before + amount;
         c.getInput().setInventorySlotContents(0, ItemStack.EMPTY);
@@ -327,12 +626,12 @@ public final class LegalBiz {
         a.balance += clean;
         BankService.msg(p, BIZ + "Выручка проведена через кассу «" + b.type.title + "»: §2" + Finance.money(amount) + "§f → §a+"
                 + Finance.money(clean) + "§f на счёт (НДФЛ " + Finance.percent(tax) + "). Сегодня проведено: "
-                + Finance.money(b.launderedToday) + " из безопасных " + Finance.money(safeLimit(b.type)) + ".");
+                + Finance.money(b.launderedToday) + " из безопасных " + Finance.money(safeLimit(b)) + " (15% вчерашней прибыли).");
         if (chance > 0) BankService.msg(p, BIZ + "§eПронесло. Риск был " + Finance.percent(chance) + " — налоговая могла заметить.");
     }
 
     static void caught(MinecraftServer server, EconomyData data, ServerPlayerEntity p, Account a, LegalBusiness b, double amount) {
-        double fine = Config.TAX_FINE_MULT.get() * (b.type.base + amount);
+        double fine = Config.TAX_FINE_MULT.get() * (Math.max(0, b.lastProfit) + amount);
         p.closeScreen();
         BankService.msg(p, TAX + "§cНалоговая проверка в «" + b.type.title + "»! §fВыручка не сходится с чеками: "
                 + Finance.money(amount) + " «из воздуха».");
@@ -351,35 +650,47 @@ public final class LegalBiz {
 
     // ------------------------------------------------------------------ день
 
+    /** Выручка дня до вычета зарплат. */
+    public static double revenue(BizType t, int working, double mult, double supplyFraction) {
+        if (working <= 0) return 0;
+        return Math.round(t.base * (1 + 0.9 * (working - 1)) * mult * supplyFraction);
+    }
+
     public static void processDay(MinecraftServer server, EconomyData data) {
         ServerWorld ow = EconomyData.overworld(server);
-        for (LegalBusiness b : data.businesses) {
+        for (LegalBusiness b : new ArrayList<>(data.businesses)) {
             if (b.owner == null) continue;
             Account a = data.getOrCreate(b.owner);
             ServerPlayerEntity p = server.getPlayerList().getPlayerByUUID(b.owner);
-            if (b.worker && b.workerId != null && ow.isBlockLoaded(b.workerPos) && ow.getEntityByUuid(b.workerId) == null) {
-                b.worker = false;
-                b.workerId = null;
-            }
-            if (!b.worker) {
-                b.lastProfit = 0;
-                b.lastNote = "закрыто: нет работника";
-                if (p != null) BankService.msg(p, BIZ + "§cСМС: «" + b.type.title + "» сегодня не работало — нет работника.");
-                continue;
-            }
+            pruneWorkers(ow, b);
+            Scan s = scan(ow, b); // при необходимости подгрузит чанк
+            int hired = b.workers.size();
+            int working = Math.min(hired, s.allowed);
+            int need = BizType.SUPPLY_PER_WORKER * working;
+            int used = working > 0 ? consume(s, b.type, need) : 0;
+            b.cacheStock = s.stock;
+            double fraction = need > 0 ? used / (double) need : 0;
+            double wages = b.type.wage() * hired;
             Roll r = roll(R, luckBonus(p));
-            double revenue = Math.round(b.type.base * r.mult);
-            double profit = revenue - b.type.wage();
+            double revenue = revenue(b.type, working, r.mult, fraction);
+            double profit = revenue - wages;
+            String note;
+            if (hired == 0) note = "закрыто: нет работников";
+            else if (working == 0) note = "закрыто: " + closedReason(b, s, s.sets, s.stock + used);
+            else if (used == 0) note = "простой: нет сырья";
+            else note = r.note + (used < need ? ", сырья хватило на " + Math.round(fraction * 100) + "%" : "");
             a.balance += profit;
             b.lastProfit = profit;
-            b.lastNote = r.note;
+            b.lastNote = note;
             b.totalProfit += profit;
-            b.days++;
+            if (working > 0) b.days++;
             if (p != null) {
-                String color = r.kind == BAD ? "§c" : r.kind == NORMAL ? "§f" : r.kind == GOOD ? "§a" : "§6§l";
-                BankService.msg(p, BIZ + "СМС «" + b.type.title + "»: " + color + r.note + "§f. Выручка §a" + Finance.money(revenue)
-                        + "§f, зарплата §c−" + Finance.money(b.type.wage()) + "§f → итог " + (profit >= 0 ? "§a+" : "§c")
-                        + Finance.money(profit) + "§f на счёт.");
+                String color = working == 0 || used == 0 ? "§c" : r.kind == BAD ? "§c" : r.kind == NORMAL ? "§f" : r.kind == GOOD ? "§a" : "§6§l";
+                BankService.msg(p, BIZ + "СМС «" + b.type.title + "»: " + color + note + "§f. Работает " + working + "/" + hired
+                        + ", сырья ушло " + used + "/" + need + ". Выручка §a" + Finance.money(revenue) + "§f, зарплаты §c−"
+                        + Finance.money(wages) + "§f → итог " + (profit >= 0 ? "§a+" : "§c") + Finance.money(profit) + "§f на счёт.");
+                if (working > 0 && s.stock < need) BankService.msg(p, BIZ + "§eСырья на завтра мало (" + s.stock + " из " + need
+                        + "). Телефон → Опт → «" + b.type.supplyName + "».");
             }
         }
         data.markDirty();

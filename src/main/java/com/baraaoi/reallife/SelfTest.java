@@ -395,38 +395,77 @@ public class SelfTest {
         check(Visitors.interval(1000) == 1800, "many printers - visitors every 90 s");
         check(com.baraaoi.reallife.event.Raids.snoopInterval(20) == 1800 && com.baraaoi.reallife.event.Raids.snoopInterval(1) > 6000, "more printers - more snoops");
 
-        // ---- v5: легальный бизнес
+        // ---- v6: легальный бизнес, который игрок строит сам
         UUID bizOwner = UUID.randomUUID();
         Account bo = data.getOrCreate(bizOwner);
         BlockPos lot = base.add(0, 30, 1000);
-        for (BlockPos p : BlockPos.getAllInBoxMutable(lot.add(-8, -1, -2), lot.add(8, -1, 14))) ow.setBlockState(p.toImmutable(), Blocks.STONE.getDefaultState(), 2);
-        String bsite = com.baraaoi.reallife.structure.BizBuildings.checkSite(ow, lot, Direction.SOUTH, data, bizOwner);
+        for (BlockPos p : BlockPos.getAllInBoxMutable(lot.add(-9, -1, -9), lot.add(50, -1, 9))) ow.setBlockState(p.toImmutable(), Blocks.STONE.getDefaultState(), 2);
+        for (BlockPos p : BlockPos.getAllInBoxMutable(lot.add(-9, 0, -9), lot.add(50, 3, 9))) ow.setBlockState(p.toImmutable(), Blocks.AIR.getDefaultState(), 2);
+        String bsite = com.baraaoi.reallife.economy.LegalBiz.checkSite(ow, lot, data, bizOwner);
         check(bsite == null, "business site accepted (" + bsite + ")");
         int bizBefore = data.businesses.size();
-        java.util.List<com.baraaoi.reallife.economy.LegalBusiness> made = new java.util.ArrayList<>();
-        int bx = 0;
+        com.baraaoi.reallife.economy.LegalBusiness shop = com.baraaoi.reallife.economy.LegalBiz.register(data, ow, lot, Direction.SOUTH,
+                com.baraaoi.reallife.economy.BizType.MINIMARKET, bizOwner, "Test");
+        check(ow.getBlockState(lot).getBlock() == ModBlocks.BIZ_COUNTER.get() && data.bizAtCounter(lot) == shop, "main counter placed and registered");
+        String overlap = com.baraaoi.reallife.economy.LegalBiz.checkSite(ow, lot.add(5, 0, 5), data, UUID.randomUUID());
+        check(overlap != null, "overlapping business zone refused: " + overlap);
+        check(com.baraaoi.reallife.economy.LegalBiz.bizContaining(data, lot.add(7, 2, -7)) == shop, "zone contains nearby blocks");
+        com.baraaoi.reallife.economy.LegalBiz.Scan sc0 = com.baraaoi.reallife.economy.LegalBiz.scan(ow, shop);
+        check(sc0.counterOk && sc0.sets == 0 && sc0.allowed == 0, "counter alone is not a business");
+        BlockPos[] shelves = {lot.add(-3, 0, 3), lot.add(-2, 0, 3), lot.add(-1, 0, 3)};
+        for (BlockPos sp : shelves) ow.setBlockState(sp, ModBlocks.SHOP_SHELF.get().getDefaultState(), 3);
+        ow.setBlockState(lot.add(1, 0, 3), ModBlocks.FRIDGE.get().getDefaultState(), 3);
+        ow.setBlockState(lot.add(2, 0, 3), ModBlocks.STORAGE_RACK.get().getDefaultState(), 3);
+        com.baraaoi.reallife.economy.LegalBiz.Scan sc1 = com.baraaoi.reallife.economy.LegalBiz.scan(ow, shop);
+        check(sc1.sets == 1 && sc1.allowed == 1 && sc1.stores.size() == 5, "one full kit = one worker (sets " + sc1.sets + ", stores " + sc1.stores.size() + ")");
+        BlockPos wspot = com.baraaoi.reallife.economy.LegalBiz.workerSpot(ow, shop, sc1);
+        check(wspot != null && shop.contains(wspot, 0), "worker spot in the zone: " + wspot);
+        com.baraaoi.reallife.entity.WorkerEntity worker = wspot == null ? null : com.baraaoi.reallife.economy.LegalBiz.spawnWorker(ow, shop, wspot);
+        check(worker != null && shop.workers.size() == 1 && ow.getEntityByUuid(shop.workers.get(0)) == worker, "worker hired");
+        Item supply = ModItems.SUPPLY.get(com.baraaoi.reallife.economy.BizType.MINIMARKET).get();
+        ItemStack rest = com.baraaoi.reallife.economy.LegalBiz.deliver(ow, shop, new ItemStack(supply, 64));
+        com.baraaoi.reallife.economy.LegalBiz.Scan sc2 = com.baraaoi.reallife.economy.LegalBiz.scan(ow, shop);
+        check(rest.isEmpty() && sc2.stock == 64, "supplies delivered onto shelves: " + sc2.stock);
+        int filled = 0;
+        for (BlockPos sp : shelves) if (ow.getBlockState(sp).get(com.baraaoi.reallife.block.ShelfBlock.FILL) > 0) filled++;
+        check(filled == 3, "all shelves look filled: " + filled);
+        com.baraaoi.reallife.economy.LegalBusiness grill = com.baraaoi.reallife.economy.LegalBiz.register(data, ow, lot.add(40, 0, 0), Direction.SOUTH,
+                com.baraaoi.reallife.economy.BizType.SHAWARMA, bizOwner, "Test");
+        check(com.baraaoi.reallife.economy.LegalBiz.checkSite(ow, lot.add(20, 0, 0), data, bizOwner) != null, "zones must not overlap even for the owner");
+        double bal0 = bo.balance;
+        com.baraaoi.reallife.economy.LegalBiz.processDay(s, data);
+        com.baraaoi.reallife.economy.LegalBiz.Scan sc3 = com.baraaoi.reallife.economy.LegalBiz.scan(ow, shop);
+        check(shop.days == 1 && sc3.stock == 64 - com.baraaoi.reallife.economy.BizType.SUPPLY_PER_WORKER && bo.balance != bal0,
+                "working business consumes supplies and earns (" + Finance.money(shop.lastProfit) + ", " + shop.lastNote + ")");
+        check(grill.days == 0 && grill.lastProfit == 0, "business without equipment/workers is closed: " + grill.lastNote);
+        check(com.baraaoi.reallife.economy.LegalBiz.revenue(com.baraaoi.reallife.economy.BizType.MINIMARKET, 2, 1.0, 1.0) == 1900
+                && com.baraaoi.reallife.economy.LegalBiz.revenue(com.baraaoi.reallife.economy.BizType.MINIMARKET, 1, 1.0, 0.5) == 500, "revenue formula");
         for (com.baraaoi.reallife.economy.BizType bt : com.baraaoi.reallife.economy.BizType.values()) {
-            BlockPos o = lot.add(bx, 0, 0);
-            for (BlockPos p : BlockPos.getAllInBoxMutable(o.add(-8, -1, -2), o.add(8, -1, 14))) ow.setBlockState(p.toImmutable(), Blocks.STONE.getDefaultState(), 2);
-            com.baraaoi.reallife.economy.LegalBusiness lb = com.baraaoi.reallife.economy.LegalBiz.register(data, ow, o, Direction.SOUTH, bt, bizOwner, "Test");
-            made.add(lb);
-            check(ow.getBlockState(lb.counter).getBlock() == ModBlocks.BIZ_COUNTER.get(), bt.id() + " built with a counter at " + lb.counter);
-            check(data.bizAtCounter(lb.counter) == lb, bt.id() + " registered");
+            check(bt.need(com.baraaoi.reallife.economy.BizEquip.COUNTER) == 1 && bt.kitPrice() > 1500 && bt.supplyPrice() > 0 && bt.maxWorkers >= 2,
+                    bt.id() + " kit: " + com.baraaoi.reallife.economy.LegalBiz.kitText(bt) + " = " + bt.kitPrice());
+            check(ModItems.SUPPLY.get(bt).get() instanceof com.baraaoi.reallife.item.SupplyItem, "supply item " + bt.id());
             java.nio.file.Path wt = net.minecraftforge.fml.ModList.get().getModFileById(RealLife.MODID).getFile()
                     .findResource("assets/reallife/textures/entity/worker/" + bt.id() + ".png");
             check(java.nio.file.Files.exists(wt), "worker texture " + bt.id());
-            bx += 30;
         }
-        String overlap = com.baraaoi.reallife.structure.BizBuildings.checkSite(ow, lot.add(2, 0, 2), Direction.SOUTH, data, UUID.randomUUID());
-        check(overlap != null, "business on a business refused: " + overlap);
-        check(data.ownsBusiness(bizOwner) && data.bizOf(bizOwner).size() == made.size(), "owner has businesses");
-        com.baraaoi.reallife.economy.LegalBusiness shop = made.get(1);
-        com.baraaoi.reallife.entity.WorkerEntity worker = com.baraaoi.reallife.economy.LegalBiz.spawnWorker(ow, shop);
-        check(worker != null && shop.worker && ow.getEntityByUuid(shop.workerId) == worker, "worker hired");
-        double bal0 = bo.balance;
-        com.baraaoi.reallife.economy.LegalBiz.processDay(s, data);
-        check(bo.balance != bal0 && shop.days == 1 && !made.get(0).worker && made.get(0).lastProfit == 0,
-                "business with a worker earns, without - closed (" + Finance.money(bo.balance - bal0) + ")");
+        for (com.baraaoi.reallife.economy.BizEquip e : com.baraaoi.reallife.economy.BizEquip.values()) {
+            check(e.block.get() != null && com.baraaoi.reallife.economy.BizEquip.of(e.block.get()) == e && e.price > 0, "equipment " + e.title);
+        }
+        java.util.List<com.baraaoi.reallife.economy.Wholesale.Lot> slots = com.baraaoi.reallife.economy.Wholesale.lots();
+        int supplyLots = 0;
+        for (com.baraaoi.reallife.economy.Wholesale.Lot l : slots) if (l.supply != null) supplyLots++;
+        check(supplyLots == com.baraaoi.reallife.economy.BizType.values().length, "supply lots in wholesale: " + supplyLots);
+        // отмыв — от вчерашней прибыли
+        com.baraaoi.reallife.economy.LegalBusiness lossy = new com.baraaoi.reallife.economy.LegalBusiness();
+        lossy.lastProfit = -300;
+        check(com.baraaoi.reallife.economy.LegalBiz.safeLimit(lossy) == 0 && com.baraaoi.reallife.economy.LegalBiz.launderChance(0, 0, 10) >= 0.9,
+                "after a loss nothing can be laundered safely");
+        lossy.lastProfit = 2000;
+        check(Math.abs(com.baraaoi.reallife.economy.LegalBiz.safeLimit(lossy) - 300) < 1e-6, "safe laundering = 15% of yesterday's profit");
+        check(com.baraaoi.reallife.economy.LegalBiz.launderChance(2000, 0, 300) == 0, "within the limit - no risk");
+        double c1 = com.baraaoi.reallife.economy.LegalBiz.launderChance(2000, 0, 600);
+        double c2 = com.baraaoi.reallife.economy.LegalBiz.launderChance(2000, 600, 1000);
+        check(c1 > 0 && c2 > c1, "risk grows: " + c1 + " -> " + c2);
         java.util.Random lr = new java.util.Random(7);
         double sum = 0, lucky = 0;
         for (int i = 0; i < 4000; i++) {
@@ -434,19 +473,48 @@ public class SelfTest {
             lucky += com.baraaoi.reallife.economy.LegalBiz.roll(lr, 0.3).mult;
         }
         check(sum / 4000 > 0.9 && sum / 4000 < 1.3 && lucky > sum, "luck: avg x" + (sum / 4000) + ", with luck x" + (lucky / 4000));
-        int sbase = shop.type.base;
-        check(com.baraaoi.reallife.economy.LegalBiz.launderChance(sbase, 0, sbase * 0.15) == 0, "laundering up to 15% of base profit is safe");
-        double c1 = com.baraaoi.reallife.economy.LegalBiz.launderChance(sbase, 0, sbase * 0.3);
-        double c2 = com.baraaoi.reallife.economy.LegalBiz.launderChance(sbase, sbase * 0.3, sbase * 0.5);
-        check(c1 > 0 && c2 > c1, "risk grows: " + c1 + " -> " + c2);
         CompoundNBT dsave = data.write(new CompoundNBT());
         EconomyData dcopy = new EconomyData();
         dcopy.read(dsave);
-        check(dcopy.bizAtCounter(shop.counter) != null && dcopy.bizAtCounter(shop.counter).type == shop.type, "businesses saved");
-        worker.remove();
-        for (com.baraaoi.reallife.economy.LegalBusiness lb : made) data.businesses.remove(lb);
+        com.baraaoi.reallife.economy.LegalBusiness shopCopy = dcopy.bizAtCounter(shop.counter);
+        check(shopCopy != null && shopCopy.type == shop.type && shopCopy.workers.size() == 1 && shopCopy.max.equals(shop.max), "businesses saved");
+        if (worker != null) worker.remove();
+        data.businesses.remove(shop);
+        data.businesses.remove(grill);
         check(data.businesses.size() == bizBefore, "test businesses removed");
         data.reset(bizOwner);
+
+        // ---- v6: справочник и подозрительный тип
+        ItemStack guide = com.baraaoi.reallife.economy.Guide.book();
+        check(guide.getItem() == Items.WRITTEN_BOOK && guide.getTag() != null && guide.getTag().getList("pages", 8).size() >= 20, "guide book has pages");
+        boolean sold = false;
+        for (net.minecraft.item.MerchantOffer o : Trades.vending(Trades.VENDING_FOOD)) if (o.getSellingStack().getItem() == Items.WRITTEN_BOOK) sold = true;
+        check(sold, "guide sold in the vending machine");
+        com.baraaoi.reallife.entity.SnoopEntity snoop = ModEntities.SNOOP.get().create(ow);
+        check(snoop != null, "snoop entity created");
+        if (snoop != null) {
+            snoop.setLocationAndAngles(lot.getX() + 3.5, lot.getY(), lot.getZ() + 0.5, 0F, 0F);
+            ow.addEntity(snoop);
+            boolean ok = true;
+            try {
+                for (int i = 0; i < 60; i++) snoop.tick();
+            } catch (RuntimeException ex) {
+                ok = false;
+                LOG.error("snoop tick failed", ex);
+            }
+            check(ok && snoop.isAlive() && !snoop.isFleeing(), "snoop walks around");
+            net.minecraftforge.common.util.FakePlayer fp = net.minecraftforge.common.util.FakePlayerFactory.getMinecraft(ow);
+            snoop.attackEntityFrom(net.minecraft.util.DamageSource.causePlayerDamage(fp), 1.0F);
+            check(snoop.isFleeing(), "hit snoop runs away");
+            try {
+                for (int i = 0; i < 20; i++) snoop.tick();
+            } catch (RuntimeException ex) {
+                ok = false;
+                LOG.error("snoop flee failed", ex);
+            }
+            check(ok, "snoop flee goal works");
+            snoop.remove();
+        }
 
         // ---- v5: майнинг-ферма, крипта, опт
         BlockPos rigPos = spot.add(0, 10, 0);

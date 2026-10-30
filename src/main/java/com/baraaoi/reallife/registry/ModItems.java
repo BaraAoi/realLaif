@@ -89,7 +89,23 @@ public class ModItems {
     public static final RegistryObject<Item> BIZ_PERMIT = ITEMS.register("biz_permit",
             () -> new com.baraaoi.reallife.item.BizPermitItem(props().maxStackSize(1).rarity(Rarity.RARE)));
     public static final RegistryObject<Item> BIZ_COUNTER = ITEMS.register("biz_counter",
-            () -> new BlockItem(ModBlocks.BIZ_COUNTER.get(), new Item.Properties()));
+            () -> new BlockItem(ModBlocks.BIZ_COUNTER.get(), props()));
+    public static final RegistryObject<Item> SHOP_SHELF = ITEMS.register("shop_shelf", () -> new BlockItem(ModBlocks.SHOP_SHELF.get(), props()));
+    public static final RegistryObject<Item> STORAGE_RACK = ITEMS.register("storage_rack", () -> new BlockItem(ModBlocks.STORAGE_RACK.get(), props()));
+    public static final RegistryObject<Item> DISPLAY_CASE = ITEMS.register("display_case", () -> new BlockItem(ModBlocks.DISPLAY_CASE.get(), props()));
+    public static final RegistryObject<Item> SAFE = ITEMS.register("safe", () -> new BlockItem(ModBlocks.SAFE.get(), props()));
+    public static final RegistryObject<Item> SHAWARMA_GRILL = ITEMS.register("shawarma_grill", () -> new BlockItem(ModBlocks.SHAWARMA_GRILL.get(), props()));
+    public static final RegistryObject<Item> PRESSURE_WASHER = ITEMS.register("pressure_washer", () -> new BlockItem(ModBlocks.PRESSURE_WASHER.get(), props()));
+    public static final RegistryObject<Item> STONE_CRUSHER = ITEMS.register("stone_crusher", () -> new BlockItem(ModBlocks.STONE_CRUSHER.get(), props()));
+    public static final RegistryObject<Item> FUEL_PUMP = ITEMS.register("fuel_pump", () -> new BlockItem(ModBlocks.FUEL_PUMP.get(), props()));
+    /** Сырьё для заведений: по одному виду на тип. */
+    public static final java.util.Map<com.baraaoi.reallife.economy.BizType, RegistryObject<Item>> SUPPLY = new java.util.EnumMap<>(com.baraaoi.reallife.economy.BizType.class);
+
+    static {
+        for (com.baraaoi.reallife.economy.BizType t : com.baraaoi.reallife.economy.BizType.values()) {
+            SUPPLY.put(t, ITEMS.register("supply_" + t.id(), () -> new com.baraaoi.reallife.item.SupplyItem(t, props())));
+        }
+    }
     public static final RegistryObject<Item> CRYPTO_RIG = ITEMS.register("crypto_rig",
             () -> new BlockItem(ModBlocks.CRYPTO_RIG.get(), props()));
     public static final RegistryObject<Item> MOTHERBOARD = ITEMS.register("motherboard",

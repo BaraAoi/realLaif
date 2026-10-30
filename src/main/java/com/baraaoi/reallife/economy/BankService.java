@@ -216,8 +216,8 @@ public class BankService {
         t.putDouble("btcRate", Crypto.rate(data));
         t.putDouble("btcBase", Config.BTC_BASE_RATE.get());
         if (p.openContainer instanceof com.baraaoi.reallife.container.BizContainer) {
-            LegalBusiness ob = data.bizAtCounter(((com.baraaoi.reallife.container.BizContainer) p.openContainer).getPos());
-            if (ob != null) t.put("openBiz", LegalBiz.info(ob, today));
+            LegalBusiness ob = LegalBiz.bizForCounter(data, ((com.baraaoi.reallife.container.BizContainer) p.openContainer).getPos());
+            if (ob != null) t.put("openBiz", LegalBiz.info(p.world, ob, today, true));
         }
         if (p.openContainer instanceof com.baraaoi.reallife.container.CryptoContainer) {
             net.minecraft.tileentity.TileEntity te = p.world.getTileEntity(((com.baraaoi.reallife.container.CryptoContainer) p.openContainer).getPos());
@@ -278,7 +278,7 @@ public class BankService {
             if (action == Actions.CASINO_PLAY && cc.canInteractWith(p)) CasinoService.play(p, cc, arg1, arg2);
             return;
         }
-        if (action >= Actions.PHONE_SYNC && action <= Actions.PHONE_SELL_BTC) {
+        if (action >= Actions.PHONE_SYNC && action <= Actions.PHONE_BUY_EQUIP) {
             phone(p, action, arg1, arg2);
             return;
         }
@@ -364,6 +364,7 @@ public class BankService {
             case Actions.PHONE_REPAY: repayLoan(p, a, arg1); break;
             case Actions.PHONE_WHOLESALE: Wholesale.buy(p, a, data, arg1); break;
             case Actions.PHONE_BUY_BIZ: LegalBiz.buyPermit(p, a, arg1); break;
+            case Actions.PHONE_BUY_EQUIP: LegalBiz.buyEquip(p, a, arg1, arg2); break;
             case Actions.PHONE_SELL_BTC: Crypto.sell(p, a, arg1); break;
             default: break;
         }

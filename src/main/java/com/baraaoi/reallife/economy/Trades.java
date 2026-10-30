@@ -85,6 +85,8 @@ public class Trades {
 
     public static MerchantOffers vending(int kind) {
         MerchantOffers o = new MerchantOffers();
+        // справочник «Как выжить» — в обоих автоматах
+        o.add(new MerchantOffer(rub(10), Guide.book(), UNLIMITED, 0, 0.0F));
         if (kind == VENDING_FOOD) {
             sell(o, 10, Items.COOKIE, 8);
             sell(o, 10, Items.BREAD, 3);

@@ -21,6 +21,11 @@ public class ModTileEntities {
             () -> TileEntityType.Builder.create(PrinterTileEntity::new, ModBlocks.MONEY_PRINTER.get()).build(null));
 
     @SuppressWarnings("ConstantConditions")
+    public static final RegistryObject<TileEntityType<com.baraaoi.reallife.tile.ShelfTileEntity>> SHELF = TILES.register("shelf",
+            () -> TileEntityType.Builder.create(com.baraaoi.reallife.tile.ShelfTileEntity::new, ModBlocks.SHOP_SHELF.get(),
+                    ModBlocks.STORAGE_RACK.get(), ModBlocks.DISPLAY_CASE.get(), ModBlocks.SAFE.get()).build(null));
+
+    @SuppressWarnings("ConstantConditions")
     public static final RegistryObject<TileEntityType<CryptoRigTileEntity>> CRYPTO_RIG = TILES.register("crypto_rig",
             () -> TileEntityType.Builder.create(CryptoRigTileEntity::new, ModBlocks.CRYPTO_RIG.get()).build(null));
 }

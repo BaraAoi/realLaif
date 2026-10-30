@@ -28,12 +28,19 @@ public final class Wholesale {
         public final int price;
         /** Цена той же партии в рознице (0 — в рознице не продаётся). */
         public final int retail;
+        /** Сырьё для заведения этого вида (доставляется прямо в заведение), иначе null. */
+        public final BizType supply;
 
         Lot(Supplier<Item> item, int count, int price, int retail) {
+            this(item, count, price, retail, null);
+        }
+
+        Lot(Supplier<Item> item, int count, int price, int retail, BizType supply) {
             this.item = item;
             this.count = count;
             this.price = price;
             this.retail = retail;
+            this.supply = supply;
         }
 
         public String name() {
@@ -42,6 +49,7 @@ public final class Wholesale {
     }
 
     private static List<Lot> lots;
+    public static final int SUPPLY_LOT = 16;
 
     private static int roundUp10(double v) {
         return (int) (Math.ceil(v / 10.0) * 10);
@@ -68,6 +76,11 @@ public final class Wholesale {
     public static synchronized List<Lot> lots() {
         if (lots != null) return lots;
         List<Lot> l = new ArrayList<>();
+        // сырьё для заведений: партия 16 шт., доставка на полки/в холодильники заведения
+        for (BizType t : BizType.values()) {
+            final BizType bt = t;
+            l.add(new Lot(() -> ModItems.SUPPLY.get(bt).get(), SUPPLY_LOT, t.supplyPrice() * SUPPLY_LOT, 0, t));
+        }
         Map<Item, Double> retail = retailPrices();
         Object[][] goods = {
                 {(Supplier<Item>) () -> Items.COOKED_BEEF, 32}, {(Supplier<Item>) () -> Items.BREAD, 48},
@@ -106,11 +119,29 @@ public final class Wholesale {
             return;
         }
         Lot lot = l.get(idx);
+        LegalBusiness target = null;
+        if (lot.supply != null) {
+            for (LegalBusiness b : data.bizOf(p.getUniqueID())) if (b.type == lot.supply) { target = b; break; }
+            if (target == null) {
+                BankService.msg(p, "§3[Опт] §c«" + lot.supply.supplyName + "» — сырьё для «" + lot.supply.title + "». У вас нет такого заведения.");
+                return;
+            }
+        }
         if (!BankService.charge(p, a, lot.price)) {
             BankService.msg(p, "§3[Опт] §cПартия стоит " + Finance.money(lot.price) + ". Счёт + наличка — не хватает.");
             return;
         }
         Item item = lot.item.get();
+        if (target != null) {
+            net.minecraft.world.server.ServerWorld ow = EconomyData.overworld(p.getServer());
+            ItemStack rest = LegalBiz.deliver(ow, target, new ItemStack(item, lot.count));
+            int placed = lot.count - rest.getCount();
+            if (!rest.isEmpty()) BankService.give(p, rest);
+            BankService.msg(p, "§3[Опт] §fГазель приехала в «" + target.type.title + "»: §e" + lot.count + "× " + lot.supply.supplyName
+                    + "§f за §a" + Finance.money(lot.price) + "§f. " + (placed > 0 ? "Разложено по полкам/холодильникам: §a" + placed + "§f. " : "")
+                    + (rest.isEmpty() ? "" : "§eНе влезло " + rest.getCount() + " — отдали вам в руки (поставь полки/стеллажи в зоне)."));
+            return;
+        }
         int left = lot.count;
         int max = new ItemStack(item).getMaxStackSize();
         while (left > 0) {

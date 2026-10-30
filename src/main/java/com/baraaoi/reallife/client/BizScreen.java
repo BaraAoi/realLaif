@@ -29,7 +29,8 @@ public class BizScreen extends ContainerScreen<BizContainer> {
     @Override
     protected void init() {
         super.init();
-        this.addButton(new Button(guiLeft + 8, guiTop + 92, 110, 16, new StringTextComponent("Нанять работника"), b -> send(Actions.BIZ_HIRE)));
+        this.addButton(new Button(guiLeft + 8, guiTop + 94, 96, 16, new StringTextComponent("§aНанять (+1)"), b -> send(Actions.BIZ_HIRE)));
+        this.addButton(new Button(guiLeft + 108, guiTop + 94, 64, 16, new StringTextComponent("§cУволить"), b -> send(Actions.BIZ_FIRE)));
         this.addButton(new Button(guiLeft + 8, guiTop + 114, 150, 16, new StringTextComponent("§2Провести выручку из слота"), b -> send(Actions.BIZ_LAUNDER)));
     }
 
@@ -55,19 +56,32 @@ public class BizScreen extends ContainerScreen<BizContainer> {
         String title = type == null ? this.title.getString() : type.title;
         this.font.drawString(ms, "§a§l" + title, 8, 7, 0xFFFFFF);
         if (type == null) return;
-        boolean worker = t.getBoolean("worker");
-        GuiUtil.small(font, ms, worker ? "§a● Открыто — " + type.workerName + " на смене" : "§c● Закрыто — нет работника", 8, 20);
-        GuiUtil.small(font, ms, "Базовая прибыль: §a" + Finance.money(type.base) + "§f/день, зарплата " + Finance.money(type.wage()) + "/день", 8, 30);
+        int workers = t.getInt("workers"), allowed = t.getInt("allowed"), sets = t.getInt("sets");
+        String reason = t.getString("reason");
+        GuiUtil.small(font, ms, (reason.isEmpty() ? "§a● Открыто" : "§c● Закрыто: " + reason) + "§f   работники §e" + workers + "§f/"
+                + allowed + " §7(потолок " + type.maxWorkers + ")", 8, 19);
+        GuiUtil.small(font, ms, "Оборудование в зоне ±8 — комплектов: §e" + sets + "§7 (" + (sets < type.maxWorkers ? "для " + (sets + 1)
+                + "-го работника нужно:" : "максимум") + ")", 8, 28);
+        net.minecraft.nbt.ListNBT eq = t.getList("equip", 10);
+        int target = Math.min(type.maxWorkers, sets + 1);
+        for (int i = 0; i < eq.size(); i++) {
+            CompoundNBT q = eq.getCompound(i);
+            int have = q.getInt("h"), need = q.getInt("q") * target;
+            GuiUtil.small(font, ms, (have >= need ? "§a" : "§c") + q.getString("n") + " " + have + "/" + need, 8 + (i % 2) * 110, 37 + (i / 2) * 9);
+        }
+        int stock = t.getInt("stock"), needS = t.getInt("need");
+        GuiUtil.small(font, ms, "Сырьё («" + type.supplyName + "»): " + (stock >= needS && stock > 0 ? "§a" : "§c") + stock + "§f, расход "
+                + needS + "/день", 8, 56);
         double lp = t.getDouble("lastProfit");
-        GuiUtil.small(font, ms, "Вчера: " + (lp >= 0 ? "§a+" : "§c") + Finance.money(lp) + " §7" + t.getString("lastNote"), 8, 40);
-        GuiUtil.small(font, ms, "Всего заработано: §a" + Finance.money(t.getDouble("total")) + "§f за " + t.getInt("days") + " дн.", 8, 50);
-        GuiUtil.small(font, ms, "§7Прибыль зависит от удачи (зелье удачи помогает) и падает до нуля без работника.", 8, 60);
-        GuiUtil.small(font, ms, "Найм: " + Finance.money(type.hireCost()) + ". Если работника убьют — нанимай снова.", 8, 80);
+        GuiUtil.small(font, ms, "Вчера: " + (lp >= 0 ? "§a+" : "§c") + Finance.money(lp) + " §7" + t.getString("lastNote"), 8, 65);
+        GuiUtil.small(font, ms, "Всего: §a" + Finance.money(t.getDouble("total")) + "§f за " + t.getInt("days") + " раб. дн.  §7выручка "
+                + Finance.money(type.base) + "/раб., удача влияет", 8, 74);
+        GuiUtil.small(font, ms, "Найм " + Finance.money(type.hireCost()) + ", зарплата " + Finance.money(type.wage()) + "/день каждому. "
+                + "§7Сырьё: телефон → Опт.", 8, 83);
         double safe = t.getDouble("safe");
         double done = t.getDouble("laundered");
         GuiUtil.small(font, ms, "Отмыто сегодня: " + (done > safe ? "§c" : "§a") + Finance.money(done) + "§f / безопасно " + Finance.money(safe)
-                + " §7(налог " + Finance.percent(all.getDouble("launderTax")) + ")", 8, 134 - 2);
-        if (done >= safe) GuiUtil.small(font, ms, "§cСверх лимита — шанс налоговой проверки растёт!", 120, 98);
+                + " §7(15% вчерашней прибыли, налог " + Finance.percent(all.getDouble("launderTax")) + ")", 8, 132);
         GuiUtil.small(font, ms, "Грязные", BizContainer.SLOT_X - 6, BizContainer.SLOT_Y - 9);
     }
 }
