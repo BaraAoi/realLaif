@@ -155,7 +155,7 @@ public class SnoopEntity extends PathfinderMob {
     @Override
     protected void readAdditionalSaveData(net.minecraft.world.level.storage.ValueInput nbt) {
         super.readAdditionalSaveData(nbt);
-        life = nbt.getIntOr("Life", 600)0;
+        life = nbt.getIntOr("Life", 6000);
         fleeTicks = nbt.getIntOr("Flee", 0);
         spooked = nbt.getBooleanOr("Spooked", false);
         targetPlayer = Nbt.hasUUID(nbt, "Target") ? Nbt.getUUID(nbt, "Target") : null;
