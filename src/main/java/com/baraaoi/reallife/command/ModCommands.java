@@ -29,7 +29,13 @@ public class ModCommands {
                 .then(Commands.literal("info").executes(c -> info(c.getSource().asPlayer())))
                 .then(Commands.literal("land").executes(c -> land(c.getSource().asPlayer()))
                         .then(Commands.literal("buy").executes(c -> landBuy(c.getSource().asPlayer()))))
+                .then(Commands.literal("npc")
+                        .then(Commands.literal("yes").executes(c -> { com.baraaoi.reallife.event.Visitors.answer(c.getSource().asPlayer(), true); return 1; }))
+                        .then(Commands.literal("no").executes(c -> { com.baraaoi.reallife.event.Visitors.answer(c.getSource().asPlayer(), false); return 1; })))
                 .then(Commands.literal("admin").requires(s -> s.hasPermissionLevel(2))
+                        .then(Commands.literal("event").then(Commands.argument("kind", com.mojang.brigadier.arguments.StringArgumentType.word())
+                                .suggests((c, b) -> net.minecraft.command.ISuggestionProvider.suggest(com.baraaoi.reallife.event.Visitors.eventIds(), b))
+                                .executes(c -> event(c.getSource().asPlayer(), com.mojang.brigadier.arguments.StringArgumentType.getString(c, "kind")))))
                         .then(Commands.literal("money").then(Commands.argument("amount", IntegerArgumentType.integer())
                                 .executes(c -> money(c.getSource().asPlayer(), IntegerArgumentType.getInteger(c, "amount")))))
                         .then(Commands.literal("rating").then(Commands.argument("value", IntegerArgumentType.integer(300, 850))
@@ -59,6 +65,20 @@ public class ModCommands {
                         .then(Commands.literal("reset").executes(c -> reset(c.getSource().asPlayer()))
                                 .then(Commands.argument("player", EntityArgument.player())
                                         .executes(c -> reset(EntityArgument.getPlayer(c, "player")))))));
+    }
+
+    private static int event(ServerPlayerEntity p, String kind) {
+        com.baraaoi.reallife.entity.VisitorKind k = com.baraaoi.reallife.entity.VisitorKind.byName(kind);
+        if (k == null) {
+            BankService.msg(p, "§cНет такого гостя. Есть: " + String.join(", ", com.baraaoi.reallife.event.Visitors.eventIds()));
+            return 0;
+        }
+        String err = com.baraaoi.reallife.event.Visitors.adminStart(p, k);
+        if (err != null) {
+            BankService.msg(p, "§cНе вышло: " + err);
+            return 0;
+        }
+        return 1;
     }
 
     private static Account acc(ServerPlayerEntity p) {

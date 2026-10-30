@@ -7,6 +7,10 @@ import net.minecraft.item.Items;
 import net.minecraft.nbt.CompoundNBT;
 
 import com.baraaoi.reallife.economy.Account;
+import com.baraaoi.reallife.economy.Business;
+import com.baraaoi.reallife.entity.VisitorEntity;
+import com.baraaoi.reallife.entity.VisitorKind;
+import com.baraaoi.reallife.event.Visitors;
 import com.baraaoi.reallife.economy.BankService;
 import com.baraaoi.reallife.economy.CreditRating;
 import com.baraaoi.reallife.economy.EconomyData;
@@ -107,16 +111,28 @@ public class SelfTest {
         boolean near = ce.getX() >= casino.min.getX() - 6 && ce.getX() <= casino.max.getX() + 6 && ce.getZ() >= casino.min.getZ() - 6 && ce.getZ() <= casino.max.getZ() + 6;
         check(outside && near, "casino exit is just outside: " + ce);
         check(!ow.getEntitiesWithinAABB(SellerEntity.class, new AxisAlignedBB(casino.min, casino.max.add(1, 1, 1))).isEmpty(), "casino bartender");
-        // все игры — в пользу казино
-        int wheelSum = 0;
-        for (int m : CasinoService.WHEEL) wheelSum += m;
-        check(CasinoService.WHEEL.length == 100 && wheelSum == 93, "roulette return 93% (" + wheelSum + ")");
-        double slotEv = 0;
-        for (int i = 0; i < 5; i++) for (int j = 0; j < 5; j++) for (int k = 0; k < 5; k++) slotEv += CasinoService.slotMult(new int[]{i, j, k}) / 125.0;
-        check(slotEv < 1 && slotEv > 0.85 && CasinoService.slotMult(new int[]{0, 0, 0}) == 25, "slots return " + slotEv);
-        double anEv = 0;
-        for (int i = 0; i < CasinoService.ANARCHY_MULT.length; i++) anEv += CasinoService.ANARCHY_MULT[i] * CasinoService.ANARCHY_WEIGHT[i] / 100.0;
-        check(anEv < 1 && anEv > 0.8, "anarchy return " + anEv);
+        // v4: шансы подняты, но казино всё ещё (чуть-чуть) в плюсе
+        int wheelSum = 0, wheelWins = 0;
+        for (int m : CasinoService.WHEEL) { wheelSum += m; if (m >= 2) wheelWins++; }
+        check(CasinoService.WHEEL.length == 100 && wheelSum == 99 && wheelWins == 26, "roulette return " + wheelSum + "%, wins " + wheelWins + "%");
+        check(Math.abs(CasinoService.slotsRtp() - 0.96) < 1e-9, "slots theoretical return " + CasinoService.slotsRtp());
+        java.util.Random rnd = new java.util.Random(4242L);
+        int n = 200000, triples = 0, pairs = 0, sevens = 0;
+        double paid = 0;
+        for (int i = 0; i < n; i++) {
+            int[] r = CasinoService.spinSlots(rnd);
+            double mlt = CasinoService.slotMult(r);
+            paid += mlt;
+            if (r[0] == r[1] && r[1] == r[2]) { triples++; if (r[0] == 0) sevens++; }
+            else if (r[0] == r[1] || r[1] == r[2] || r[0] == r[2]) pairs++;
+        }
+        LOG.info("slots sample: triples " + triples + ", 777 " + sevens + ", pairs " + pairs + ", return " + paid / n);
+        check(triples > n * 0.065 && triples < n * 0.08 && pairs < n * 0.08 && pairs > triples * 0.8, "slots: more triples (" + triples * 100.0 / n + "%), fewer pairs (" + pairs * 100.0 / n + "%)");
+        check(Math.abs(paid / n - 0.96) < 0.03, "slots sampled return " + paid / n);
+        check(CasinoService.anarchyRtp() > 0.97 && CasinoService.anarchyRtp() < 1.0, "anarchy return " + CasinoService.anarchyRtp());
+        check(CasinoService.COIN_WIN > 0.475 && CasinoService.COIN_WIN < 0.5, "coin chance " + CasinoService.COIN_WIN);
+        check(ItemValues.valueOf(new ItemStack(Items.DIAMOND)) >= 300 && ItemValues.valueOf(new ItemStack(ModItems.BANKNOTE_100.get())) == 100, "item values doubled, banknotes at face value");
+        check(!s.getRecipeManager().getRecipe(new net.minecraft.util.ResourceLocation("reallife", "money_printer")).isPresent(), "money printer can not be crafted");
 
         Blueprint bank = Buildings.buildBank(ow, base, Direction.SOUTH);
         check(ow.getBlockState(bank.pos(0, 1, 6)).getBlock() == ModBlocks.BANK_COUNTER.get(), "bank counter placed");
@@ -146,6 +162,7 @@ public class SelfTest {
         boolean registered = false;
         for (BlockPos m : data.mfoCenters) if (m.equals(mfoCenter)) registered = true;
         check(registered, "mfo center registered");
+        check(ow.getBlockState(mfo.pos(-1, 1, 1)).getBlock() == Blocks.LOOM, "mfo has no free printer (loom instead)");
 
         // ---- дома
         Direction[] dirs = {Direction.SOUTH, Direction.WEST, Direction.NORTH, Direction.EAST};
@@ -216,35 +233,105 @@ public class SelfTest {
         check(ow.getBlockState(probe).getBlock() == Blocks.GOLD_BLOCK, "pit removed, original blocks restored");
         check(ow.getBlockState(pc).getBlock() != ModBlocks.JAIL_WALL.get(), "no jail wall left");
 
-        // ---- подпольный цех под домом
+        // ---- подпольный бизнес v4: станки ставит сам игрок, все печатают в «Сундук цеха»
         Account biz = data.getOrCreate(UUID.randomUUID());
         biz.hasHouse = true;
         biz.houseMin = stone.min();
         biz.houseMax = stone.max();
-        Buildings.Basement bm = Buildings.buildBasement(ow, biz.houseMin, biz.houseMax);
-        check(bm != null, "basement built");
-        check(ow.getBlockState(bm.hatch.down()).getBlock() instanceof net.minecraft.block.TrapDoorBlock, "hatch in floor at " + bm.hatch);
-        check(ow.getBlockState(bm.hatch.down(2)).getBlock() == Blocks.LADDER, "ladder under hatch");
         biz.hasBusiness = true;
-        biz.printers = 2;
-        biz.businessChest = bm.chest;
-        biz.businessMin = bm.bp.min();
-        biz.businessMax = bm.bp.max();
-        check(Buildings.countPrinters(ow, biz) == 2, "business starts with 2 printers");
+        List<BlockPos> floor = Visitors.floorSpots(ow, biz.houseMin, biz.houseMax);
+        check(floor.size() >= 6, "stone house has free floor (" + floor.size() + ")");
+        BlockPos pr1 = floor.get(0), pr2 = floor.get(floor.size() / 2), chestPos = floor.get(floor.size() - 1);
+        ow.setBlockState(pr1, ModBlocks.MONEY_PRINTER.get().getDefaultState(), 3);
+        ow.setBlockState(pr2, ModBlocks.MONEY_PRINTER.get().getDefaultState(), 3);
+        check(Business.registerPrinter(data, biz, pr1) == Business.OK && Business.registerPrinter(data, biz, pr2) == Business.OK, "printers register inside own house");
+        check(Business.registerPrinter(data, biz, pr1) == Business.ALREADY, "printer is not registered twice");
+        BlockPos outLand = biz.houseMax.add(7, 0, 7);
+        check(Business.registerPrinter(data, biz, outLand) == Business.NOT_OWNER, "printer outside own property is refused");
+        data.claim(biz.id, EconomyData.chunkKey(outLand));
+        check(Business.inOwnProperty(data, biz, outLand) && Business.registerPrinter(data, biz, outLand) == Business.OK, "printer on own claimed land is accepted");
+        ow.getChunkAt(outLand);
+        check(Business.workingPrinters(ow, biz) == 2 && biz.printerList.size() == 2, "missing printer block is dropped from the list");
+        ow.setBlockState(chestPos, ModBlocks.BUSINESS_CHEST.get().getDefaultState(), 3);
+        TileEntity bizChest = ow.getTileEntity(chestPos);
+        check(bizChest instanceof FridgeTileEntity && "Сундук цеха".equals(((FridgeTileEntity) bizChest).getDisplayName().getString()), "business chest block works");
+        biz.businessChest = chestPos;
         int perPrinter = Config.PRINTER_DAILY.get() / 100;
-        int made = BankService.produceDirty(s, biz);
-        check(made == 2 * perPrinter, "business printed " + made + " packs of dirty money");
-        check(Buildings.placePrinter(ow, biz), "extra printer placed");
-        biz.printers++;
-        check(Buildings.countPrinters(ow, biz) == 3 && BankService.produceDirty(s, biz) == 3 * perPrinter, "3 printers print more");
-        TileEntity chest = ow.getTileEntity(bm.chest);
-        check(chest instanceof IInventory && ((IInventory) chest).count(ModItems.DIRTY_MONEY.get()) == 5 * perPrinter, "dirty money in chest");
-        BlockPos lm = Buildings.placeLaunderMachine(ow, biz);
-        check(lm != null && ow.getBlockState(lm).getBlock() == ModBlocks.LAUNDER_MACHINE.get() && biz.businessMin.getY() < lm.getY()
-                && lm.getY() < bm.hatch.getY(), "launder machine in the basement at " + lm);
+        check(BankService.produceDirty(s, biz) == 2 * perPrinter, "2 printers print into the linked chest");
+        ow.setBlockState(pr2, Blocks.AIR.getDefaultState(), 3);
+        check(BankService.produceDirty(s, biz) == perPrinter && biz.printerList.size() == 1, "removed printer stops printing");
+        check(((IInventory) bizChest).count(ModItems.DIRTY_MONEY.get()) == 3 * perPrinter, "dirty money in the business chest");
         check(ItemValues.valueOf(new ItemStack(ModItems.DIRTY_MONEY.get())) == 100, "dirty money worth 100");
+        // старый подвал: станки переносятся в список
+        biz.businessMin = base.add(700, -20, 0);
+        biz.businessMax = biz.businessMin.add(8, 5, 8);
+        BlockPos legacy = biz.businessMin.add(2, 1, 2);
+        ow.setBlockState(legacy, ModBlocks.MONEY_PRINTER.get().getDefaultState(), 3);
+        Business.migrateLegacy(ow, biz);
+        check(biz.printerList.contains(legacy) && Business.inOwnProperty(data, biz, legacy), "legacy basement printer migrated");
+        biz.chestGiven = true;
+        Account bizCopy = Account.read(biz.write());
+        check(bizCopy.printerList.size() == biz.printerList.size() && bizCopy.chestGiven, "printers and chest flag saved");
+        CompoundNBT oldBiz = biz.write();
+        oldBiz.remove("bizVersion");
+        oldBiz.remove("chestGiven");
+        Account oldCopy = Account.read(oldBiz);
+        check(oldCopy.chestGiven && oldCopy.needPrinters, "old save: chest counts as given, printers will be migrated");
+        ow.setBlockState(legacy, Blocks.AIR.getDefaultState(), 3);
+        biz.businessMin = BlockPos.ZERO;
+        biz.businessMax = BlockPos.ZERO;
         DebtManager.demolishHouse(ow, biz);
-        check(!biz.hasBusiness && ow.getBlockState(bm.chest).getBlock() == Blocks.STONE, "business confiscated with the house");
+        check(biz.hasBusiness && Business.workingPrinters(ow, biz) == 0 && biz.businessChest.equals(BlockPos.ZERO) && !biz.chestGiven,
+                "house seizure takes printers and chest, next printer comes with a new chest");
+        data.landOwners.remove(EconomyData.chunkKey(outLand));
+
+        // ---- случайные гости
+        check(Visitors.eventKinds().size() == VisitorKind.values().length - 3 && Visitors.eventKinds().size() >= 19, "visitor kinds: " + Visitors.eventIds());
+        for (VisitorKind k : VisitorKind.values()) {
+            java.nio.file.Path tex = net.minecraftforge.fml.ModList.get().getModFileById(RealLife.MODID).getFile()
+                    .findResource("assets/reallife/textures/entity/visitor/" + k.id() + ".png");
+            check(java.nio.file.Files.exists(tex), "texture for visitor " + k.id());
+        }
+        VisitorEntity ve = ModEntities.VISITOR.get().create(ow);
+        check(ve != null, "create visitor");
+        ve.setKind(VisitorKind.GRANNY);
+        check(ve.getKind() == VisitorKind.GRANNY && ve.getAttributeValue(Attributes.MAX_HEALTH) > 0, "visitor kind and hp");
+        check(VisitorKind.byName("horse_thief") == VisitorKind.HORSE_THIEF, "visitor names");
+        check(Visitors.taxLimit(500) == 7000, "tax limit");
+        Blueprint vh = Buildings.buildHouse(ow, base.add(0, 0, 300), Direction.SOUTH, HouseType.STONE_HOUSE);
+        BlockPos vmin = vh.min(), vmax = vh.max();
+        List<BlockPos> vfloor = Visitors.floorSpots(ow, vmin, vmax);
+        check(vfloor.size() >= 8, "visitor house floor (" + vfloor.size() + ")");
+        int l0 = Visitors.countLights(ow, vmin, vmax);
+        ow.setBlockState(vfloor.get(0), Blocks.GLOWSTONE.getDefaultState(), 3);
+        check(Visitors.countLights(ow, vmin, vmax) == l0 + 1, "electrician counts lights (" + l0 + " + 1)");
+        int f0 = Visitors.countFurnaces(ow, vmin, vmax);
+        ow.setBlockState(vfloor.get(1), Blocks.FURNACE.getDefaultState(), 3);
+        ow.setBlockState(vfloor.get(2), Blocks.SMOKER.getDefaultState(), 3);
+        check(Visitors.countFurnaces(ow, vmin, vmax) == f0 + 2, "fire inspector counts furnaces");
+        check(Visitors.findLava(ow, vmin, vmax, 64).isEmpty(), "no lava yet");
+        ow.setBlockState(vfloor.get(3), Blocks.LAVA.getDefaultState(), 3);
+        check(Visitors.findLava(ow, vmin, vmax, 64).contains(vfloor.get(3)), "fire inspector finds lava");
+        ow.setBlockState(vfloor.get(3), Blocks.AIR.getDefaultState(), 3);
+        double v0 = Visitors.houseValue(ow, vmin, vmax);
+        ow.setBlockState(vfloor.get(4), Blocks.CHEST.getDefaultState(), 3);
+        TileEntity vc = ow.getTileEntity(vfloor.get(4));
+        check(vc instanceof IInventory, "tax test chest");
+        ((IInventory) vc).setInventorySlotContents(0, new ItemStack(Items.DIAMOND, 10));
+        double v1 = Visitors.houseValue(ow, vmin, vmax);
+        check(Math.abs(v1 - v0 - 10 * ItemValues.valueOf(new ItemStack(Items.DIAMOND))) < 0.01, "tax inspector values house chests (" + v0 + " -> " + v1 + ")");
+        ItemStack taken = Visitors.confiscateBest(ow, vmin, vmax);
+        check(!taken.isEmpty() && Visitors.houseValue(ow, vmin, vmax) < v1, "tax inspector confiscates the best stack: " + taken);
+        // площадка вокруг дома (дома в тесте висят в воздухе)
+        for (BlockPos p : BlockPos.getAllInBoxMutable(new BlockPos(vmin.getX() - 4, vmin.getY(), vmin.getZ() - 4), new BlockPos(vmax.getX() + 5, vmin.getY(), vmax.getZ() + 5))) {
+            if (ow.isAirBlock(p)) ow.setBlockState(p.toImmutable(), Blocks.STONE.getDefaultState(), 2);
+        }
+        int inLeak = Visitors.leak(ow, vmin, vmax, true, 3, new java.util.Random(5));
+        int outLeak = Visitors.leak(ow, vmin, vmax, false, 4, new java.util.Random(6));
+        check(inLeak == 3 && outLeak == 4, "plumber leaks inside " + inLeak + ", outside " + outLeak);
+        BlockPos box = Visitors.buildNeighborBox(ow, data, vmin, vmax);
+        check(box != null && ow.getBlockState(box).getBlock() == Blocks.DIRT && ow.isAirBlock(box.add(1, 1, 1))
+                && ow.getBlockState(box.add(1, 2, 1)).getBlock() == Blocks.DIRT, "neighbor dirt box at " + box);
 
         // ---- ипотека: погашение до постройки не аннулирует ордер
         Account mo = data.getOrCreate(UUID.randomUUID());

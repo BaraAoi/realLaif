@@ -462,4 +462,114 @@ def ambal_extra(im):
 
 
 skin('ambal', shade(SKIN, 0.95), shade(SKIN, 0.85), (15, 15, 18), (15, 15, 18), (5, 5, 5), extra=ambal_extra)
+
+# ---------------- v4: сундук цеха и случайные гости
+import os
+os.makedirs(f'{R}/entity/visitor', exist_ok=True)
+
+bc_side = planks((70, 50, 35)); outline(bc_side, 0, 0, 15, 15, (40, 30, 20))
+for y in (5, 10): rect(bc_side, 0, y, 15, y, (90, 90, 95))
+bc_side.save(f'{R}/block/business_chest_side.png')
+bc_top = planks((80, 58, 40)); outline(bc_top, 0, 0, 15, 15, (40, 30, 20))
+rect(bc_top, 6, 6, 9, 9, (90, 90, 95))
+bc_top.save(f'{R}/block/business_chest_top.png')
+bc_front = bc_side.copy()
+rect(bc_front, 6, 6, 9, 10, (60, 60, 65)); rect(bc_front, 7, 7, 8, 8, (200, 170, 40))
+pix(bc_front, [(2, 2), (3, 2), (2, 3), (12, 12), (13, 12), (13, 13)], (60, 140, 60))   # торчат купюры
+bc_front.save(f'{R}/block/business_chest_front.png')
+
+
+def vis(name, *args, **kw):
+    skin('visitor/' + name, *args, **kw)
+
+
+def tie(c):
+    def f(im):
+        rect(im, 20, 20, 27, 31, (240, 240, 240)); rect(im, 23, 20, 24, 30, c)
+    return f
+
+
+def glasses(im):
+    rect(im, 9, 11, 14, 12, (20, 20, 20))
+
+
+def combo(*fs):
+    def f(im):
+        for g in fs: g(im)
+    return f
+
+
+def stripes(im):
+    for y in range(20, 32, 2): rect(im, 20, y, 27, y, (240, 240, 240))
+    for y in range(20, 32, 2): rect(im, 44, y, 47, y, (240, 240, 240))
+
+
+def apron(c):
+    def f(im):
+        rect(im, 21, 22, 26, 31, c)
+    return f
+
+
+def badge(c):
+    def f(im):
+        rect(im, 25, 22, 26, 23, c)
+    return f
+
+
+def mustache(im):
+    rect(im, 10, 14, 13, 14, (60, 40, 25))
+
+
+def stubble(im):
+    for p in [(9, 14), (11, 15), (13, 14), (14, 15), (10, 15), (12, 14)]: im.putpixel(p, (120, 95, 80, 255))
+
+
+def scarf(c):
+    def f(im):
+        rect(im, 0, 8, 7, 15, c); rect(im, 16, 8, 23, 15, c); rect(im, 24, 8, 31, 15, c); rect(im, 8, 8, 15, 9, c)
+        rect(im, 40, 0, 47, 7, c)
+    return f
+
+
+def gray_hair(im):
+    rect(im, 8, 8, 15, 8, (200, 200, 200)); rect(im, 0, 8, 7, 9, (200, 200, 200)); rect(im, 16, 8, 23, 9, (200, 200, 200))
+
+
+def white_beard(im):
+    rect(im, 9, 13, 14, 15, (230, 230, 230)); rect(im, 11, 14, 12, 14, shade(SKIN, 0.6))
+
+
+def helmet_stripe(im):
+    rect(im, 32, 13, 63, 13, (230, 230, 60)) if False else None
+    rect(im, 20, 28, 27, 28, (230, 230, 60)); rect(im, 44, 28, 47, 28, (230, 230, 60))
+
+
+def yellow_box(im):
+    rect(im, 32, 36, 39, 47, (250, 200, 0)) if False else None
+    rect(im, 28, 20, 31, 31, (250, 200, 0))
+
+
+vis('tax', SKIN, (60, 50, 40), (50, 55, 70), (45, 48, 60), (20, 20, 20), extra=combo(tie((30, 40, 120)), glasses, badge((230, 190, 50))))
+vis('tax_police', SKIN, (60, 45, 30), (40, 60, 120), (30, 40, 80), (15, 15, 15), hat=(25, 35, 80), extra=badge((230, 190, 50)))
+vis('bailiff', SKIN, (40, 35, 30), (20, 30, 60), (20, 30, 60), (10, 10, 10), hat=(20, 30, 60), extra=combo(badge((200, 200, 210)), stubble))
+vis('plumber', SKIN, (100, 70, 40), (40, 90, 170), (40, 90, 170), (60, 40, 25), hat=(200, 60, 40), extra=combo(mustache, apron((30, 70, 140))))
+vis('electric', SKIN, (120, 80, 50), (240, 140, 20), (50, 50, 60), (40, 30, 20), hat=(250, 210, 30), extra=helmet_stripe)
+vis('gypsy', (200, 150, 110), (20, 15, 15), (180, 30, 90), (120, 20, 60), (60, 30, 20), extra=combo(scarf((200, 160, 30)), badge((250, 210, 60))))
+vis('gopnik', (220, 180, 150), (70, 50, 35), (25, 25, 30), (25, 25, 30), (240, 240, 240), hat=(30, 30, 35), extra=combo(stripes, stubble))
+vis('gopnik_friend', (215, 175, 145), (90, 60, 40), (30, 30, 70), (30, 30, 70), (240, 240, 240), extra=combo(stripes, stubble))
+vis('dealer', (205, 165, 135), (30, 25, 20), (60, 40, 30), (40, 30, 25), (20, 15, 10), hat=(40, 40, 40), extra=combo(glasses, stubble))
+vis('horse_thief', (200, 160, 120), (50, 35, 25), (110, 80, 50), (70, 55, 40), (50, 35, 20), hat=(80, 60, 40), extra=combo(mustache, scarf((150, 30, 30))))
+vis('courier', SKIN, (90, 60, 35), (250, 200, 0), (40, 40, 45), (20, 20, 20), hat=(250, 200, 0), extra=yellow_box)
+vis('realtor', SKIN, (160, 110, 60), (230, 230, 235), (30, 30, 40), (90, 50, 30), extra=tie((200, 30, 40)))
+vis('granny', (230, 190, 165), (200, 200, 200), (140, 60, 90), (90, 50, 70), (50, 35, 30), extra=combo(scarf((220, 80, 60)), apron((240, 240, 240))))
+vis('fire_inspector', SKIN, (60, 45, 30), (150, 30, 30), (40, 40, 45), (15, 15, 15), hat=(150, 30, 30), extra=badge((230, 190, 50)))
+vis('fireman', SKIN, (60, 45, 30), (60, 50, 40), (60, 50, 40), (15, 15, 15), hat=(220, 40, 30), extra=helmet_stripe)
+vis('neighbor', (225, 170, 140), (120, 90, 60), (40, 110, 60), (60, 60, 120), (60, 40, 20), extra=combo(stubble, mustache))
+vis('promoter', SKIN, (230, 200, 60), (40, 200, 70), (40, 40, 45), (240, 240, 240), hat=(40, 200, 70), extra=badge((255, 255, 255)))
+vis('grandpa', (220, 180, 150), (190, 190, 190), (90, 80, 60), (70, 60, 50), (40, 30, 20), hat=(70, 70, 75), extra=combo(gray_hair, white_beard))
+vis('philosopher', SKIN, (25, 20, 15), (20, 20, 22), (20, 20, 22), (10, 10, 10), extra=combo(glasses, tie((90, 20, 20))), beard=(40, 30, 25))
+vis('bank_scammer', SKIN, (60, 50, 40), (30, 30, 35), (30, 30, 35), (10, 10, 10), extra=combo(tie((30, 120, 200)), glasses))
+vis('postman', SKIN, (110, 75, 45), (30, 60, 140), (30, 60, 140), (30, 25, 20), hat=(30, 60, 140), extra=badge((250, 250, 250)))
+vis('sociologist', SKIN, (150, 100, 60), (230, 230, 230), (100, 100, 110), (60, 40, 30), extra=combo(glasses, badge((40, 120, 220))))
+
 print('ok')

@@ -47,7 +47,10 @@ public class ItemValues {
         ore(Blocks.NETHER_QUARTZ_ORE, 5); ore(Blocks.ANCIENT_DEBRIS, 300);
     }
 
-    private static void put(Item item, double v) { if (item != null && v > 0) VALUES.put(item, v); }
+    /** v4: все предметы подорожали вдвое (купюры и грязные деньги — по номиналу). */
+    public static final double VALUE_MULT = 2.0;
+
+    private static void put(Item item, double v) { if (item != null && v > 0) VALUES.put(item, v * VALUE_MULT); }
     private static void ore(Block b, double v) { ORE_VALUES.put(b, v); }
 
     /** Стоимость одной единицы предмета в рублях. */

@@ -19,7 +19,11 @@ public class Trades {
     public static final int VENDING_RESOURCES = 1;
     private static final int UNLIMITED = 100000;
 
+    /** v4: цены в магазинах тоже выросли вдвое — вслед за стоимостью предметов. */
+    public static final int PRICE_MULT = 2;
+
     private static ItemStack rub(int amount) {
+        amount *= PRICE_MULT;
         if (amount >= 1000 && amount % 1000 == 0) return new ItemStack(ModItems.BANKNOTE_1000.get(), amount / 1000);
         if (amount >= 100 && amount % 100 == 0) return new ItemStack(ModItems.BANKNOTE_100.get(), amount / 100);
         return new ItemStack(ModItems.BANKNOTE_10.get(), Math.max(1, amount / 10));

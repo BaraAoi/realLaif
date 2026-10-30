@@ -29,7 +29,10 @@ public class ForgeEvents {
     public void onServerTick(TickEvent.ServerTickEvent event) {
         if (event.phase != TickEvent.Phase.END) return;
         MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
-        if (server != null) DebtManager.serverTick(server);
+        if (server != null) {
+            DebtManager.serverTick(server);
+            Visitors.tick(server);
+        }
     }
 
     @SubscribeEvent(priority = EventPriority.HIGH)
@@ -60,6 +63,7 @@ public class ForgeEvents {
             return;
         }
         DebtManager.onPlace(p, event.getPos());
+        com.baraaoi.reallife.economy.Business.onPlaced(p, event.getPos(), event.getPlacedBlock().getBlock());
     }
 
     @SubscribeEvent
@@ -125,7 +129,18 @@ public class ForgeEvents {
         if (DebtManager.onBreak((ServerPlayerEntity) event.getPlayer(), event.getPos(), event.getState())) {
             event.setCanceled(true);
         }
-        if (!event.isCanceled()) DebtManager.onPlayerBreak((ServerPlayerEntity) event.getPlayer(), event.getPos());
+        if (!event.isCanceled()) {
+            DebtManager.onPlayerBreak((ServerPlayerEntity) event.getPlayer(), event.getPos());
+            com.baraaoi.reallife.economy.Business.onBroken(event.getPlayer().getServer(), event.getPos(), event.getState());
+            Visitors.onBreak((ServerPlayerEntity) event.getPlayer(), event.getPos(), event.getState());
+        }
+    }
+
+    /** Съеденный пирожок бабушки Зины может оказаться с сюрпризом. */
+    @SubscribeEvent
+    public void onFinishUsing(net.minecraftforge.event.entity.living.LivingEntityUseItemEvent.Finish event) {
+        if (event.getEntityLiving().world.isRemote) return;
+        Visitors.onEaten(event.getEntityLiving(), event.getItem());
     }
 
     /** ПКМ по Жоре / Вовану — заплатить прямо им из инвентаря. */
@@ -133,6 +148,11 @@ public class ForgeEvents {
     public void onInteract(PlayerInteractEvent.EntityInteract event) {
         if (event.getWorld().isRemote || !(event.getPlayer() instanceof ServerPlayerEntity)) return;
         Entity t = event.getTarget();
+        if (t instanceof com.baraaoi.reallife.entity.VisitorEntity && event.getHand() == net.minecraft.util.Hand.MAIN_HAND) {
+            Visitors.onInteract((ServerPlayerEntity) event.getPlayer(), (com.baraaoi.reallife.entity.VisitorEntity) t);
+            event.setCanceled(true);
+            return;
+        }
         if (t instanceof com.baraaoi.reallife.entity.CashierEntity && event.getHand() == net.minecraft.util.Hand.MAIN_HAND) {
             ServerPlayerEntity p = (ServerPlayerEntity) event.getPlayer();
             net.minecraft.util.math.BlockPos pos = t.getPosition();

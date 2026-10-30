@@ -2,9 +2,7 @@ package com.baraaoi.reallife.economy;
 
 import com.baraaoi.reallife.Config;
 import com.baraaoi.reallife.container.CasinoContainer;
-import com.baraaoi.reallife.event.DebtManager;
 import com.baraaoi.reallife.item.CloverItem;
-import com.baraaoi.reallife.registry.ModEntities;
 import net.minecraft.entity.player.ServerPlayerEntity;
 import net.minecraft.inventory.container.SimpleNamedContainerProvider;
 import net.minecraft.item.ItemStack;
@@ -19,24 +17,33 @@ import java.util.Random;
 import java.util.UUID;
 
 /**
- * Казино «Три семёрки». У всех игр отрицательное матожидание (казино всегда в плюсе),
- * клевер даёт лучший исход, а слишком везучих выводит охрана.
+ * Казино «Три семёрки». Шансы подняты (v4): возврат игроку 96–99.5%, клевер даёт лучший исход.
+ * Охрана больше никого не выгоняет — выигрывай сколько хочешь.
  */
 public class CasinoService {
     public static final String CASINO = "§5[Казино «Три семёрки»] §f";
     public static final int COIN = 0, SLOTS = 1, ANARCHY = 2, ROULETTE = 3;
     public static final String[] TITLES = {"Орёл и решка", "Однорукий бандит", "Мама Анархия", "Рулетка"};
 
-    /** Однорукий бандит: 5 символов, 777 — x25, три одинаковых — x8, два одинаковых — x1 (возврат ставки). */
+    /**
+     * Однорукий бандит: 5 символов, 777 — x25, три одинаковых — x8, два одинаковых — x1 (возврат ставки).
+     * Исход выбирается заранее (в промилле): 777 — 18‰, другая тройка — 55‰, пара — 70‰, иначе пусто.
+     * Троек стало 7.3% (было 4%), пар — 7% (было 48%). Возврат 96%.
+     */
+    public static final int SLOT_777_PM = 18, SLOT_TRIPLE_PM = 55, SLOT_PAIR_PM = 70;
+    /** Шанс угадать в «Орёл и решка». */
+    public static final double COIN_WIN = 0.49;
     public static final String[] SYMBOLS = {"7", "BAR", "Вишня", "Лимон", "Колокол"};
     public static final int[] SYMBOL_COLORS = {0xFF3030, 0xFFFFFF, 0xFF5577, 0xFFF04A, 0xFFB000};
 
-    /** Рулетка: 100 секторов. 0x — 64, 1x — 20, 2x — 8, 3x — 4, 5x — 2, 10x — 1, 25x — 1 (возврат 93%). */
+    /** Рулетка: 100 секторов. x0 — 64, x1 — 10, x2 — 20, x3 — 3, x5 — 1, x10 — 1, x25 — 1 (возврат 99%, выигрыш 26%). */
+    public static final int[] WHEEL_COUNTS = {64, 10, 20, 3, 1, 1, 1};
+    public static final int[] WHEEL_MULTS = {0, 1, 2, 3, 5, 10, 25};
     public static final int[] WHEEL = buildWheel();
 
-    /** Мама Анархия: хаос решает. Множители и веса (возврат 90.5%). */
+    /** Мама Анархия: хаос решает. Множители и веса (возврат 99.5%). */
     public static final double[] ANARCHY_MULT = {0, 1, 1.5, 2, 5, 8};
-    public static final int[] ANARCHY_WEIGHT = {50, 20, 15, 10, 4, 1};
+    public static final int[] ANARCHY_WEIGHT = {46, 22, 15, 11, 5, 1};
     public static final String[] ANARCHY_TEXT = {"Анархия забрала всё!", "Хаос вернул своё.", "Мама довольна: x1.5",
             "Бунт удался: x2", "Революция! x5", "МАМА — АНАРХИЯ! x8"};
 
@@ -44,8 +51,8 @@ public class CasinoService {
     private static final Map<UUID, CompoundNBT> LAST = new HashMap<>();
 
     private static int[] buildWheel() {
-        int[] counts = {64, 20, 8, 4, 2, 1, 1};
-        int[] mult = {0, 1, 2, 3, 5, 10, 25};
+        int[] counts = WHEEL_COUNTS;
+        int[] mult = WHEEL_MULTS;
         int[] w = new int[100];
         int i = 0;
         for (int k = 0; k < counts.length; k++) for (int c = 0; c < counts[k]; c++) w[i++] = mult[k];
@@ -63,6 +70,49 @@ public class CasinoService {
         return 0;
     }
 
+    /** Крутануть барабаны: сначала решаем исход, потом подбираем символы под него. */
+    public static int[] spinSlots(Random r) {
+        int roll = r.nextInt(1000);
+        if (roll < SLOT_777_PM) return new int[]{0, 0, 0};
+        roll -= SLOT_777_PM;
+        int n = SYMBOLS.length;
+        if (roll < SLOT_TRIPLE_PM) {
+            int s = 1 + r.nextInt(n - 1);
+            return new int[]{s, s, s};
+        }
+        roll -= SLOT_TRIPLE_PM;
+        if (roll < SLOT_PAIR_PM) {
+            int s = r.nextInt(n);
+            int o = (s + 1 + r.nextInt(n - 1)) % n;
+            int[] res = {s, s, s};
+            res[r.nextInt(3)] = o;
+            return res;
+        }
+        // все разные
+        int a = r.nextInt(n);
+        int b = (a + 1 + r.nextInt(n - 1)) % n;
+        int c;
+        do { c = r.nextInt(n); } while (c == a || c == b);
+        return new int[]{a, b, c};
+    }
+
+    /** Теоретический возврат однорукого бандита. */
+    public static double slotsRtp() {
+        return (SLOT_777_PM * 25 + SLOT_TRIPLE_PM * 8 + SLOT_PAIR_PM) / 1000.0;
+    }
+
+    public static double wheelRtp() {
+        double s = 0;
+        for (int m : WHEEL) s += m;
+        return s / WHEEL.length;
+    }
+
+    public static double anarchyRtp() {
+        double s = 0, w = 0;
+        for (int i = 0; i < ANARCHY_MULT.length; i++) { s += ANARCHY_MULT[i] * ANARCHY_WEIGHT[i]; w += ANARCHY_WEIGHT[i]; }
+        return s / w;
+    }
+
     public static CompoundNBT last(UUID id) {
         CompoundNBT t = LAST.get(id);
         return t == null ? new CompoundNBT() : t;
@@ -73,12 +123,7 @@ public class CasinoService {
     public static void open(ServerPlayerEntity p, BlockPos pos, int kind) {
         EconomyData data = EconomyData.get(p.getServer());
         Account a = data.get(p);
-        long now = EconomyData.overworld(p.getServer()).getGameTime();
         if (a.captivity != Account.FREE) return;
-        if (a.casinoKick || a.casinoBanUntil > now) {
-            BankService.msg(p, CASINO + "§cОхрана: «Тебе сюда нельзя ещё " + banLeft(a, now) + ". Свободен.»");
-            return;
-        }
         NetworkHooks.openGui(p, new SimpleNamedContainerProvider(
                 (id, inv, pl) -> new CasinoContainer(id, inv, pos, kind),
                 new StringTextComponent(TITLES[Math.max(0, Math.min(3, kind))])), buf -> {
@@ -86,12 +131,6 @@ public class CasinoService {
             buf.writeVarInt(kind);
         });
         BankService.sync(p);
-    }
-
-    public static String banLeft(Account a, long now) {
-        long t = Math.max(0, a.casinoBanUntil - now) / 20;
-        if (a.casinoKick && t == 0) return "сутки";
-        return String.format("%d:%02d", t / 60, t % 60);
     }
 
     // ------------------------------------------------------------------ игра
@@ -117,11 +156,6 @@ public class CasinoService {
         Account a = data.get(p);
         long now = EconomyData.overworld(p.getServer()).getGameTime();
         if (a.captivity != Account.FREE) return;
-        if (a.casinoKick || a.casinoBanUntil > now) {
-            p.closeScreen();
-            BankService.msg(p, CASINO + "§cОхрана: «Игры для тебя закончились.»");
-            return;
-        }
         int max = Config.CASINO_MAX_BET.get();
         bet = bet / 10 * 10;
         if (bet < 10 || bet > max) {
@@ -144,7 +178,7 @@ public class CasinoService {
         switch (kind) {
             case COIN: {
                 choice = choice == 1 ? 1 : 0;
-                boolean win = lucky || RANDOM.nextDouble() < 0.475;
+                boolean win = lucky || RANDOM.nextDouble() < COIN_WIN;
                 int side = win ? choice : 1 - choice;
                 mult = win ? 2 : 0;
                 r.putInt("side", side);
@@ -153,7 +187,7 @@ public class CasinoService {
                 break;
             }
             case SLOTS: {
-                int[] reels = lucky ? new int[]{0, 0, 0} : new int[]{RANDOM.nextInt(5), RANDOM.nextInt(5), RANDOM.nextInt(5)};
+                int[] reels = lucky ? new int[]{0, 0, 0} : spinSlots(RANDOM);
                 mult = slotMult(reels);
                 r.putIntArray("reels", reels);
                 text = SYMBOLS[reels[0]] + " | " + SYMBOLS[reels[1]] + " | " + SYMBOLS[reels[2]];
@@ -209,18 +243,7 @@ public class CasinoService {
                         + " сорвал куш: " + Finance.money(win) + "!");
             }
         }
-        if (a.casinoProfit >= Config.CASINO_LUCK_LIMIT.get()) kick(p, a);
         data.markDirty();
         BankService.sync(p);
-    }
-
-    /** Слишком везёт — зовём амбалов. */
-    public static void kick(ServerPlayerEntity p, Account a) {
-        if (a.casinoKick) return;
-        a.casinoKick = true;
-        p.closeScreen();
-        BankService.msg(p, CASINO + "§cВам сегодня подозрительно везёт (+" + Finance.money(a.casinoProfit)
-                + " за день). К вам направляются двое в чёрных костюмах...");
-        for (int i = 0; i < 2; i++) DebtManager.spawn(ModEntities.AMBAL.get(), p.getServerWorld(), p, 3, 6);
     }
 }

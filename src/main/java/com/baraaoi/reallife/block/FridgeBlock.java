@@ -18,7 +18,7 @@ import net.minecraft.world.World;
 
 import javax.annotation.Nullable;
 
-/** Холодильник: хранилище на 27 слотов. */
+/** Холодильник (и «Сундук цеха»): хранилище на 27 слотов. */
 public class FridgeBlock extends DecorBlock {
     public FridgeBlock(Properties props) {
         super(props);
@@ -42,7 +42,11 @@ public class FridgeBlock extends DecorBlock {
         TileEntity te = world.getTileEntity(pos);
         if (te instanceof INamedContainerProvider) {
             player.openContainer((INamedContainerProvider) te);
-            world.playSound(null, pos, SoundEvents.BLOCK_IRON_DOOR_OPEN, SoundCategory.BLOCKS, 0.5F, 1.4F);
+            if (this == com.baraaoi.reallife.registry.ModBlocks.BUSINESS_CHEST.get()) {
+                world.playSound(null, pos, SoundEvents.BLOCK_CHEST_OPEN, SoundCategory.BLOCKS, 0.6F, 0.9F);
+            } else {
+                world.playSound(null, pos, SoundEvents.BLOCK_IRON_DOOR_OPEN, SoundCategory.BLOCKS, 0.5F, 1.4F);
+            }
         }
         return ActionResultType.CONSUME;
     }

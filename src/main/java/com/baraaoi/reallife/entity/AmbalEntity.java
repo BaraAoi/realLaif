@@ -8,7 +8,7 @@ import net.minecraft.entity.EntityType;
 import net.minecraft.entity.player.ServerPlayerEntity;
 import net.minecraft.world.World;
 
-/** Охрана казино: подходят к слишком везучему игроку и выносят его на улицу. */
+/** Бывшая охрана казино. Оставлена только для совместимости старых миров — сразу исчезает. */
 public class AmbalEntity extends DebtNpcEntity {
     private int talk;
 
@@ -29,7 +29,7 @@ public class AmbalEntity extends DebtNpcEntity {
 
     @Override
     public boolean isStillNeeded(Account a) {
-        return a.casinoKick;
+        return false; // охрана казино больше никого не выгоняет
     }
 
     @Override
@@ -40,7 +40,6 @@ public class AmbalEntity extends DebtNpcEntity {
     @Override
     protected void serverSecond(ServerPlayerEntity p, Account a) {
         if (this.getDistanceSq(p) < 2.8D * 2.8D) {
-            DebtManager.throwOutOfCasino(p, EconomyData.get(p.getServer()), a);
             this.remove();
             return;
         }

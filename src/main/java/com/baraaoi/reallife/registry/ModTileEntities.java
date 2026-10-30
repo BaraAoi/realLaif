@@ -12,5 +12,5 @@ public class ModTileEntities {
 
     @SuppressWarnings("ConstantConditions")
     public static final RegistryObject<TileEntityType<FridgeTileEntity>> FRIDGE = TILES.register("fridge",
-            () -> TileEntityType.Builder.create(FridgeTileEntity::new, ModBlocks.FRIDGE.get()).build(null));
+            () -> TileEntityType.Builder.create(FridgeTileEntity::new, ModBlocks.FRIDGE.get(), ModBlocks.BUSINESS_CHEST.get()).build(null));
 }

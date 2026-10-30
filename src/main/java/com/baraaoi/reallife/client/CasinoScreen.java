@@ -20,7 +20,9 @@ import java.util.Random;
  * Экран игры в казино: ставка, кнопка «Крутить» (или «Орёл»/«Решка»), анимация и результат.
  */
 public class CasinoScreen extends ContainerScreen<CasinoContainer> {
-    private static final int SPIN_TICKS = 28;
+    private static final int SPIN_TICKS = 64;
+    /** Через сколько тиков до конца анимации останавливается каждый барабан. */
+    private static final int[] REEL_STOP = {34, 17, 0};
     private static int bet = 100;
 
     private final int kind;
@@ -28,6 +30,9 @@ public class CasinoScreen extends ContainerScreen<CasinoContainer> {
     private long seenId = Long.MIN_VALUE;
     private int spin;
     private int ticks;
+    /** Символы на крутящихся барабанах / подсветка анархии — меняются по тикам, а не каждый кадр. */
+    private final int[] reelSym = {0, 1, 2};
+    private int anarchyIdx;
 
     public CasinoScreen(CasinoContainer container, PlayerInventory inv, ITextComponent title) {
         super(container, inv, title);
@@ -84,7 +89,17 @@ public class CasinoScreen extends ContainerScreen<CasinoContainer> {
             seenId = last.getLong("id");
             spin = SPIN_TICKS;
         }
-        if (spin > 0) spin--;
+        if (spin > 0) {
+            spin--;
+            for (int i = 0; i < 3; i++) {
+                int left = spin - REEL_STOP[i];
+                if (left <= 0) continue;
+                int every = left > 14 ? 3 : left > 6 ? 5 : 7; // барабан замедляется перед остановкой
+                if (ticks % every == 0) reelSym[i] = (reelSym[i] + 1 + fx.nextInt(CasinoService.SYMBOLS.length - 1)) % CasinoService.SYMBOLS.length;
+            }
+            int every = spin > 30 ? 4 : spin > 12 ? 6 : 9;
+            if (ticks % every == 0) anarchyIdx = (anarchyIdx + 1 + fx.nextInt(CasinoService.ANARCHY_MULT.length - 1)) % CasinoService.ANARCHY_MULT.length;
+        }
     }
 
     @Override
@@ -151,8 +166,7 @@ public class CasinoScreen extends ContainerScreen<CasinoContainer> {
         String b = "Ставка: §e" + Finance.money(bet);
         text(ms, b, 8, 103, 0xFFFFFF);
         small(ms, "§8макс " + Finance.money(maxBet()), 170, 105, 0x777777);
-        if (t.getBoolean("casinoBanned")) small(ms, "§4Охрана закрыла вам вход", 158, 158, 0xFFFFFF);
-        else small(ms, "§8Охрана следит за везунчиками", 158, 158, 0x777777);
+        small(ms, "§8Везёт — играй дальше!", 158, 158, 0x777777);
     }
 
     private static String fmt(double m) {
@@ -163,13 +177,14 @@ public class CasinoScreen extends ContainerScreen<CasinoContainer> {
 
     private void drawCoin(MatrixStack ms, CompoundNBT last, boolean mine, int cx) {
         int side;
-        if (spin > 0) side = (ticks / 3) % 2;
+        int elapsed = SPIN_TICKS - spin;
+        if (spin > 0) side = ((int) (Math.sqrt(elapsed) * 1.7)) % 2; // монета вертится всё медленнее
         else side = mine ? last.getInt("side") : -1;
         int color = side == 0 ? 0xFFD4AF37 : side == 1 ? 0xFFC0C0C0 : 0xFF555555;
-        int r = spin > 0 ? 14 + (int) (8 * Math.abs(Math.sin(ticks * 0.6))) : 22;
+        int r = spin > 0 ? 14 + (int) (8 * Math.abs(Math.cos(Math.sqrt(elapsed) * 1.7 * Math.PI))) : 22;
         box(ms, cx - r, 40, r * 2, 44, color);
         center(ms, side == 0 ? "§0§lОРЁЛ" : side == 1 ? "§0§lРЕШКА" : "§7?", cx, 58, 0xFFFFFF);
-        small(ms, "§7Угадал — x2. Шанс 47.5%", 8, 84, 0xAAAAAA);
+        small(ms, "§7Угадал — x2. Шанс 49%", 8, 84, 0xAAAAAA);
     }
 
     private void drawSlots(MatrixStack ms, CompoundNBT last, boolean mine, int cx) {
@@ -178,8 +193,8 @@ public class CasinoScreen extends ContainerScreen<CasinoContainer> {
             int bx = cx - 75 + i * 52;
             box(ms, bx, 38, 46, 40, 0xFF1A1A1A);
             int sym;
-            boolean rolling = spin > 0 && spin > (2 - i) * 6;
-            if (rolling) sym = fx.nextInt(CasinoService.SYMBOLS.length);
+            boolean rolling = spin > REEL_STOP[i];
+            if (rolling) sym = reelSym[i];
             else sym = reels.length == 3 ? reels[i] : -1;
             if (sym >= 0) {
                 String s = CasinoService.SYMBOLS[sym];
@@ -188,12 +203,12 @@ public class CasinoScreen extends ContainerScreen<CasinoContainer> {
                 center(ms, "§8?", bx + 23, 54, 0xFFFFFF);
             }
         }
-        small(ms, "§7777 — x25, три одинаковых — x8, два — ставка назад", 8, 84, 0xAAAAAA);
+        small(ms, "§7777 — x25, три одинаковых — x8, два — ставка. Троек 7%!", 8, 84, 0xAAAAAA);
     }
 
     private void drawAnarchy(MatrixStack ms, CompoundNBT last, boolean mine, int cx) {
         int n = CasinoService.ANARCHY_MULT.length;
-        int idx = spin > 0 ? fx.nextInt(n) : (mine ? last.getInt("sector") : -1);
+        int idx = spin > 0 ? anarchyIdx : (mine ? last.getInt("sector") : -1);
         for (int i = 0; i < n; i++) {
             int bx = cx - 108 + i * 36;
             boolean on = i == idx;
@@ -202,7 +217,7 @@ public class CasinoScreen extends ContainerScreen<CasinoContainer> {
         }
         if (spin > 0) {
             String[] chaos = {"Х А О С", "Б У Н Т", "А Н А Р Х И Я", "!!!"};
-            center(ms, "§c§l" + chaos[(ticks / 4) % chaos.length], cx, 70, 0xFFFFFF);
+            center(ms, "§c§l" + chaos[(ticks / 8) % chaos.length], cx, 70, 0xFFFFFF);
         } else if (mine) {
             center(ms, "§c" + CasinoService.ANARCHY_TEXT[Math.max(0, Math.min(n - 1, idx))], cx, 70, 0xFFFFFF);
         } else {
@@ -214,7 +229,8 @@ public class CasinoScreen extends ContainerScreen<CasinoContainer> {
     private void drawRoulette(MatrixStack ms, CompoundNBT last, boolean mine, int cx) {
         int len = CasinoService.WHEEL.length;
         int sector = mine ? last.getInt("sector") : 0;
-        int offset = spin > 0 ? sector - spin * 2 : sector;
+        // колесо плавно тормозит: путь до остановки = spin² / 64 секторов (старт ~2 сектора за тик)
+        int offset = spin > 0 ? sector - (spin * spin) / 64 : sector;
         for (int k = -3; k <= 3; k++) {
             int idx = ((offset + k) % len + len) % len;
             int m = CasinoService.WHEEL[idx];
@@ -224,6 +240,6 @@ public class CasinoScreen extends ContainerScreen<CasinoContainer> {
             center(ms, (k == 0 ? "§f§l" : "§7") + "x" + m, bx + 14, 53, 0xFFFFFF);
         }
         center(ms, "§e§lV", cx, 33, 0xFFFFFF);
-        small(ms, "§7100 секторов: x0 — 64, x1 — 20, x2 — 8, x3 — 4, x5 — 2, x10 и x25 — по 1", 8, 84, 0xAAAAAA);
+        small(ms, "§7100 секторов: x0 — 64, x1 — 10, x2 — 20, x3 — 3, x5, x10, x25 — по 1", 8, 84, 0xAAAAAA);
     }
 }

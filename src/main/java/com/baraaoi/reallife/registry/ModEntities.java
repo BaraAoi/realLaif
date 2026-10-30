@@ -48,6 +48,11 @@ public class ModEntities {
             () -> EntityType.Builder.<AmbalEntity>create(AmbalEntity::new, EntityClassification.MISC)
                     .size(0.7F, 1.95F).build(RealLife.MODID + ":ambal"));
 
+    /** Случайный гость (налоговая, сантехник, цыганка...). Вид — в данных сущности. */
+    public static final RegistryObject<EntityType<VisitorEntity>> VISITOR = ENTITIES.register("visitor",
+            () -> EntityType.Builder.<VisitorEntity>create(VisitorEntity::new, EntityClassification.MISC)
+                    .size(0.6F, 1.8F).build(RealLife.MODID + ":visitor"));
+
     private static AttributeModifierMap attrs(double health, double speed, double damage) {
         return MobEntity.func_233666_p_()
                 .createMutableAttribute(Attributes.MAX_HEALTH, health)
@@ -65,6 +70,7 @@ public class ModEntities {
         GlobalEntityTypeAttributes.put(BRATOK.get(), attrs(34, 0.35, 5));
         GlobalEntityTypeAttributes.put(INSPECTOR.get(), attrs(20, 0.34, 1));
         GlobalEntityTypeAttributes.put(AMBAL.get(), attrs(80, 0.38, 6));
+        GlobalEntityTypeAttributes.put(VISITOR.get(), attrs(20, 0.32, 2));
         GlobalEntityTypeAttributes.put(CASHIER.get(), MobEntity.func_233666_p_()
                 .createMutableAttribute(Attributes.MAX_HEALTH, 20)
                 .createMutableAttribute(Attributes.MOVEMENT_SPEED, 0.0D)

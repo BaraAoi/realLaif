@@ -49,6 +49,10 @@ public class ModBlocks {
     public static final RegistryObject<Block> MONEY_PRINTER = BLOCKS.register("money_printer",
             () -> new DecorBlock(AbstractBlock.Properties.create(Material.IRON).hardnessAndResistance(3.0F, 6.0F).sound(SoundType.METAL)));
 
+    /** «Сундук цеха»: сюда все станки игрока складывают грязные деньги. Выдаётся один раз. */
+    public static final RegistryObject<Block> BUSINESS_CHEST = BLOCKS.register("business_chest",
+            () -> new FridgeBlock(AbstractBlock.Properties.create(Material.WOOD).hardnessAndResistance(2.5F, 6.0F).sound(SoundType.WOOD)));
+
     /** Приёмник добычи в подвале Шайкина (неразрушимый). */
     public static final RegistryObject<Block> PIT_RECEIVER = BLOCKS.register("pit_receiver",
             () -> new PitReceiverBlock(AbstractBlock.Properties.create(Material.IRON).hardnessAndResistance(-1.0F, 3600000.0F).noDrops().sound(SoundType.METAL)));

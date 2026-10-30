@@ -35,5 +35,7 @@
   "block.reallife.anarchy_machine": "\"Mama Anarchy\" Machine",
   "block.reallife.roulette_table": "Roulette x0-x25",
   "entity.reallife.cashier": "Cashier",
-  "entity.reallife.ambal": "Casino Bouncer"
+  "entity.reallife.ambal": "Casino Bouncer",
+  "block.reallife.business_chest": "Workshop Chest",
+  "entity.reallife.visitor": "Visitor"
 }

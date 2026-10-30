@@ -22,5 +22,6 @@ public class ClientSetup {
         RenderingRegistry.registerEntityRenderingHandler(ModEntities.SELLER.get(), m -> new NpcRenderer<>(m, "seller"));
         RenderingRegistry.registerEntityRenderingHandler(ModEntities.CASHIER.get(), m -> new NpcRenderer<>(m, "cashier"));
         RenderingRegistry.registerEntityRenderingHandler(ModEntities.AMBAL.get(), m -> new NpcRenderer<>(m, "ambal"));
+        RenderingRegistry.registerEntityRenderingHandler(ModEntities.VISITOR.get(), VisitorRenderer::new);
     }
 }

@@ -72,6 +72,8 @@ public class ModItems {
             () -> new CloverItem(props().rarity(Rarity.EPIC)));
     public static final RegistryObject<Item> PIT_RECEIVER = ITEMS.register("pit_receiver",
             () -> new BlockItem(ModBlocks.PIT_RECEIVER.get(), props()));
+    public static final RegistryObject<Item> BUSINESS_CHEST = ITEMS.register("business_chest",
+            () -> new BlockItem(ModBlocks.BUSINESS_CHEST.get(), props()));
     public static final RegistryObject<Item> LAUNDER_MACHINE = ITEMS.register("launder_machine",
             () -> new BlockItem(ModBlocks.LAUNDER_MACHINE.get(), props()));
     public static final RegistryObject<Item> COIN_TABLE = ITEMS.register("coin_table",

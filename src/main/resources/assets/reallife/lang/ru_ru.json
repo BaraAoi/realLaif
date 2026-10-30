@@ -35,5 +35,7 @@
   "block.reallife.anarchy_machine": "Автомат «Мама Анархия»",
   "block.reallife.roulette_table": "Рулетка x0–x25",
   "entity.reallife.cashier": "Кассир",
-  "entity.reallife.ambal": "Амбал казино"
+  "entity.reallife.ambal": "Амбал казино",
+  "block.reallife.business_chest": "Сундук цеха",
+  "entity.reallife.visitor": "Гость"
 }

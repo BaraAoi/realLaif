@@ -184,23 +184,6 @@ public class DebtManager {
             BankService.msg(p, "§9[Полиция] §7Дело об ограблении банка приостановлено за недостатком улик.");
         }
 
-        // ---------------- казино: охрана
-        if (w.getDimensionKey() == World.OVERWORLD) {
-            com.baraaoi.reallife.economy.Structure casino = data.structureAt(p.getPosition(), com.baraaoi.reallife.economy.Structure.CASINO, 0);
-            if (a.casinoKick) {
-                if (data.structureAt(p.getPosition(), com.baraaoi.reallife.economy.Structure.CASINO, 6) == null) {
-                    throwOutOfCasino(p, data, a);
-                } else if (count(mine, AmbalEntity.class) == 0) {
-                    for (int i = 0; i < 2; i++) spawn(ModEntities.AMBAL.get(), w, p, 3, 6);
-                }
-            } else if (casino != null && a.casinoBanUntil > now && !p.isCreative()) {
-                BlockPos e = casino.exit;
-                p.setPositionAndUpdate(e.getX() + 0.5, e.getY(), e.getZ() + 0.5);
-                BankService.msg(p, com.baraaoi.reallife.economy.CasinoService.CASINO + "§cОхрана: «Тебе сюда нельзя ещё "
-                        + com.baraaoi.reallife.economy.CasinoService.banLeft(a, now) + ".»");
-            }
-        }
-
         // ---------------- самострой
         if (a.landCase && count(mine, InspectorEntity.class) == 0 && w.getDimensionKey() == World.OVERWORLD) {
             spawn(ModEntities.INSPECTOR.get(), w, p, 5, 9);
@@ -528,12 +511,23 @@ public class DebtManager {
         }
         a.hasHouse = false;
         a.houseType = -1;
-        if (a.hasBusiness) {
+        net.minecraft.util.math.AxisAlignedBB houseBox = new net.minecraft.util.math.AxisAlignedBB(min, max.add(1, 1, 1));
+        if (houseBox.contains(a.businessChest.getX() + 0.5, a.businessChest.getY() + 0.5, a.businessChest.getZ() + 0.5)) {
+            a.businessChest = BlockPos.ZERO;
+            a.chestGiven = false; // сундук цеха изъят вместе с домом — со следующим станком дадут новый
+        }
+        if (houseBox.contains(a.launderPos.getX() + 0.5, a.launderPos.getY() + 0.5, a.launderPos.getZ() + 0.5)) a.launderPos = BlockPos.ZERO;
+        a.printerList.removeIf(pp -> houseBox.contains(pp.getX() + 0.5, pp.getY() + 0.5, pp.getZ() + 0.5));
+        if (a.hasBusiness && !a.businessMin.equals(BlockPos.ZERO)) {
+            // старый подвал засыпают; станки, стоявшие в доме, снесены вместе с ним (вычистятся из списка сами)
             Buildings.fillBasement(ow, a.businessMin, a.businessMax);
-            a.hasBusiness = false;
-            a.printers = 0;
-            a.hasLaundering = false;
-            a.launderPos = BlockPos.ZERO;
+            if (new net.minecraft.util.math.AxisAlignedBB(a.businessMin, a.businessMax.add(1, 1, 1)).contains(
+                    a.businessChest.getX() + 0.5, a.businessChest.getY() + 0.5, a.businessChest.getZ() + 0.5)) {
+                a.businessChest = BlockPos.ZERO;
+                a.chestGiven = false; // старый сундук засыпан — при следующей покупке станка дадут «Сундук цеха»
+            }
+            a.businessMin = BlockPos.ZERO;
+            a.businessMax = BlockPos.ZERO;
         }
     }
 
@@ -856,37 +850,6 @@ public class DebtManager {
         }
     }
 
-    // ================================================================== казино
-
-    /** Амбалы выносят игрока на улицу и закрывают казино для него на сутки. */
-    public static void throwOutOfCasino(ServerPlayerEntity p, EconomyData data, Account a) {
-        long now = EconomyData.overworld(p.getServer()).getGameTime();
-        a.casinoKick = false;
-        a.casinoBanUntil = now + Config.CASINO_BAN_TICKS.get();
-        com.baraaoi.reallife.economy.Structure best = null;
-        double bd = Double.MAX_VALUE;
-        for (com.baraaoi.reallife.economy.Structure st : data.structures) {
-            if (!com.baraaoi.reallife.economy.Structure.CASINO.equals(st.type)) continue;
-            double d = st.exit.distanceSq(p.getPosition());
-            if (d < bd) { bd = d; best = st; }
-        }
-        if (best != null && best.contains(p.getPosition(), 6) && p.world.getDimensionKey() == World.OVERWORLD) {
-            p.closeScreen();
-            p.setPositionAndUpdate(best.exit.getX() + 0.5, best.exit.getY(), best.exit.getZ() + 0.5);
-            p.addPotionEffect(new EffectInstance(Effects.SLOWNESS, 100, 1));
-            p.addPotionEffect(new EffectInstance(Effects.NAUSEA, 120, 0));
-            BankService.msg(p, com.baraaoi.reallife.economy.CasinoService.CASINO + "§cДвое в костюмах взяли вас под руки и вынесли на улицу. "
-                    + "«Казино для вас закрыто на сутки. Выигрыш оставьте себе — на лечение.»");
-        } else {
-            BankService.msg(p, com.baraaoi.reallife.economy.CasinoService.CASINO + "§7Охрана запомнила ваше лицо: вход в казино закрыт на сутки.");
-        }
-        for (ServerWorld w : p.getServer().getWorlds()) {
-            for (AmbalEntity e : w.getEntitiesWithinAABB(AmbalEntity.class, p.getBoundingBox().grow(64.0D),
-                    e -> p.getUniqueID().equals(e.getTargetId()))) e.remove();
-        }
-        data.markDirty();
-    }
-
     // ================================================================== взятки
 
     /** Полицейский подобрал деньги: копится «взятка», при достижении порога наряд уезжает на сутки. */
@@ -1094,7 +1057,7 @@ public class DebtManager {
         for (Account acc : data.all()) {
             if (!acc.needPrinters) continue;
             acc.needPrinters = false;
-            for (int i = Buildings.countPrinters(ow, acc); i < acc.printers; i++) if (!Buildings.placePrinter(ow, acc)) break;
+            com.baraaoi.reallife.economy.Business.migrateLegacy(ow, acc);
         }
         if (Config.SPAWN_CASINO.get() && !data.casinoBuilt) {
             data.casinoBuilt = true;

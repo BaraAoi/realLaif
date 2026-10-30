@@ -51,6 +51,9 @@ public class FridgeTileEntity extends LockableLootTileEntity {
 
     @Override
     protected ITextComponent getDefaultName() {
+        if (this.world != null && this.getBlockState().getBlock() == com.baraaoi.reallife.registry.ModBlocks.BUSINESS_CHEST.get()) {
+            return new StringTextComponent("Сундук цеха");
+        }
         return new StringTextComponent("Холодильник");
     }
 

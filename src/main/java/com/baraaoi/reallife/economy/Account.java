@@ -85,8 +85,12 @@ public class Account {
 
     // --- цех: куплено станков, где стоит ООО ---
     public int printers;
-    /** Не сохраняется: после обновления мира довезти станки в старый подвал. */
+    /** Не сохраняется: после обновления мира перенести станки старого подвала в список. */
     public transient boolean needPrinters;
+    /** v4: подключённые станки (стоят в доме / на участке / в старом подвале). */
+    public final java.util.List<BlockPos> printerList = new java.util.ArrayList<>();
+    /** «Сундук цеха» уже выдан (даётся один раз). */
+    public boolean chestGiven;
     public BlockPos launderPos = BlockPos.ZERO;
 
     // --- ограбление банка ---
@@ -182,6 +186,11 @@ public class Account {
         t.putInt("pendingHouse", pendingHouse);
         t.putDouble("pitDebtLeft", pitDebtLeft);
         t.putInt("printers", printers);
+        long[] pl = new long[printerList.size()];
+        for (int i = 0; i < pl.length; i++) pl[i] = printerList.get(i).toLong();
+        t.putLongArray("printerList", pl);
+        t.putBoolean("chestGiven", chestGiven);
+        t.putInt("bizVersion", 4);
         t.putLong("launderPos", launderPos.toLong());
         t.putBoolean("robber", robber);
         t.putLong("robberyUntil", robberyUntil);
@@ -261,10 +270,14 @@ public class Account {
         a.casinoBanUntil = t.getLong("casinoBanUntil");
         a.casinoDay = t.contains("casinoDay") ? t.getLong("casinoDay") : -1;
         a.casinoProfit = t.getDouble("casinoProfit");
-        a.casinoKick = t.getBoolean("casinoKick");
+        a.casinoKick = false; // наказание за везение отменено (v4)
+        a.casinoBanUntil = 0;
         a.policeBribe = t.getDouble("policeBribe");
         a.hasBusiness = t.getBoolean("hasBusiness");
-        if (a.hasBusiness && !t.contains("printers")) { a.printers = 2; a.needPrinters = true; } // версия 2: в подвале был 1 станок
+        if (a.hasBusiness && !t.contains("printers")) a.printers = 2; // версия 2
+        for (long l : t.getLongArray("printerList")) a.printerList.add(BlockPos.fromLong(l));
+        a.chestGiven = t.getBoolean("chestGiven");
+        if (a.hasBusiness && t.getInt("bizVersion") < 4) { a.chestGiven = true; a.needPrinters = true; } // старый подвал: сундук уже есть
         a.businessChest = BlockPos.fromLong(t.getLong("businessChest"));
         a.businessMin = BlockPos.fromLong(t.getLong("businessMin"));
         a.businessMax = BlockPos.fromLong(t.getLong("businessMax"));
