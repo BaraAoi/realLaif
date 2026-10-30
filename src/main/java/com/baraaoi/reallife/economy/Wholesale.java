@@ -37,7 +37,7 @@ public final class Wholesale {
         }
 
         public String name() {
-            return item.get().getName().getString();
+            return new ItemStack(item.get()).getDisplayName().getString();
         }
     }
 
