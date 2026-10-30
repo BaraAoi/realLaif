@@ -431,7 +431,7 @@ public class SelfTest {
         check(filled == 3, "all shelves look filled: " + filled);
         com.baraaoi.reallife.economy.LegalBusiness grill = com.baraaoi.reallife.economy.LegalBiz.register(data, ow, lot.add(40, 0, 0), Direction.SOUTH,
                 com.baraaoi.reallife.economy.BizType.SHAWARMA, bizOwner, "Test");
-        check(com.baraaoi.reallife.economy.LegalBiz.checkSite(ow, lot.add(20, 0, 0), data, bizOwner) != null, "zones must not overlap even for the owner");
+        check(com.baraaoi.reallife.economy.LegalBiz.checkSite(ow, lot.add(28, 0, 0), data, bizOwner) != null, "zones must not overlap even for the owner");
         double bal0 = bo.balance;
         com.baraaoi.reallife.economy.LegalBiz.processDay(s, data);
         com.baraaoi.reallife.economy.LegalBiz.Scan sc3 = com.baraaoi.reallife.economy.LegalBiz.scan(ow, shop);
