@@ -28,6 +28,7 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.math.AxisAlignedBB;
 import java.util.List;
+import java.util.ArrayList;
 import com.baraaoi.reallife.entity.DebtNpcEntity;
 import com.baraaoi.reallife.event.DebtManager;
 import com.baraaoi.reallife.registry.ModBlocks;
@@ -90,75 +91,187 @@ public class SelfTest {
         check(paidOrder.getTag() != null && paidOrder.getTag().getBoolean("paid") && paidOrder.getTag().getLong("order") == hOrder, "paid house order");
         data.reset(hb.id);
 
-        UUID tkOwner = UUID.randomUUID();
-        BlockPos tkAt = base.add(-300, 0, 300);
-        String tkProblem = com.baraaoi.reallife.economy.BizBuild.turnkeyProblem(ow, tkAt, Direction.EAST, data, tkOwner);
-        check(tkProblem == null, "turnkey site is free: " + tkProblem);
-        com.baraaoi.reallife.economy.LegalBusiness tk = com.baraaoi.reallife.economy.BizBuild.buildTurnkeyAt(data, ow, tkAt, Direction.EAST,
-                com.baraaoi.reallife.economy.BizType.ELECTRONICS, tkOwner, "Turnkey");
-        com.baraaoi.reallife.economy.LegalBiz.Scan tks = com.baraaoi.reallife.economy.LegalBiz.scan(ow, tk);
-        check(tks.counterOk && tks.warehouse && tks.sets == com.baraaoi.reallife.economy.BizType.ELECTRONICS.maxWorkers
-                && tks.allowed == com.baraaoi.reallife.economy.BizType.ELECTRONICS.maxWorkers, "turnkey electronics fully equipped: sets " + tks.sets);
-        check(com.baraaoi.reallife.economy.LegalBiz.workerSpot(ow, tk, tks) != null, "turnkey has room for workers");
-        // свет в тесте не успевает пересчитаться (canSeeSky в 1.16 — по небесному свету), поэтому проверяем постройку по блокам
-        check(!ow.isAirBlock(tk.counter.up(5)) && !ow.isAirBlock(tk.counter.down()) && ow.isAirBlock(tk.counter.up(4)),
-                "turnkey building has floor, roof and headroom");
-        check(com.baraaoi.reallife.economy.BizBuild.turnkeyProblem(ow, tkAt.add(4, 0, 0), Direction.EAST, data, UUID.randomUUID()) != null,
-                "can't build over someone's turnkey shop");
-        BlockPos tkAt2 = base.add(-300, 0, 360);
-        com.baraaoi.reallife.economy.LegalBusiness tk2 = com.baraaoi.reallife.economy.BizBuild.buildTurnkeyAt(data, ow, tkAt2, Direction.NORTH,
-                com.baraaoi.reallife.economy.BizType.SHAWARMA, tkOwner, "Turnkey");
-        com.baraaoi.reallife.economy.LegalBiz.Scan tks2 = com.baraaoi.reallife.economy.LegalBiz.scan(ow, tk2);
-        com.baraaoi.reallife.event.Inspections.Report tkRep2 = com.baraaoi.reallife.event.Inspections.sanepid(ow, tk2, BankService.today(s), false);
-        boolean sinkOk = true;
-        for (String l : tkRep2.lines) if (l.contains("раковин")) sinkOk = false;
-        check(tks2.sets == 2 && tks2.warehouse && sinkOk, "turnkey shawarma (north): sets " + tks2.sets + ", " + tkRep2.lines);
+        v111(s, ow, data, base);
+    }
 
+    /** v1.11: свои планировки «под ключ», новый ТЦ с помещениями, аренда и выселение, боты-конкуренты. */
+    private void v111(MinecraftServer s, ServerWorld ow, EconomyData data, BlockPos base) {
+        long today = BankService.today(s);
+        UUID tkOwner = UUID.randomUUID();
+        Direction[] dirs = {Direction.EAST, Direction.NORTH, Direction.SOUTH, Direction.WEST};
+        List<com.baraaoi.reallife.economy.LegalBusiness> tks = new ArrayList<>();
+        com.baraaoi.reallife.economy.BizType[] types = com.baraaoi.reallife.economy.BizType.values();
+        for (int i = 0; i < types.length; i++) {
+            com.baraaoi.reallife.economy.BizType bt = types[i];
+            BlockPos at = base.add(-300, 0, 300 + i * 32);
+            Direction d = dirs[i % dirs.length];
+            String pr = com.baraaoi.reallife.economy.BizBuild.turnkeyProblem(ow, at, d, data, tkOwner);
+            check(pr == null, "turnkey " + bt.id() + " site is free: " + pr);
+            com.baraaoi.reallife.economy.LegalBusiness tk = com.baraaoi.reallife.economy.BizBuild.buildTurnkeyAt(data, ow, at, d, bt, tkOwner, "Turnkey");
+            tks.add(tk);
+            com.baraaoi.reallife.economy.LegalBiz.Scan sc = com.baraaoi.reallife.economy.LegalBiz.scan(ow, tk);
+            check(sc.counterOk && sc.warehouse && sc.sets == bt.maxWorkers && sc.allowed == bt.maxWorkers,
+                    "turnkey " + bt.id() + " (" + d + ") fully equipped: sets " + sc.sets + "/" + bt.maxWorkers + ", warehouse " + sc.warehouse);
+            check(com.baraaoi.reallife.economy.LegalBiz.workerSpot(ow, tk, sc) != null, "turnkey " + bt.id() + " has room for workers");
+            // свет в тесте не успевает пересчитаться (canSeeSky в 1.16 — по небесному свету), поэтому проверяем по блокам
+            check(!ow.isAirBlock(tk.counter.up(5)) && !ow.isAirBlock(tk.counter.down()) && ow.isAirBlock(tk.counter.up(1)),
+                    "turnkey " + bt.id() + " has floor, roof and room above the counter");
+            if (com.baraaoi.reallife.event.Inspections.food(bt)) {
+                com.baraaoi.reallife.event.Inspections.Report rep = com.baraaoi.reallife.event.Inspections.sanepid(ow, tk, today, false);
+                boolean sinkOk = true;
+                for (String l : rep.lines) if (l.contains("раковин")) sinkOk = false;
+                check(sinkOk, "turnkey " + bt.id() + " has a sink: " + rep.lines);
+            }
+        }
+        // у шаурмичной — столики со стульями в зале и стена склада
+        com.baraaoi.reallife.economy.LegalBusiness sh = tks.get(com.baraaoi.reallife.economy.BizType.SHAWARMA.ordinal());
+        int fences = 0, stairs = 0, doors = 0;
+        for (BlockPos q : BlockPos.getAllInBoxMutable(sh.counter.add(-8, 0, -8), sh.counter.add(8, 1, 8))) {
+            net.minecraft.block.Block bl = ow.getBlockState(q).getBlock();
+            if (bl == net.minecraft.block.Blocks.SPRUCE_FENCE) fences++;
+            if (bl == net.minecraft.block.Blocks.SPRUCE_STAIRS) stairs++;
+            if (bl == net.minecraft.block.Blocks.SPRUCE_DOOR) doors++;
+        }
+        check(fences >= 4 && stairs >= 8 && doors >= 1, "shawarma: tables " + fences + ", chairs " + stairs + ", storage door " + doors);
+        check(com.baraaoi.reallife.economy.BizBuild.turnkeyProblem(ow, base.add(-296, 0, 300), Direction.EAST, data, UUID.randomUUID()) != null,
+                "can't build over someone's turnkey shop");
+
+        // ---- торговый центр
         UUID mallOwner = UUID.randomUUID();
         BlockPos mAt = base.add(-450, 0, -450);
         String mProblem = com.baraaoi.reallife.economy.BizBuild.mallProblem(ow, mAt, Direction.SOUTH, data, mallOwner);
         check(mProblem == null, "mall site is free: " + mProblem);
         com.baraaoi.reallife.economy.Mall mall = com.baraaoi.reallife.economy.BizBuild.buildMallAt(data, ow, mAt, Direction.SOUTH, mallOwner, "MallTest");
-        check(mall.slots.size() == 8 && data.mallAt(mall.slots.get(3), 0) == mall && data.mallsOf(mallOwner).size() == 1, "mall has 8 slots");
-        String slotsBad = "";
-        for (int i = 0; i < mall.slots.size(); i++) {
-            BlockPos sp = mall.slots.get(i);
-            if (!ow.isAirBlock(sp) || ow.isAirBlock(sp.down()) || ow.isAirBlock(sp.up(com.baraaoi.reallife.economy.Mall.H - 1))) slotsBad += " #" + i + " blocks";
-            for (int j = i + 1; j < mall.slots.size(); j++)
-                if (com.baraaoi.reallife.economy.LegalBusiness.zonesOverlap(sp, mall.slots.get(j))) slotsBad += " #" + i + "~#" + j;
-            String sp0 = com.baraaoi.reallife.economy.LegalBiz.checkSite(ow, sp, data, mallOwner);
-            if (sp0 != null) slotsBad += " #" + i + " " + sp0;
+        check(mall.units.size() == 12 && data.mallsOf(mallOwner).size() == 1, "mall has 12 units: " + mall.units.size());
+        java.util.Set<Integer> areas = new java.util.HashSet<>(), prices = new java.util.HashSet<>();
+        String unitsBad = "";
+        for (com.baraaoi.reallife.economy.Mall.Unit u : mall.units) {
+            areas.add(u.area());
+            prices.add(u.price);
+            BlockPos c = unitCenter(u);
+            if (data.mallAt(c, 0) != mall || mall.unitAt(c) != u) unitsBad += " #" + u.idx + " lookup";
+            if (!ow.isAirBlock(c) || ow.isAirBlock(c.down()) || ow.isAirBlock(c.up(com.baraaoi.reallife.economy.Mall.H - 1))) unitsBad += " #" + u.idx + " blocks";
+            if (!ow.isAirBlock(u.entrance) || !u.contains(u.entrance.offset(u.facing)) || u.contains(u.entrance)) unitsBad += " #" + u.idx + " entrance";
+            if (!(ow.getTileEntity(u.sign) instanceof net.minecraft.tileentity.SignTileEntity)) unitsBad += " #" + u.idx + " sign";
+            for (com.baraaoi.reallife.economy.Mall.Unit v : mall.units)
+                if (v.idx > u.idx && u.min.getX() <= v.max.getX() && u.max.getX() >= v.min.getX() && u.min.getZ() <= v.max.getZ() && u.max.getZ() >= v.min.getZ())
+                    unitsBad += " #" + u.idx + "~#" + v.idx;
         }
-        check(slotsBad.isEmpty(), "mall slots: empty, roofed, zones apart, site ok" + slotsBad);
-        BlockPos hall = new BlockPos((mall.min.getX() + mall.max.getX()) / 2, mall.slots.get(0).getY(), (mall.min.getZ() + mall.max.getZ()) / 2);
-        check(com.baraaoi.reallife.economy.LegalBiz.checkSite(ow, hall, data, mallOwner) != null, "inside a mall only marked slots are allowed");
+        check(unitsBad.isEmpty(), "mall units: empty, roofed, entrance, sign, apart" + unitsBad);
+        check(areas.size() >= 5 && prices.size() >= 4, "units differ: areas " + areas + ", prices " + prices);
+        BlockPos hall = mall.center().up();
+        check(mall.unitAt(hall) == null && com.baraaoi.reallife.economy.LegalBiz.checkSite(ow, hall, data, mallOwner) != null, "no business in the atrium");
         check(com.baraaoi.reallife.economy.BizBuild.mallProblem(ow, mAt.add(20, 0, 0), Direction.SOUTH, data, UUID.randomUUID()) != null, "no mall on top of a mall");
-        com.baraaoi.reallife.economy.LegalBusiness mb = com.baraaoi.reallife.economy.BizBuild.openInMall(data, ow, mall, 0, Direction.SOUTH, mallOwner, "MallTest");
-        check(mb.inMall() && mb.type == com.baraaoi.reallife.economy.Mall.LAYOUT[0] && mall.occupant(data, 0) == mb && mall.used(data) == 1, "business opened on a mall slot");
+
+        UUID stranger = UUID.randomUUID();
+        com.baraaoi.reallife.economy.Mall.Unit u0 = mall.unit(0), u1 = mall.unit(1), u2 = mall.unit(2);
+        BlockPos c0 = unitCenter(u0), c1 = unitCenter(u1);
+        check(com.baraaoi.reallife.economy.Malls.editDenied(data, mallOwner, c0) == null && com.baraaoi.reallife.economy.Malls.editDenied(data, stranger, c0) != null
+                && com.baraaoi.reallife.economy.Malls.editDenied(data, mallOwner, hall) == null && com.baraaoi.reallife.economy.Malls.editDenied(data, stranger, hall) != null,
+                "mall edit rights: owner everywhere free, stranger nowhere");
+        com.baraaoi.reallife.economy.Malls.assign(mall, u0, mallOwner, "MallTest", today);
+        com.baraaoi.reallife.economy.LegalBusiness mb = com.baraaoi.reallife.economy.Malls.openInUnit(data, ow, mall, u0, c0, u0.facing.getOpposite(),
+                com.baraaoi.reallife.economy.BizType.ELECTRONICS, mallOwner, "MallTest");
+        check(mb.inMall() && mb.customZone && mb.min.equals(u0.min) && mb.max.equals(u0.max) && mall.business(data, u0) == mb && mall.used() == 1,
+                "any business type opens in an own unit, zone = unit");
         double plain = com.baraaoi.reallife.economy.LegalBiz.revenue(mb.type, 2, 1.0, 1.0);
-        check(Math.abs(com.baraaoi.reallife.economy.LegalBiz.dayRevenue(mb, 2, 1.0, 1.0) - Math.round(plain * 1.5)) < 1e-6, "mall revenue +50%");
+        check(Math.abs(com.baraaoi.reallife.economy.LegalBiz.dayRevenue(data, mb, 2, 1.0, 1.0) - Math.round(plain * 1.5)) < 1e-6, "mall revenue +50%");
         mb.lastProfit = 2000;
         check(Math.abs(com.baraaoi.reallife.economy.LegalBiz.safeLimit(mb) - 500) < 1e-6
                 && com.baraaoi.reallife.economy.LegalBiz.launderChance(2000, 0, 500, com.baraaoi.reallife.economy.LegalBiz.safeShare(mb)) == 0
                 && com.baraaoi.reallife.economy.LegalBiz.launderChance(2000, 0, 500) > 0, "mall: 25% laundering is safe (15% outside)");
-        com.baraaoi.reallife.economy.LegalBiz.Scan msc = com.baraaoi.reallife.economy.LegalBiz.scan(ow, mb);
-        com.baraaoi.reallife.event.Inspections.Report mRep = com.baraaoi.reallife.event.Inspections.sanepid(ow, mb, BankService.today(s), false);
-        boolean mallClean = msc.counterOk;
-        for (String l : mRep.lines) if (l.contains("раковин")) mallClean = false;
-        check(mallClean && !ow.isAirBlock(mb.counter.up(com.baraaoi.reallife.economy.Mall.H - 1)), "mall slot: roof above, sink inside: " + mRep.lines);
+        check(com.baraaoi.reallife.economy.LegalBiz.scan(ow, mb).counterOk, "mall business counter ok");
+
+        // другой игрок покупает помещение и платит аренду
+        Account ownerAcc = data.getOrCreate(mallOwner);
+        Account ten = data.getOrCreate(UUID.randomUUID());
+        ten.balance = u1.price;
+        double ob = ownerAcc.balance;
+        String buy = com.baraaoi.reallife.economy.Malls.buyCore(data, mall, u1, ten, "Tenant", today);
+        check(buy == null && ten.id.equals(u1.tenant) && Math.abs(ownerAcc.balance - ob - u1.price) < 1e-6 && Math.abs(ten.balance) < 1e-6,
+                "tenant bought unit, money went to the mall owner: " + buy);
+        Account other = data.getOrCreate(UUID.randomUUID());
+        other.balance = 1_000_000;
+        check(com.baraaoi.reallife.economy.Malls.buyCore(data, mall, u1, other, "Other", today) != null, "taken unit can't be bought");
+        check(com.baraaoi.reallife.economy.Malls.editDenied(data, ten.id, c1) == null && com.baraaoi.reallife.economy.Malls.editDenied(data, ten.id, c0) != null
+                && com.baraaoi.reallife.economy.Malls.editDenied(data, mallOwner, c1) != null && com.baraaoi.reallife.economy.Business.inOwnProperty(data, ten, c1),
+                "tenant builds only in own unit; owner can't touch tenant's unit");
+        com.baraaoi.reallife.economy.LegalBusiness tb = com.baraaoi.reallife.economy.Malls.openInUnit(data, ow, mall, u1, c1, u1.facing.getOpposite(),
+                com.baraaoi.reallife.economy.BizType.SHAWARMA, ten.id, "Tenant");
+        ten.balance = u1.rent;
+        ob = ownerAcc.balance;
+        com.baraaoi.reallife.economy.Malls.processDay(s, data);
+        check(Math.abs(ten.balance) < 1e-6 && u1.unpaid == 0 && Math.abs(ownerAcc.balance - ob - u1.rent) < 1e-6, "rent paid to the mall owner");
+        com.baraaoi.reallife.economy.Malls.processDay(s, data);
+        com.baraaoi.reallife.economy.Malls.processDay(s, data);
+        check(ten.id.equals(u1.tenant) && u1.unpaid == 2, "two unpaid days: still a tenant");
+        com.baraaoi.reallife.economy.Malls.processDay(s, data);
+        check(u1.tenant == null && u1.free() && !data.businesses.contains(tb), "evicted after " + com.baraaoi.reallife.economy.Mall.EVICT_DAYS + " unpaid days, business closed");
+
+        // бот-конкурент в ТЦ
+        BlockPos probe = u2.entrance.offset(u2.facing, 3);
+        check(ow.isAirBlock(probe), "unit 2 empty before the bot");
+        com.baraaoi.reallife.economy.Rival r = com.baraaoi.reallife.economy.Rivals.openInMall(ow, data, mall, u2, com.baraaoi.reallife.economy.BizType.ELECTRONICS, today);
+        check(u2.rival == r.id && !u2.free() && !ow.isAirBlock(probe) && com.baraaoi.reallife.economy.Rivals.count(data, mb) == 1
+                && Math.abs(com.baraaoi.reallife.economy.Rivals.factor(data, mb) - 0.85) < 1e-9, "bot took a unit: −15% for the same type");
+        check(Math.abs(com.baraaoi.reallife.economy.LegalBiz.dayRevenue(data, mb, 2, 1.0, 1.0) - Math.round(plain * 1.5 * 0.85)) < 1e-6, "rival cuts mall revenue");
+        check("(конкурент)".equals(com.baraaoi.reallife.economy.Malls.signText(data, mall, u2)[2]) && com.baraaoi.reallife.economy.Malls.editDenied(data, mallOwner, probe) != null,
+                "rival unit sign and protection");
+        ob = ownerAcc.balance;
+        com.baraaoi.reallife.economy.Malls.processDay(s, data);
+        check(Math.abs(ownerAcc.balance - ob - u2.rent) < 1e-6, "bots pay rent to the mall owner");
+        List<com.baraaoi.reallife.economy.Rival> fakes = new ArrayList<>();
+        for (int i = 0; i < 4; i++) {
+            com.baraaoi.reallife.economy.Rival f = new com.baraaoi.reallife.economy.Rival();
+            f.id = 90000 + i;
+            f.type = com.baraaoi.reallife.economy.BizType.ELECTRONICS;
+            f.mallId = mall.id;
+            f.until = today + 100;
+            fakes.add(f);
+        }
+        data.rivals.addAll(fakes);
+        check(Math.abs(com.baraaoi.reallife.economy.Rivals.factor(data, mb) - com.baraaoi.reallife.economy.Rivals.MIN_FACTOR) < 1e-9, "competition has a floor (−45%)");
+        data.rivals.removeAll(fakes);
+        r.until = today - 1;
+        com.baraaoi.reallife.economy.Rivals.processDay(s, data);
+        check(!data.rivals.contains(r) && u2.rival == 0 && u2.free() && ow.isAirBlock(probe) && com.baraaoi.reallife.economy.Rivals.factor(data, mb) == 1.0,
+                "bot went bankrupt: unit restored and free");
+
+        // уличный ларёк конкурента
+        UUID stOwner = UUID.randomUUID();
+        com.baraaoi.reallife.economy.LegalBusiness street = com.baraaoi.reallife.economy.LegalBiz.register(data, ow, base.add(-560, 0, -300), Direction.NORTH,
+                com.baraaoi.reallife.economy.BizType.SHAWARMA, stOwner, "Street");
+        BlockPos kAt = base.add(-535, 0, -300);
+        check(ow.isAirBlock(kAt.up()), "kiosk site empty");
+        com.baraaoi.reallife.economy.Rival k = com.baraaoi.reallife.economy.Rivals.build(ow, data, kAt, Direction.EAST, com.baraaoi.reallife.economy.BizType.SHAWARMA, today);
+        check(ow.getTileEntity(k.sign) instanceof net.minecraft.tileentity.SignTileEntity && !ow.isAirBlock(kAt.up(4))
+                && Math.abs(com.baraaoi.reallife.economy.Rivals.factor(data, street) - 0.85) < 1e-9, "street kiosk built and competes");
+
         CompoundNBT msave = data.write(new CompoundNBT());
         EconomyData mcopy = new EconomyData();
         mcopy.read(msave);
         com.baraaoi.reallife.economy.Mall mallCopy = mcopy.mallById(mall.id);
         com.baraaoi.reallife.economy.LegalBusiness mbCopy = mcopy.bizAtCounter(mb.counter);
-        check(mallCopy != null && mallCopy.slots.equals(mall.slots) && mallCopy.types.equals(mall.types) && mbCopy != null && mbCopy.mallId == mall.id,
-                "malls saved");
-        data.businesses.remove(tk);
-        data.businesses.remove(tk2);
+        check(mallCopy != null && mallCopy.units.size() == 12 && mallCopy.unit(0).sign.equals(u0.sign) && mallCopy.unit(5).price == mall.unit(5).price
+                && mallOwner.equals(mallCopy.unit(0).tenant) && mbCopy != null && mbCopy.customZone && mbCopy.min.equals(mb.min) && mbCopy.mallUnit == 0
+                && mcopy.rivalById(k.id) != null && mcopy.rivalById(k.id).snapshot.size() == k.snapshot.size(), "malls, units and rivals saved");
+
+        com.baraaoi.reallife.economy.Rivals.close(ow, data, k);
+        check(ow.isAirBlock(kAt.up(4)) && ow.isAirBlock(k.sign) && com.baraaoi.reallife.economy.Rivals.factor(data, street) == 1.0, "kiosk bought out: area restored");
+
+        data.businesses.removeAll(tks);
         data.businesses.remove(mb);
+        data.businesses.remove(street);
         data.malls.remove(mall);
         data.reset(tkOwner);
         data.reset(mallOwner);
+        data.reset(ten.id);
+        data.reset(other.id);
+        data.reset(stOwner);
+    }
+
+    private static BlockPos unitCenter(com.baraaoi.reallife.economy.Mall.Unit u) {
+        return new BlockPos((u.min.getX() + u.max.getX()) / 2, u.min.getY() + 1, (u.min.getZ() + u.max.getZ()) / 2);
     }
 
     private void run(MinecraftServer s) {

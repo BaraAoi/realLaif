@@ -57,6 +57,8 @@ public class Config {
 
     // ===== Легальный бизнес / крипта =====
     public static final ForgeConfigSpec.DoubleValue LAUNDER_SAFE_SHARE;
+    public static final ForgeConfigSpec.BooleanValue RIVALS_ENABLED;
+    public static final ForgeConfigSpec.DoubleValue RIVAL_CHANCE;
     public static final ForgeConfigSpec.DoubleValue LAUNDER_RISK_SLOPE;
     public static final ForgeConfigSpec.DoubleValue LAUNDER_TAX;
     public static final ForgeConfigSpec.DoubleValue TAX_FINE_MULT;
@@ -174,6 +176,10 @@ public class Config {
         b.pop();
 
         b.comment("Легальный бизнес (заведения) и отмывание через кассу").push("legal");
+        RIVALS_ENABLED = b.comment("v1.11: боты-конкуренты сами открываются рядом с заведениями игроков и в свободных помещениях ТЦ")
+                .define("rivals", true);
+        RIVAL_CHANCE = b.comment("Шанс, что рядом с заведением откроется конкурент (проверка раз в 5 минут, пока владелец рядом)")
+                .defineInRange("rivalChance", 0.06, 0.0, 1.0);
         LAUNDER_SAFE_SHARE = b.comment("Сколько грязных в день можно провести через кассу без риска (доля базовой прибыли заведения)")
                 .defineInRange("launderSafeShare", 0.15, 0.0, 10.0);
         LAUNDER_RISK_SLOPE = b.comment("Как быстро растёт риск сверх безопасной доли: шанс = (сумма/база - безопасная доля) * slope")

@@ -253,6 +253,9 @@ public final class Visitors {
                 l.add(new BlockPos(net.minecraft.util.math.ChunkPos.getX(e.getKey()) * 16 + 8, 64, net.minecraft.util.math.ChunkPos.getZ(e.getKey()) * 16 + 8));
             }
             for (LegalBusiness b : data.bizOf(a.id)) l.add(b.counter);
+            for (com.baraaoi.reallife.economy.Mall m : data.malls)
+                for (com.baraaoi.reallife.economy.Mall.Unit u : m.units)
+                    if (a.id.equals(u.tenant)) l.add(new BlockPos((u.min.getX() + u.max.getX()) / 2, u.min.getY() + 1, (u.min.getZ() + u.max.getZ()) / 2));
         }
         if (p instanceof ServerPlayerEntity) {
             ServerPlayerEntity sp = (ServerPlayerEntity) p;

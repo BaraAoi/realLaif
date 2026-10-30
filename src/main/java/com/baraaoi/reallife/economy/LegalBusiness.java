@@ -45,6 +45,15 @@ public class LegalBusiness {
     public int docsWorkers;
     /** v1.10: заведение стоит на месте в торговом центре (id ТЦ, -1 — нет). */
     public int mallId = -1;
+    /** v1.11: помещение ТЦ; у заведений в помещении зона = само помещение (а не ±8 от кассы). */
+    public int mallUnit = -1;
+    public boolean customZone;
+
+    public void setZone(BlockPos zmin, BlockPos zmax) {
+        min = zmin.toImmutable();
+        max = zmax.toImmutable();
+        customZone = true;
+    }
 
     public boolean inMall() {
         return mallId >= 0;
@@ -100,6 +109,11 @@ public class LegalBusiness {
         t.putLong("docsUntil", docsUntil);
         t.putInt("docsWorkers", docsWorkers);
         t.putInt("mallId", mallId);
+        t.putInt("mallUnit", mallUnit);
+        if (customZone) {
+            t.putLong("zmin", min.toLong());
+            t.putLong("zmax", max.toLong());
+        }
         return t;
     }
 
@@ -133,6 +147,8 @@ public class LegalBusiness {
         b.docsUntil = t.getLong("docsUntil");
         b.docsWorkers = t.getInt("docsWorkers");
         b.mallId = t.contains("mallId") ? t.getInt("mallId") : -1;
+        b.mallUnit = t.contains("mallUnit") ? t.getInt("mallUnit") : -1;
+        if (t.contains("zmin")) b.setZone(BlockPos.fromLong(t.getLong("zmin")), BlockPos.fromLong(t.getLong("zmax")));
         return b;
     }
 }

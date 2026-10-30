@@ -61,7 +61,7 @@ public class BizScreen extends ContainerScreen<BizContainer> {
         String reason = t.getString("reason");
         GuiUtil.small(font, ms, (reason.isEmpty() ? "§a● Открыто" : "§c● Закрыто: " + reason) + "§f   работники §e" + workers + "§f/"
                 + allowed + " §7(потолок " + type.maxWorkers + ")", 8, 19);
-        GuiUtil.small(font, ms, "Оборудование в зоне ±8 — комплектов: §e" + sets + "§7 (" + (sets < type.maxWorkers ? "для " + (sets + 1)
+        GuiUtil.small(font, ms, (t.getBoolean("mall") ? "Оборудование в помещении — комплектов: §e" : "Оборудование в зоне ±8 — комплектов: §e") + sets + "§7 (" + (sets < type.maxWorkers ? "для " + (sets + 1)
                 + "-го работника нужно:" : "максимум") + ")", 8, 28);
         net.minecraft.nbt.ListNBT eq = t.getList("equip", 10);
         int target = Math.min(type.maxWorkers, sets + 1);
@@ -76,7 +76,9 @@ public class BizScreen extends ContainerScreen<BizContainer> {
         double lp = t.getDouble("lastProfit");
         GuiUtil.small(font, ms, "Вчера: " + (lp >= 0 ? "§a+" : "§c") + Finance.money(lp) + " §7" + t.getString("lastNote"), 8, 65);
         GuiUtil.small(font, ms, "Всего: §a" + Finance.money(t.getDouble("total")) + "§f за " + t.getInt("days") + " раб. дн.  §7выручка "
-                + Finance.money(type.revenue() * (t.getBoolean("mall") ? 1.5 : 1.0)) + "/раб." + (t.getBoolean("mall") ? " §d(ТЦ +50%)" : ", удача влияет"), 8, 74);
+                + Finance.money(type.revenue() * (t.getBoolean("mall") ? 1.5 : 1.0) * (t.contains("rivalFactor") ? t.getDouble("rivalFactor") : 1.0)) + "/раб."
+                + (t.getBoolean("mall") ? " §d(ТЦ +50%)" : "")
+                + (t.getInt("rivals") > 0 ? " §c(конкуренты: " + t.getInt("rivals") + ", −" + Math.round((1 - t.getDouble("rivalFactor")) * 100) + "%)" : t.getBoolean("mall") ? "" : ", удача влияет"), 8, 74);
         GuiUtil.small(font, ms, "Найм " + Finance.money(type.hireCost()) + ", зарплата " + Finance.money(type.wage()) + "/день каждому. "
                 + (t.getInt("undoc") > 0 ? "§cБез документов: " + t.getInt("undoc") + " чел.!" : t.getInt("workers") > 0
                 ? "§aДокументы до дня " + t.getLong("docsUntil") : "§7Сырьё: телефон → Опт."), 8, 83);

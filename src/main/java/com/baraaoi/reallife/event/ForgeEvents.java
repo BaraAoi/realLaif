@@ -35,6 +35,7 @@ public class ForgeEvents {
             Raids.tick(server);
             com.baraaoi.reallife.economy.LegalBiz.tickCustomers(server);
             com.baraaoi.reallife.economy.Crypto.tick(server);
+            com.baraaoi.reallife.economy.Rivals.tick(server);
         }
     }
 
@@ -79,8 +80,26 @@ public class ForgeEvents {
             event.setCanceled(true);
             return;
         }
+        String mallDeny = p.isCreative() ? null : com.baraaoi.reallife.economy.Malls.editDenied(EconomyData.get(p.getServer()), p.getUniqueID(), event.getPos());
+        if (mallDeny != null) {
+            BankService.actionBar(p, "§cТЦ: " + mallDeny);
+            event.setCanceled(true);
+            return;
+        }
         DebtManager.onPlace(p, event.getPos());
         com.baraaoi.reallife.economy.Business.onPlaced(p, event.getPos(), event.getPlacedBlock().getBlock());
+    }
+
+    /** v1.11: ПКМ по табличке помещения ТЦ или вывеске конкурента. */
+    @SubscribeEvent
+    public void onRightClickBlock(net.minecraftforge.event.entity.player.PlayerInteractEvent.RightClickBlock event) {
+        if (event.getWorld().isRemote() || event.getHand() != net.minecraft.util.Hand.MAIN_HAND) return;
+        if (!(event.getPlayer() instanceof ServerPlayerEntity)) return;
+        if (!(event.getWorld().getBlockState(event.getPos()).getBlock() instanceof net.minecraft.block.AbstractSignBlock)) return;
+        ServerPlayerEntity p = (ServerPlayerEntity) event.getPlayer();
+        if (com.baraaoi.reallife.economy.Malls.onSignClick(p, event.getPos()) || com.baraaoi.reallife.economy.Rivals.onSignClick(p, event.getPos())) {
+            event.setCanceled(true);
+        }
     }
 
     @SubscribeEvent
@@ -144,6 +163,13 @@ public class ForgeEvents {
         if (event.getWorld().isRemote() || !(event.getPlayer() instanceof ServerPlayerEntity)) return;
         if (!event.getPlayer().isCreative() && cityProtected(event.getWorld(), event.getPos())) {
             BankService.actionBar(event.getPlayer(), "§cГородская собственность под охраной — ломать нельзя.");
+            event.setCanceled(true);
+            return;
+        }
+        String mallDeny = event.getPlayer().isCreative() ? null
+                : com.baraaoi.reallife.economy.Malls.editDenied(EconomyData.get(event.getPlayer().getServer()), event.getPlayer().getUniqueID(), event.getPos());
+        if (mallDeny != null) {
+            BankService.actionBar(event.getPlayer(), "§cТЦ: " + mallDeny);
             event.setCanceled(true);
             return;
         }

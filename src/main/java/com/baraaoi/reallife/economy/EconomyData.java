@@ -51,6 +51,9 @@ public class EconomyData extends WorldSavedData {
     /** v1.10: торговые центры игроков. */
     public final List<Mall> malls = new ArrayList<>();
     public int nextMallId = 1;
+    /** v1.11: боты-конкуренты. */
+    public final List<Rival> rivals = new ArrayList<>();
+    public int nextRivalId = 1;
     /** Курс BTC в рублях и когда он последний раз менялся (игровые тики). */
     public double btcRate;
     public long btcUpdated;
@@ -188,6 +191,11 @@ public class EconomyData extends WorldSavedData {
         return null;
     }
 
+    public Rival rivalById(int id) {
+        for (Rival r : rivals) if (r.id == id) return r;
+        return null;
+    }
+
     public Mall mallById(int id) {
         for (Mall m : malls) if (m.id == id) return m;
         return null;
@@ -249,6 +257,10 @@ public class EconomyData extends WorldSavedData {
         for (INBT n : nbt.getList("malls", 10)) malls.add(Mall.read((CompoundNBT) n));
         nextMallId = Math.max(1, nbt.getInt("nextMallId"));
         for (Mall m : malls) nextMallId = Math.max(nextMallId, m.id + 1);
+        rivals.clear();
+        for (INBT n : nbt.getList("rivals", 10)) rivals.add(Rival.read((CompoundNBT) n));
+        nextRivalId = Math.max(1, nbt.getInt("nextRivalId"));
+        for (Rival r : rivals) nextRivalId = Math.max(nextRivalId, r.id + 1);
         btcRate = nbt.getDouble("btcRate");
         btcUpdated = nbt.getLong("btcUpdated");
         for (int i = 1; i < altRates.length; i++) altRates[i] = nbt.getDouble("altRate" + i);
@@ -293,6 +305,10 @@ public class EconomyData extends WorldSavedData {
         for (Mall m : malls) ml.add(m.write());
         nbt.put("malls", ml);
         nbt.putInt("nextMallId", nextMallId);
+        ListNBT rl = new ListNBT();
+        for (Rival r : rivals) rl.add(r.write());
+        nbt.put("rivals", rl);
+        nbt.putInt("nextRivalId", nextRivalId);
         nbt.putDouble("btcRate", btcRate);
         nbt.putLong("btcUpdated", btcUpdated);
         for (int i = 1; i < altRates.length; i++) if (altRates[i] > 0) nbt.putDouble("altRate" + i, altRates[i]);

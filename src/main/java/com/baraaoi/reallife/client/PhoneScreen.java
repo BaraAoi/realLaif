@@ -318,22 +318,31 @@ public class PhoneScreen extends Screen {
     private void drawMall(MatrixStack ms, CompoundNBT t) {
         text(ms, "§6Торговый центр", 8, 62);
         small(ms, "Разрешение со стройкой: §e" + Finance.money(com.baraaoi.reallife.economy.Mall.PRICE), 8, 74);
-        small(ms, "§7Огромный пустой зал 71×45 с 8 размеченными местами:", 8, 84);
-        small(ms, "§7шаурмичная, мини-маркет, ломбард, магазин техники — по 2.", 8, 93);
-        small(ms, "§aПрибыль заведений в ТЦ +50%§f, безопасный отмыв §a25%§f прибыли", 8, 102);
-        small(ms, "§7(вне ТЦ — 15%). Лицензию ставишь ПКМ по центру своего места.", 8, 111);
+        small(ms, "§7Атриум с фонтаном и 12 помещений от киоска до большого зала.", 8, 84);
+        small(ms, "§7Помещения занимаете сами или продаёте игрокам: цена + §aаренда/день§7 вам.", 8, 93);
+        small(ms, "§7Внутри — что угодно: жильё или любое заведение. §aПрибыль в ТЦ +50%§7,", 8, 102);
+        small(ms, "§7отмыв §a25%§7. Свободные места занимают боты — платят, но конкурируют.", 8, 111);
         ListNBT malls = t.getList("malls", 10);
         fill(ms, left + 4, top + 122, left + W - 4, top + 123, 0xFF335577);
         if (malls.isEmpty()) {
-            small(ms, "§7У вас пока нет ТЦ. Нужна ровная площадка, вся земля —", 8, 128);
-            small(ms, "§7ваша или ничья. ПКМ разрешением — зал встанет перед вами.", 8, 137);
+            small(ms, "§7Своих ТЦ и помещений нет. Для ТЦ нужна ровная площадка ~73×62,", 8, 128);
+            small(ms, "§7вся земля — ваша или ничья. Помещение в чужом ТЦ: ПКМ по табличке.", 8, 137);
         }
-        for (int i = 0; i < malls.size() && i < 3; i++) {
+        int y = 127;
+        for (int i = 0; i < malls.size() && y < 186; i++) {
             CompoundNBT m = malls.getCompound(i);
-            String free = m.getString("free");
-            small(ms, "§fТЦ №" + m.getInt("id") + " §7(" + m.getInt("x") + ", " + m.getInt("y") + ", " + m.getInt("z") + ") §fзанято §e"
-                    + m.getInt("used") + "/" + m.getInt("total"), 8, 128 + i * 18);
-            small(ms, free.isEmpty() ? "§aвсе места заняты" : "§7свободно: " + free, 14, 137 + i * 18);
+            if (m.getBoolean("own")) {
+                small(ms, "§fТЦ №" + m.getInt("id") + " §7(" + m.getInt("x") + ", " + m.getInt("y") + ", " + m.getInt("z") + ") §fзанято §e"
+                        + m.getInt("used") + "/" + m.getInt("total") + "§f, свободно " + m.getInt("free"), 8, y);
+                small(ms, "§7аренда в день: §a" + Finance.money(m.getInt("rent")) + (m.getInt("bots") > 0 ? " §c(ботов: " + m.getInt("bots") + ")" : ""), 14, y + 9);
+                y += 19;
+            } else {
+                String biz = m.getString("biz");
+                small(ms, "§fПомещение №" + m.getInt("unit") + " §7в ТЦ «" + m.getString("mall") + "» " + m.getString("label")
+                        + (biz.isEmpty() ? "" : " §e" + biz), 8, y);
+                small(ms, "§7аренда §c" + Finance.money(m.getInt("rent")) + "/день" + (m.getInt("unpaid") > 0 ? " §c§lдолг " + m.getInt("unpaid") + " дн.!" : ""), 14, y + 9);
+                y += 19;
+            }
         }
     }
 

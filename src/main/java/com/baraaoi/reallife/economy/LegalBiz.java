@@ -210,8 +210,8 @@ public final class LegalBiz {
             }
         }
         for (Mall m : data.malls) {
-            if (m.contains(pos, LegalBusiness.R_XZ + 1) && !m.slots.contains(pos)) {
-                return "рядом торговый центр — внутри ТЦ заведения открывают только на размеченных местах";
+            if (m.contains(pos, LegalBusiness.R_XZ + 1)) {
+                return "рядом торговый центр — внутри ТЦ заведение открывают в своём помещении (купите его: ПКМ по табличке над входом)";
             }
         }
         Account a = data.getOrCreate(owner);
@@ -221,10 +221,6 @@ public final class LegalBiz {
         return landOwner.equals(com.baraaoi.reallife.structure.Buildings.CITY) ? "это городская земля" : "участок принадлежит другому игроку";
     }
 
-    static boolean hasSlot(Mall m, BizType t) {
-        return m.types.contains(t);
-    }
-
     /** Поставить главную кассу по лицензии. true — заведение открыто. */
     public static boolean place(ServerPlayerEntity p, BlockPos pos, Direction facing, BizType type) {
         World world = p.world;
@@ -232,28 +228,32 @@ public final class LegalBiz {
         if (server == null) return false;
         EconomyData data = EconomyData.get(server);
         Mall mall = data.mallAt(pos, 0);
-        int slot = -1;
         if (mall != null) {
-            if (!p.getUniqueID().equals(mall.owner)) {
-                BankService.msg(p, BIZ + "§cЭто чужой торговый центр (владелец " + mall.ownerName + "). Открывать заведения в нём может только владелец.");
+            Mall.Unit u = mall.unitAt(pos);
+            if (u == null) {
+                BankService.msg(p, BIZ + "§cВ ТЦ заведение открывают внутри своего помещения, а не в общем зале. "
+                        + "§fПКМ по табличке над входом помещения — купить/занять.");
                 return false;
             }
-            slot = mall.slotNear(pos, Mall.SNAP);
-            if (slot < 0) {
-                BankService.msg(p, BIZ + "§cВ ТЦ заведения открывают только на размеченных местах: §fПКМ лицензией по цветной метке "
-                        + "в центре площадки (табличка на краю подскажет вид).");
+            if (!p.getUniqueID().equals(u.tenant)) {
+                BankService.msg(p, BIZ + "§cПомещение №" + (u.idx + 1) + " не ваше"
+                        + (u.rival != 0 ? " — его занял конкурент" : u.tenant == null ? " — оно продаётся (ПКМ по табличке над входом)" : " (арендатор " + u.tenantName + ")") + ".");
                 return false;
             }
-            if (mall.types.get(slot) != type) {
-                BankService.msg(p, BIZ + "§cЭто место отведено под «" + mall.types.get(slot).title + "». §fДля «" + type.title
-                        + "» в ТЦ есть своё место" + (hasSlot(mall, type) ? "" : " — нет, такой вид в ТЦ не предусмотрен") + ".");
+            if (mall.business(data, u) != null) {
+                BankService.msg(p, BIZ + "§cВ этом помещении уже есть заведение. Одно помещение — одно заведение.");
                 return false;
             }
-            if (mall.occupant(data, slot) != null) {
-                BankService.msg(p, BIZ + "§cЭто место в ТЦ уже занято.");
+            if (!world.getBlockState(pos).getMaterial().isReplaceable()) {
+                BankService.msg(p, BIZ + "§cМесто под кассу занято.");
                 return false;
             }
-            pos = mall.slots.get(slot);
+            LegalBusiness b = Malls.openInUnit(data, world, mall, u, pos, facing, type, p.getUniqueID(), p.getGameProfile().getName());
+            BankService.msg(p, BIZ + "§a§lЗаведение «" + type.title + "» открыто в ТЦ (помещение №" + (u.idx + 1) + ")! §r§fПрибыль §a+50%§f, безопасный отмыв §a"
+                    + Math.round(Mall.SAFE_SHARE * 100) + "%§f вчерашней прибыли. Зона заведения — всё помещение " + u.width + "×" + u.depth
+                    + ". Комплект на работника: §e" + kitText(type) + "§f + склад §e" + baseText(type) + "§f.");
+            if (!b.owner.equals(mall.owner)) BankService.msg(p, BIZ + "§7Не забывайте: аренда " + Finance.money(u.rent) + "/день владельцу ТЦ списывается со счёта.");
+            return true;
         }
         String problem = checkSite(world, pos, data, p.getUniqueID());
         if (problem != null) {
@@ -264,13 +264,6 @@ public final class LegalBiz {
         if (!cur.getMaterial().isReplaceable()) {
             BankService.msg(p, BIZ + "§cМесто под кассу занято.");
             return false;
-        }
-        if (mall != null) {
-            com.baraaoi.reallife.economy.BizBuild.openInMall(data, world, mall, slot, facing, p.getUniqueID(), p.getGameProfile().getName());
-            BankService.msg(p, BIZ + "§a§lЗаведение «" + type.title + "» открыто в торговом центре! §r§fПрибыль §a+50%§f, безопасный отмыв §a"
-                    + Math.round(Mall.SAFE_SHARE * 100) + "%§f вчерашней прибыли. Оборудование ставь в пределах цветной площадки: §e"
-                    + kitText(type) + "§f на работника + склад §e" + baseText(type) + "§f.");
-            return true;
         }
         LegalBusiness b = register(data, world, pos, facing, type, p.getUniqueID(), p.getGameProfile().getName());
         int claimed = com.baraaoi.reallife.structure.Buildings.claimArea(data, p.getUniqueID(), pos, pos, true);
@@ -309,6 +302,9 @@ public final class LegalBiz {
         b.workers.clear();
         data.businesses.remove(b);
         data.markDirty();
+        Mall mall = b.inMall() ? data.mallById(b.mallId) : null;
+        Mall.Unit mu = mall == null ? null : mall.unitAt(b.counter);
+        if (mu != null) Malls.updateSign(ow, data, mall, mu);
         if (by != null) {
             BankService.give(by, BizPermitItem.create(ModItems.BIZ_PERMIT.get(), b.type));
             BankService.msg(by, BIZ + "§eЗаведение «" + b.type.title + "» закрыто, работники распущены. §fЛицензия возвращена — "
@@ -659,6 +655,9 @@ public final class LegalBiz {
         t.putDouble("safe", safeLimit(b));
         t.putDouble("safeShare", safeShare(b));
         t.putBoolean("mall", b.inMall());
+        EconomyData rd = w.getServer() == null ? null : EconomyData.get(w.getServer());
+        t.putInt("rivals", Rivals.count(rd, b));
+        t.putDouble("rivalFactor", Rivals.factor(rd, b));
         t.putInt("x", b.counter.getX());
         t.putInt("y", b.counter.getY());
         t.putInt("z", b.counter.getZ());
@@ -851,10 +850,11 @@ public final class LegalBiz {
         return Math.round(t.base * BizType.REVENUE_BOOST * (1 + 0.9 * (working - 1)) * mult * supplyFraction);
     }
 
-    /** v1.10: выручка конкретного заведения — в торговом центре +50%. */
-    public static double dayRevenue(LegalBusiness b, int working, double mult, double supplyFraction) {
+    /** v1.10: выручка конкретного заведения — в торговом центре +50%; v1.11: конкуренты рядом отбивают покупателей. */
+    public static double dayRevenue(EconomyData data, LegalBusiness b, int working, double mult, double supplyFraction) {
         double r = revenue(b.type, working, mult, supplyFraction);
-        return b.inMall() ? Math.round(r * Mall.REVENUE_BONUS) : r;
+        double k = (b.inMall() ? Mall.REVENUE_BONUS : 1.0) * Rivals.factor(data, b);
+        return k == 1.0 ? r : Math.round(r * k);
     }
 
     public static void processDay(MinecraftServer server, EconomyData data) {
@@ -876,7 +876,8 @@ public final class LegalBiz {
             double fraction = need > 0 ? used / (double) need : 0;
             double wages = b.type.wage() * hired;
             Roll r = roll(R, luckBonus(p), isBadNote(b.lastNote));
-            double revenue = dayRevenue(b, working, r.mult, fraction);
+            double revenue = dayRevenue(data, b, working, r.mult, fraction);
+            int rivals = Rivals.count(data, b);
             double profit = revenue - wages;
             String note;
             if (sealedDay) note = "опечатано: " + b.sealReason;
@@ -896,7 +897,8 @@ public final class LegalBiz {
             if (p != null) {
                 String color = working == 0 || used == 0 ? "§c" : r.kind == BAD ? "§c" : r.kind == NORMAL ? "§f" : r.kind == GOOD ? "§a" : "§6§l";
                 BankService.msg(p, BIZ + "СМС «" + b.type.title + "»: " + color + note + "§f. Работает " + working + "/" + hired
-                        + ", сырья ушло " + used + "/" + need + ". Выручка §a" + Finance.money(revenue) + (b.inMall() && revenue > 0 ? " §d(ТЦ +50%)§f" : "") + "§f, зарплаты §c−"
+                        + ", сырья ушло " + used + "/" + need + ". Выручка §a" + Finance.money(revenue) + (b.inMall() && revenue > 0 ? " §d(ТЦ +50%)§f" : "")
+                        + (rivals > 0 && revenue > 0 ? " §c(конкуренты рядом: " + rivals + ", −" + Math.round((1 - Rivals.factor(data, b)) * 100) + "%)§f" : "") + "§f, зарплаты §c−"
                         + Finance.money(wages) + "§f → итог " + (profit >= 0 ? "§a+" : "§c") + Finance.money(profit) + "§f на счёт."
                         + (customers > 0 ? " §7Покупателей заходило при вас: " + customers + "." : "")
                         + (ratingUp ? " §aКредитный рейтинг растёт: банк видит рабочий бизнес." : ""));

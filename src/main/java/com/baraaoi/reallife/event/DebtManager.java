@@ -1001,6 +1001,7 @@ public class DebtManager {
         long chunk = EconomyData.chunkKey(pos);
         UUID owner = data.owner(chunk);
         if (p.getUniqueID().equals(owner)) return;
+        if (data.mallAt(pos, 1) != null) return; // в ТЦ права проверяет сам ТЦ (своё помещение / владелец)
         int n = data.addPlaced(chunk, p.getUniqueID(), pos);
         int limit = Config.LAND_THRESHOLD.get();
         if (n == Math.max(1, limit - 10) && !a.landCase) {

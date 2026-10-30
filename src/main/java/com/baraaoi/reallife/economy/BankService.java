@@ -212,7 +212,7 @@ public class BankService {
         t.putLong("today", today);
         t.put("bizList", LegalBiz.infoList(data, a.id, today));
         t.putBoolean("ownsBiz", data.ownsBusiness(a.id));
-        t.put("malls", BizBuild.mallList(data, a.id));
+        t.put("malls", Malls.phoneList(data, a.id));
         t.putDouble("safeShare", Config.LAUNDER_SAFE_SHARE.get());
         t.putDouble("launderTax", Config.LAUNDER_TAX.get());
         a.peakBalance = Math.max(a.peakBalance, a.balance);
@@ -797,7 +797,9 @@ public class BankService {
                 }
             }
         }
+        Rivals.processDay(server, data);
         LegalBiz.processDay(server, data);
+        Malls.processDay(server, data);
         data.markDirty();
     }
 }

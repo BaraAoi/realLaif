@@ -43,6 +43,7 @@ public final class Business {
                 && pos.getX() >= a.businessMin.getX() && pos.getX() <= a.businessMax.getX()
                 && pos.getY() >= a.businessMin.getY() && pos.getY() <= a.businessMax.getY()
                 && pos.getZ() >= a.businessMin.getZ() && pos.getZ() <= a.businessMax.getZ()) return true;
+        if (Malls.ownUnitAt(data, a.id, pos) != null) return true;
         return a.id.equals(data.owner(EconomyData.chunkKey(pos)));
     }
 
