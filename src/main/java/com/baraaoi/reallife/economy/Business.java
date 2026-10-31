@@ -87,7 +87,7 @@ public final class Business {
     }
 
     static void give(Player p, ItemStack st) {
-        if (!p.getInventory().add(st)) p.drop(st, false, false);
+        if (!p.getInventory().add(st)) p.drop(st, false, net.minecraft.util.Prediction.SERVER_ONLY);
     }
 
     // ------------------------------------------------------------------ события блоков

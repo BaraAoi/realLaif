@@ -23,7 +23,7 @@ public class SellerEntity extends WanderingTrader {
     public SellerEntity(EntityType<? extends WanderingTrader> type, Level level) {
         super(type, level);
         this.setPersistenceRequired();
-        this.setInvulnerable(true);
+        this.setPermanentlyInvulnerable(true);
     }
 
     public void setVariant(int v) {

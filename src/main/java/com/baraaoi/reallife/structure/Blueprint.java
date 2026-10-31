@@ -197,7 +197,7 @@ public class Blueprint {
             SignBlockEntity sign = (SignBlockEntity) te;
             for (int i = 0; i < 4 && i < lines.length; i++) {
                 final int li = i;
-                sign.updateText(_t -> _t.setMessage(li, Component.literal(lines[li])), true);
+                sign.updateText(_t -> _t.asMutable().setLine(li, Component.literal(lines[li])).asImmutable(), net.minecraft.world.level.block.entity.SignTextSlot.FRONT);
             }
             sign.setChanged();
             BlockState st = world.getBlockState(pos(x, y, z));

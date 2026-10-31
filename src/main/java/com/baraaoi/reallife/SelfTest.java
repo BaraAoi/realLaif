@@ -327,7 +327,7 @@ public class SelfTest {
             BlockPos q = new BlockPos(ccx + 5, y, ccz);
             if (ow.isEmptyBlock(q) && ow.isEmptyBlock(q.above()) && ow.getBlockState(q.below()).isSolid()) inCasino = q;
         }
-        net.minecraft.world.entity.monster.zombie.Zombie zomb = EntityType.ZOMBIE.create(ow, net.minecraft.world.entity.EntitySpawnReason.MOB_SUMMONED);
+        net.minecraft.world.entity.monster.zombie.Zombie zomb = net.minecraft.world.entity.EntityTypes.ZOMBIE.create(ow, net.minecraft.world.entity.EntitySpawnReason.MOB_SUMMONED);
         if (zomb != null && inCasino != null) {
             zomb.setPos(inCasino.getX() + 0.5, inCasino.getY(), inCasino.getZ() + 0.5);
             ow.addFreshEntity(zomb);
@@ -493,11 +493,11 @@ public class SelfTest {
         check(((Container) bizChest).countItem(ModItems.DIRTY_MONEY.get()) == 2, "printed notes go to the business chest");
         ItemStack printedNote = ((Container) bizChest).getItem(0);
         check(com.baraaoi.reallife.item.DirtyMoneyItem.denom(printedNote) == 500 && ItemValues.stackValue(printedNote) == 1000, "dirty 500₽ notes, value " + ItemValues.stackValue(printedNote));
-        ((Container) bizChest).clear();
+        ((Container) bizChest).clearContent();
         biz.businessChest = BlockPos.ZERO;
         pt1.setDenomIdx(0);
         check(pt1.printOne() && pt1.countItem(ModItems.DIRTY_MONEY.get()) == 1, "without a chest the printer fills its own tray");
-        pt1.clear();
+        pt1.clearContent();
         biz.businessChest = chestPos;
         for (int i = 0; i < 120; i++) pt1.tick();
         check(pt1.getStatus() == com.baraaoi.reallife.tile.PrinterTileEntity.WORKING, "registered printer works: status " + pt1.getStatus());
@@ -652,7 +652,7 @@ public class SelfTest {
         com.baraaoi.reallife.economy.LegalBiz.Scan sc2 = com.baraaoi.reallife.economy.LegalBiz.scan(ow, shop);
         check(rest.isEmpty() && sc2.stock == 64, "supplies delivered onto shelves: " + sc2.stock);
         int filled = 0;
-        for (BlockPos sp : shelves) if (ow.getBlockState(sp).get(com.baraaoi.reallife.block.ShelfBlock.FILL) > 0) filled++;
+        for (BlockPos sp : shelves) if (ow.getBlockState(sp).getValue(com.baraaoi.reallife.block.ShelfBlock.FILL) > 0) filled++;
         check(filled == 3, "all shelves look filled: " + filled);
         com.baraaoi.reallife.economy.LegalBusiness grill = com.baraaoi.reallife.economy.LegalBiz.register(data, ow, lot.offset(40, 0, 0), Direction.SOUTH,
                 com.baraaoi.reallife.economy.BizType.SHAWARMA, bizOwner, "Test");
@@ -831,7 +831,7 @@ public class SelfTest {
         java.util.Random cr = new java.util.Random(3);
         for (int i = 0; i < 2000; i++) rate = com.baraaoi.reallife.economy.Crypto.step(rate, Config.BTC_BASE_RATE.get(), cr);
         check(rate >= Config.BTC_BASE_RATE.get() * 0.19 && rate <= Config.BTC_BASE_RATE.get() * 5.01, "btc rate stays in range: " + rate);
-        rig.clear();
+        rig.clearContent();
         ow.setBlock(rigPos, Blocks.AIR.defaultBlockState(), 3);
         java.util.List<com.baraaoi.reallife.economy.Wholesale.Lot> lots = com.baraaoi.reallife.economy.Wholesale.lots();
         int cheaper = 0;
@@ -920,7 +920,7 @@ public class SelfTest {
         if (cte instanceof net.minecraft.world.Container) ((net.minecraft.world.Container) cte).setItem(0, new ItemStack(Items.DIAMOND, 3));
         BlockPos btarget = com.baraaoi.reallife.event.Inspections.burglarTarget(ow, java.util.Collections.singletonList(new BlockPos[]{chestAt.offset(-2, -1, -2), chestAt.offset(2, 1, 2)}), new java.util.Random(2));
         check(chestAt.equals(btarget), "burglar goes for the chest with loot: " + btarget);
-        if (cte instanceof net.minecraft.world.Container) ((net.minecraft.world.Container) cte).clear();
+        if (cte instanceof net.minecraft.world.Container) ((net.minecraft.world.Container) cte).clearContent();
         ow.setBlock(chestAt, Blocks.AIR.defaultBlockState(), 3);
         check(Visitors.eventKinds().contains(VisitorKind.SANEPID) && Visitors.eventKinds().contains(VisitorKind.BURGLAR)
                 && Visitors.eventKinds().contains(VisitorKind.CAVE_IN), "scary events registered");

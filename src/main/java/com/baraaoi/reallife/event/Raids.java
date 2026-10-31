@@ -221,7 +221,7 @@ public final class Raids {
         double bd = Double.MAX_VALUE;
         for (BlockPos pos : a.printerList) {
             if (!w.isLoaded(pos)) continue;
-            double d = pos.distSqr(p.getX(), p.getY(), p.getZ(), true);
+            double d = pos.distToCenterSqr(p.getX(), p.getY(), p.getZ());
             if (d < bd) { bd = d; best = pos; }
         }
         return best;

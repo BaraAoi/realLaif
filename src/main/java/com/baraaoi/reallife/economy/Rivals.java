@@ -203,7 +203,7 @@ public final class Rivals {
             BlockState ground = w.getBlockState(origin.below());
             if (ground.liquid() || !ground.isSolid()) continue;
             // лицом к заведению игрока
-            Direction fwd = Direction.getFacingFromVector(x - b.counter.getX(), 0, z - b.counter.getZ());
+            Direction fwd = Direction.getApproximateNearest(x - b.counter.getX(), 0, z - b.counter.getZ());
             if (fwd.getAxis().isVertical()) fwd = Direction.NORTH;
             Blueprint probeBp = new Blueprint(w, origin, fwd);
             if (!flat(w, probeBp, h)) continue;

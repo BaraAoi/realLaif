@@ -521,9 +521,9 @@ public class DebtManager {
             net.minecraft.world.level.block.entity.BlockEntity te = ow.getBlockEntity(sign);
             if (te instanceof net.minecraft.world.level.block.entity.SignBlockEntity) {
                 net.minecraft.world.level.block.entity.SignBlockEntity s = (net.minecraft.world.level.block.entity.SignBlockEntity) te;
-                s.updateText(_t -> _t.setMessage(0, Component.literal("ИЗЪЯТО")), true);
-                s.updateText(_t -> _t.setMessage(1, Component.literal("«Реал Банком»")), true);
-                s.updateText(_t -> _t.setMessage(2, Component.literal("за долги")), true);
+                s.updateText(_t -> _t.asMutable().setLine(0, Component.literal("ИЗЪЯТО")).asImmutable(), net.minecraft.world.level.block.entity.SignTextSlot.FRONT);
+                s.updateText(_t -> _t.asMutable().setLine(1, Component.literal("«Реал Банком»")).asImmutable(), net.minecraft.world.level.block.entity.SignTextSlot.FRONT);
+                s.updateText(_t -> _t.asMutable().setLine(2, Component.literal("за долги")).asImmutable(), net.minecraft.world.level.block.entity.SignTextSlot.FRONT);
             }
         }
         a.hasHouse = false;

@@ -289,7 +289,7 @@ public final class Visitors {
         List<LegalBusiness> l = new ArrayList<>();
         for (LegalBusiness b : EconomyData.get(server).bizOf(a.id)) {
             if (withWorkers ? b.workers.isEmpty() : (b.workers.isEmpty() && b.days == 0)) continue;
-            if (b.counter.distSqr(p.getX(), p.getY(), p.getZ(), true) > 64 * 64) continue;
+            if (b.counter.distToCenterSqr(p.getX(), p.getY(), p.getZ()) > 64 * 64) continue;
             l.add(b);
         }
         return l.isEmpty() ? null : l.get(R.nextInt(l.size()));

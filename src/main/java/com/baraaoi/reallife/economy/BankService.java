@@ -74,7 +74,7 @@ public class BankService {
         int max = Math.max(1, stack.getMaxStackSize());
         while (stack.getCount() > max) give(p, stack.split(max)); // нестакающиеся (коробки сырья) — по одной
         if (!p.getInventory().add(stack) && !stack.isEmpty()) {
-            p.dropItem(stack, false);
+            p.drop(stack, false, net.minecraft.util.Prediction.SERVER_ONLY);
         }
     }
 

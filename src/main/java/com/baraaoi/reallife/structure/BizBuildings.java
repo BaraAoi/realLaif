@@ -427,7 +427,7 @@ public final class BizBuildings {
         BlockEntity te = w.getBlockEntity(p);
         if (!(te instanceof SignBlockEntity)) return;
         SignBlockEntity sign = (SignBlockEntity) te;
-        for (int i = 0; i < 4; i++) sign.updateText(_t -> _t.setMessage(i, Component.literal(i < lines.length && lines[i] != null ? lines[i] : "")), true);
+        for (int i = 0; i < 4; i++) { final int li = i; sign.updateText(_t -> _t.asMutable().setLine(li, Component.literal(li < lines.length && lines[li] != null ? lines[li] : "")).asImmutable(), net.minecraft.world.level.block.entity.SignTextSlot.FRONT); }
         sign.setChanged();
         BlockState st = w.getBlockState(p);
         w.sendBlockUpdated(p, st, st, 3);
@@ -537,7 +537,7 @@ public final class BizBuildings {
         // свет в полу (после разметки помещений)
         for (int x = X1 + 1; x < X2; x++)
             for (int z = Z1 + 1; z < Z2; z++)
-                if (Math.floorMod(x, 4) == 0 && Math.floorMod(z, 4) == 0 && w.getBlockState(b.pos(x, 1, z)).isAir(w, b.pos(x, 1, z))) b.set(x, 0, z, lamp);
+                if (Math.floorMod(x, 4) == 0 && Math.floorMod(z, 4) == 0 && w.getBlockState(b.pos(x, 1, z)).isAir()) b.set(x, 0, z, lamp);
         // атриум: фонтан, скамейки, кадки с деревьями, колонны
         int fx = 1, fz = 24;
         for (int dx = -3; dx <= 3; dx++)

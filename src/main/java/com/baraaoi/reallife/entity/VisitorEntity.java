@@ -101,7 +101,7 @@ public class VisitorEntity extends PathfinderMob {
         }
         if (mode == ATTACK && p != null && p.isAlive() && attackCooldown == 0 && this.distanceToSqr(p) < 2.6D * 2.6D) {
             attackCooldown = 20;
-            this.swing(InteractionHand.MAIN_HAND);
+            this.swingForAttack(InteractionHand.MAIN_HAND);
             if (p.getHealth() > 5.0F) p.hurtServer((net.minecraft.server.level.ServerLevel) p.level(), this.damageSources().mobAttack(this), 2.0F);
         }
     }
