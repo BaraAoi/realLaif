@@ -895,7 +895,7 @@ public class SelfTest {
         boolean clean = true;
         for (int y = ow.getMinY() + 5; y < ow.getMaxY(); y++) if (!ow.isEmptyBlock(new BlockPos((cx << 4) + 7, y, (cz << 4) + 7))) clean = false;
         check(clean, "evicted chunk wiped");
-        check(ow.getBlockState(new BlockPos(cx << 4, 0, cz << 4)).getBlock() == Blocks.BEDROCK, "bedrock remains");
+        check(ow.getBlockState(new BlockPos(cx << 4, ow.getMinY(), cz << 4)).getBlock() == Blocks.BEDROCK, "bedrock remains");
 
         // ---- v1.9: пожар, обвал, домушник
         BlockPos fp = base.offset(-60, 0, 60);
