@@ -1,0 +1,19 @@
+{
+  "variants": {
+    "facing=north": {
+      "model": "reallife:block/pressure_washer"
+    },
+    "facing=east": {
+      "model": "reallife:block/pressure_washer",
+      "y": 90
+    },
+    "facing=south": {
+      "model": "reallife:block/pressure_washer",
+      "y": 180
+    },
+    "facing=west": {
+      "model": "reallife:block/pressure_washer",
+      "y": 270
+    }
+  }
+}

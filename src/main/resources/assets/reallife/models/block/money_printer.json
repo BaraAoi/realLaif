@@ -1,0 +1,8 @@
+{
+  "parent": "minecraft:block/orientable",
+  "textures": {
+    "top": "reallife:block/money_printer_top",
+    "front": "reallife:block/money_printer_front",
+    "side": "reallife:block/money_printer_side"
+  }
+}

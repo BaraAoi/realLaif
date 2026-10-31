@@ -1,0 +1,13 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "ingredients": [
+    "reallife:banknote_100",
+    "reallife:banknote_100",
+    "reallife:banknote_100",
+    "reallife:banknote_100",
+    "reallife:banknote_100"
+  ],
+  "result": {
+    "id": "reallife:banknote_500"
+  }
+}

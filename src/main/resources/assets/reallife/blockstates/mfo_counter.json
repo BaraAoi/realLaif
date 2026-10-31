@@ -1,0 +1,19 @@
+{
+  "variants": {
+    "facing=north": {
+      "model": "reallife:block/mfo_counter"
+    },
+    "facing=east": {
+      "model": "reallife:block/mfo_counter",
+      "y": 90
+    },
+    "facing=south": {
+      "model": "reallife:block/mfo_counter",
+      "y": 180
+    },
+    "facing=west": {
+      "model": "reallife:block/mfo_counter",
+      "y": 270
+    }
+  }
+}

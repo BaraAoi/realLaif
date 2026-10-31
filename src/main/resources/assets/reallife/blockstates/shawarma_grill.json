@@ -1,0 +1,19 @@
+{
+  "variants": {
+    "facing=north": {
+      "model": "reallife:block/shawarma_grill"
+    },
+    "facing=east": {
+      "model": "reallife:block/shawarma_grill",
+      "y": 90
+    },
+    "facing=south": {
+      "model": "reallife:block/shawarma_grill",
+      "y": 180
+    },
+    "facing=west": {
+      "model": "reallife:block/shawarma_grill",
+      "y": 270
+    }
+  }
+}

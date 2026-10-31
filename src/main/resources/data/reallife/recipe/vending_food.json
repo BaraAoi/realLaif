@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "IGI",
+    "IBI",
+    "IRI"
+  ],
+  "key": {
+    "I": "minecraft:iron_ingot",
+    "G": "minecraft:glass_pane",
+    "B": "minecraft:bread",
+    "R": "minecraft:redstone"
+  },
+  "result": {
+    "id": "reallife:vending_food"
+  }
+}

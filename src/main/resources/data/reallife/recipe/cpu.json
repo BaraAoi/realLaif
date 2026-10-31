@@ -1,0 +1,16 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "NQN",
+    "QGQ",
+    "NQN"
+  ],
+  "key": {
+    "N": "minecraft:gold_nugget",
+    "Q": "minecraft:quartz",
+    "G": "minecraft:gold_ingot"
+  },
+  "result": {
+    "id": "reallife:cpu"
+  }
+}

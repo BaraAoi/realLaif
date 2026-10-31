@@ -1,0 +1,19 @@
+{
+  "variants": {
+    "facing=north": {
+      "model": "reallife:block/vending_food"
+    },
+    "facing=east": {
+      "model": "reallife:block/vending_food",
+      "y": 90
+    },
+    "facing=south": {
+      "model": "reallife:block/vending_food",
+      "y": 180
+    },
+    "facing=west": {
+      "model": "reallife:block/vending_food",
+      "y": 270
+    }
+  }
+}

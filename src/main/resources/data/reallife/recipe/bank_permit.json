@@ -1,0 +1,16 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "GSG",
+    "SPS",
+    "GSG"
+  ],
+  "key": {
+    "G": "minecraft:gold_ingot",
+    "S": "minecraft:stone_bricks",
+    "P": "minecraft:paper"
+  },
+  "result": {
+    "id": "reallife:bank_permit"
+  }
+}

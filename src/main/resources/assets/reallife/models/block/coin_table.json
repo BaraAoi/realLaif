@@ -1,0 +1,8 @@
+{
+  "parent": "minecraft:block/orientable",
+  "textures": {
+    "top": "reallife:block/coin_table_top",
+    "front": "reallife:block/coin_table_front",
+    "side": "reallife:block/casino_side"
+  }
+}

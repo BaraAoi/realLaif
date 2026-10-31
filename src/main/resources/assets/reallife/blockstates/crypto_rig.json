@@ -1,0 +1,19 @@
+{
+  "variants": {
+    "facing=north": {
+      "model": "reallife:block/crypto_rig"
+    },
+    "facing=east": {
+      "model": "reallife:block/crypto_rig",
+      "y": 90
+    },
+    "facing=south": {
+      "model": "reallife:block/crypto_rig",
+      "y": 180
+    },
+    "facing=west": {
+      "model": "reallife:block/crypto_rig",
+      "y": 270
+    }
+  }
+}

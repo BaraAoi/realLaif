@@ -1,0 +1,1051 @@
+package com.baraaoi.reallife;
+
+import com.baraaoi.reallife.economy.Structure;
+import com.baraaoi.reallife.economy.CasinoService;
+import com.baraaoi.reallife.entity.CashierEntity;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.Items;
+import net.minecraft.nbt.CompoundTag;
+
+import com.baraaoi.reallife.economy.Account;
+import com.baraaoi.reallife.economy.Business;
+import com.baraaoi.reallife.entity.VisitorEntity;
+import com.baraaoi.reallife.entity.VisitorKind;
+import com.baraaoi.reallife.event.Visitors;
+import com.baraaoi.reallife.economy.BankService;
+import com.baraaoi.reallife.economy.CreditRating;
+import com.baraaoi.reallife.economy.EconomyData;
+import com.baraaoi.reallife.economy.Finance;
+import com.baraaoi.reallife.economy.HouseType;
+import com.baraaoi.reallife.economy.ItemValues;
+import com.baraaoi.reallife.economy.Trades;
+import com.baraaoi.reallife.entity.SellerEntity;
+import com.baraaoi.reallife.registry.ModItems;
+import com.baraaoi.reallife.tile.FridgeTileEntity;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.Container;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.phys.AABB;
+import java.util.List;
+import java.util.ArrayList;
+import com.baraaoi.reallife.entity.DebtNpcEntity;
+import com.baraaoi.reallife.event.DebtManager;
+import com.baraaoi.reallife.registry.ModBlocks;
+import com.baraaoi.reallife.registry.ModEntities;
+import com.baraaoi.reallife.structure.Blueprint;
+import com.baraaoi.reallife.structure.Buildings;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.core.Direction;
+import net.minecraft.core.BlockPos;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraftforge.event.server.ServerStartedEvent;
+import org.slf4j.Logger;
+
+import java.util.UUID;
+
+/**
+ * Интеграционный самотест для CI: запускается только с -Dreallife.selftest=true.
+ * Строит все здания, прогоняет экономику по дням и создаёт всех NPC, затем выключает сервер.
+ */
+public class SelfTest {
+    private static final Logger LOG = org.slf4j.LoggerFactory.getLogger("RealLifeSelfTest");
+
+    private static void check(boolean cond, String what) {
+        if (!cond) throw new IllegalStateException("CHECK FAILED: " + what);
+        LOG.info("ok: " + what);
+    }
+
+    public static void register() {
+        if (!Boolean.getBoolean("reallife.selftest")) return;
+        SelfTest self = new SelfTest();
+        ServerStartedEvent.BUS.addListener(self::onStarted);
+    }
+
+    public void onStarted(ServerStartedEvent event) {
+        if (!Boolean.getBoolean("reallife.selftest")) return;
+        MinecraftServer s = event.getServer();
+        try {
+            run(s);
+            LOG.info("REALLIFE SELFTEST PASSED");
+        } catch (Throwable t) {
+            LOG.error("REALLIFE SELFTEST FAILED", t);
+        }
+        s.halt(false);
+    }
+
+    /** v1.10: дом без ипотеки, бизнес «под ключ», торговый центр, прибыль выше. */
+    private void v110(MinecraftServer s, ServerLevel ow, EconomyData data, BlockPos base) {
+        // ---- v1.10: дом без ипотеки, бизнес «под ключ», торговый центр, прибыль выше
+        for (com.baraaoi.reallife.economy.BizType bt : com.baraaoi.reallife.economy.BizType.values()) {
+            int net = bt.revenue() - bt.wage() - bt.supplyPrice();
+            check(net >= bt.base, bt.id() + ": net per worker " + net + " >= old revenue " + bt.base);
+            check(bt.turnkeyPrice() > bt.price + com.baraaoi.reallife.economy.BizType.BUILD_FEE && bt.fullEquipPrice() >= bt.kitPrice(),
+                    bt.id() + " turnkey price " + bt.turnkeyPrice());
+        }
+        Account hb = data.getOrCreate(UUID.randomUUID());
+        check(BankService.buyHouseRefusal(hb, HouseType.PENTHOUSE).isEmpty(), "a house can be bought outright without rating");
+        long hOrder = BankService.registerBoughtHouse(hb, HouseType.PENTHOUSE);
+        check(hb.pendingHouse == HouseType.PENTHOUSE.ordinal() && hb.houseOrderId == hOrder && !hb.hasMortgage(), "bought house = order, no mortgage");
+        check(!BankService.buyHouseRefusal(hb, HouseType.DIRT_HUT).isEmpty(), "next purchase waits until the house is built");
+        ItemStack paidOrder = com.baraaoi.reallife.item.HouseOrderItem.create(ModItems.HOUSE_ORDER.get(), hb.id, HouseType.PENTHOUSE.ordinal(), hOrder, true);
+        check(com.baraaoi.reallife.util.Nbt.itemTag(paidOrder) != null && com.baraaoi.reallife.util.Nbt.itemTag(paidOrder).getBooleanOr("paid", false) && com.baraaoi.reallife.util.Nbt.itemTag(paidOrder).getLongOr("order", 0L) == hOrder, "paid house order");
+        data.reset(hb.id);
+
+        v111(s, ow, data, base);
+    }
+
+    /** v1.11: свои планировки «под ключ», новый ТЦ с помещениями, аренда и выселение, боты-конкуренты. */
+    private void v111(MinecraftServer s, ServerLevel ow, EconomyData data, BlockPos base) {
+        long today = BankService.today(s);
+        UUID tkOwner = UUID.randomUUID();
+        Direction[] dirs = {Direction.EAST, Direction.NORTH, Direction.SOUTH, Direction.WEST};
+        List<com.baraaoi.reallife.economy.LegalBusiness> tks = new ArrayList<>();
+        com.baraaoi.reallife.economy.BizType[] types = com.baraaoi.reallife.economy.BizType.values();
+        for (int i = 0; i < types.length; i++) {
+            com.baraaoi.reallife.economy.BizType bt = types[i];
+            BlockPos at = base.offset(-300, 0, 300 + i * 32);
+            Direction d = dirs[i % dirs.length];
+            String pr = com.baraaoi.reallife.economy.BizBuild.turnkeyProblem(ow, at, d, data, tkOwner);
+            check(pr == null, "turnkey " + bt.id() + " site is free: " + pr);
+            com.baraaoi.reallife.economy.LegalBusiness tk = com.baraaoi.reallife.economy.BizBuild.buildTurnkeyAt(data, ow, at, d, bt, tkOwner, "Turnkey");
+            tks.add(tk);
+            com.baraaoi.reallife.economy.LegalBiz.Scan sc = com.baraaoi.reallife.economy.LegalBiz.scan(ow, tk);
+            check(sc.counterOk && sc.warehouse && sc.sets == bt.maxWorkers && sc.allowed == bt.maxWorkers,
+                    "turnkey " + bt.id() + " (" + d + ") fully equipped: sets " + sc.sets + "/" + bt.maxWorkers + ", warehouse " + sc.warehouse);
+            check(com.baraaoi.reallife.economy.LegalBiz.workerSpot(ow, tk, sc) != null, "turnkey " + bt.id() + " has room for workers");
+            // свет в тесте не успевает пересчитаться (canSeeSky в 1.16 — по небесному свету), поэтому проверяем по блокам
+            check(!ow.isEmptyBlock(tk.counter.above(5)) && !ow.isEmptyBlock(tk.counter.below()) && ow.isEmptyBlock(tk.counter.above(1)),
+                    "turnkey " + bt.id() + " has floor, roof and room above the counter");
+            if (com.baraaoi.reallife.event.Inspections.food(bt)) {
+                com.baraaoi.reallife.event.Inspections.Report rep = com.baraaoi.reallife.event.Inspections.sanepid(ow, tk, today, false);
+                boolean sinkOk = true;
+                for (String l : rep.lines) if (l.contains("раковин")) sinkOk = false;
+                check(sinkOk, "turnkey " + bt.id() + " has a sink: " + rep.lines);
+            }
+        }
+        // у шаурмичной — столики со стульями в зале и стена склада
+        com.baraaoi.reallife.economy.LegalBusiness sh = tks.get(com.baraaoi.reallife.economy.BizType.SHAWARMA.ordinal());
+        int fences = 0, stairs = 0, doors = 0;
+        for (BlockPos q : BlockPos.betweenClosed(sh.counter.offset(-8, 0, -8), sh.counter.offset(8, 1, 8))) {
+            net.minecraft.world.level.block.Block bl = ow.getBlockState(q).getBlock();
+            if (bl == net.minecraft.world.level.block.Blocks.SPRUCE_FENCE) fences++;
+            if (bl == net.minecraft.world.level.block.Blocks.SPRUCE_STAIRS) stairs++;
+            if (bl == net.minecraft.world.level.block.Blocks.SPRUCE_DOOR) doors++;
+        }
+        check(fences >= 4 && stairs >= 8 && doors >= 1, "shawarma: tables " + fences + ", chairs " + stairs + ", storage door " + doors);
+        check(com.baraaoi.reallife.economy.BizBuild.turnkeyProblem(ow, base.offset(-296, 0, 300), Direction.EAST, data, UUID.randomUUID()) != null,
+                "can't build over someone's turnkey shop");
+
+        // ---- торговый центр
+        UUID mallOwner = UUID.randomUUID();
+        BlockPos mAt = base.offset(-450, 0, -450);
+        String mProblem = com.baraaoi.reallife.economy.BizBuild.mallProblem(ow, mAt, Direction.SOUTH, data, mallOwner);
+        check(mProblem == null, "mall site is free: " + mProblem);
+        com.baraaoi.reallife.economy.Mall mall = com.baraaoi.reallife.economy.BizBuild.buildMallAt(data, ow, mAt, Direction.SOUTH, mallOwner, "MallTest");
+        check(mall.units.size() == 12 && data.mallsOf(mallOwner).size() == 1, "mall has 12 units: " + mall.units.size());
+        java.util.Set<Integer> areas = new java.util.HashSet<>(), prices = new java.util.HashSet<>();
+        String unitsBad = "";
+        for (com.baraaoi.reallife.economy.Mall.Unit u : mall.units) {
+            areas.add(u.area());
+            prices.add(u.price);
+            BlockPos c = unitCenter(u);
+            if (data.mallAt(c, 0) != mall || mall.unitAt(c) != u) unitsBad += " #" + u.idx + " lookup";
+            if (!ow.isEmptyBlock(c) || ow.isEmptyBlock(c.below()) || ow.isEmptyBlock(c.above(com.baraaoi.reallife.economy.Mall.H - 1))) unitsBad += " #" + u.idx + " blocks";
+            if (!ow.isEmptyBlock(u.entrance) || !u.contains(u.entrance.relative(u.facing)) || u.contains(u.entrance)) unitsBad += " #" + u.idx + " entrance";
+            if (!(ow.getBlockEntity(u.sign) instanceof net.minecraft.world.level.block.entity.SignBlockEntity)) unitsBad += " #" + u.idx + " sign";
+            for (com.baraaoi.reallife.economy.Mall.Unit v : mall.units)
+                if (v.idx > u.idx && u.min.getX() <= v.max.getX() && u.max.getX() >= v.min.getX() && u.min.getZ() <= v.max.getZ() && u.max.getZ() >= v.min.getZ())
+                    unitsBad += " #" + u.idx + "~#" + v.idx;
+        }
+        check(unitsBad.isEmpty(), "mall units: empty, roofed, entrance, sign, apart" + unitsBad);
+        check(areas.size() >= 5 && prices.size() >= 4, "units differ: areas " + areas + ", prices " + prices);
+        BlockPos hall = mall.center().above();
+        check(mall.unitAt(hall) == null && com.baraaoi.reallife.economy.LegalBiz.checkSite(ow, hall, data, mallOwner) != null, "no business in the atrium");
+        check(com.baraaoi.reallife.economy.BizBuild.mallProblem(ow, mAt.offset(20, 0, 0), Direction.SOUTH, data, UUID.randomUUID()) != null, "no mall on top of a mall");
+
+        UUID stranger = UUID.randomUUID();
+        com.baraaoi.reallife.economy.Mall.Unit u0 = mall.unit(0), u1 = mall.unit(1), u2 = mall.unit(2);
+        BlockPos c0 = unitCenter(u0), c1 = unitCenter(u1);
+        check(com.baraaoi.reallife.economy.Malls.editDenied(data, mallOwner, c0) == null && com.baraaoi.reallife.economy.Malls.editDenied(data, stranger, c0) != null
+                && com.baraaoi.reallife.economy.Malls.editDenied(data, mallOwner, hall) == null && com.baraaoi.reallife.economy.Malls.editDenied(data, stranger, hall) != null,
+                "mall edit rights: owner everywhere free, stranger nowhere");
+        com.baraaoi.reallife.economy.Malls.assign(mall, u0, mallOwner, "MallTest", today);
+        com.baraaoi.reallife.economy.LegalBusiness mb = com.baraaoi.reallife.economy.Malls.openInUnit(data, ow, mall, u0, c0, u0.facing.getOpposite(),
+                com.baraaoi.reallife.economy.BizType.ELECTRONICS, mallOwner, "MallTest");
+        check(mb.inMall() && mb.customZone && mb.min.equals(u0.min) && mb.max.equals(u0.max) && mall.business(data, u0) == mb && mall.used() == 1,
+                "any business type opens in an own unit, zone = unit");
+        double plain = com.baraaoi.reallife.economy.LegalBiz.revenue(mb.type, 2, 1.0, 1.0);
+        check(Math.abs(com.baraaoi.reallife.economy.LegalBiz.dayRevenue(data, mb, 2, 1.0, 1.0) - Math.round(plain * 1.5)) < 1e-6, "mall revenue +50%");
+        mb.lastProfit = 2000;
+        check(Math.abs(com.baraaoi.reallife.economy.LegalBiz.safeLimit(mb) - 500) < 1e-6
+                && com.baraaoi.reallife.economy.LegalBiz.launderChance(2000, 0, 500, com.baraaoi.reallife.economy.LegalBiz.safeShare(mb)) == 0
+                && com.baraaoi.reallife.economy.LegalBiz.launderChance(2000, 0, 500) > 0, "mall: 25% laundering is safe (15% outside)");
+        check(com.baraaoi.reallife.economy.LegalBiz.scan(ow, mb).counterOk, "mall business counter ok");
+
+        // другой игрок покупает помещение и платит аренду
+        Account ownerAcc = data.getOrCreate(mallOwner);
+        Account ten = data.getOrCreate(UUID.randomUUID());
+        ten.balance = u1.price;
+        double ob = ownerAcc.balance;
+        String buy = com.baraaoi.reallife.economy.Malls.buyCore(data, mall, u1, ten, "Tenant", today);
+        check(buy == null && ten.id.equals(u1.tenant) && Math.abs(ownerAcc.balance - ob - u1.price) < 1e-6 && Math.abs(ten.balance) < 1e-6,
+                "tenant bought unit, money went to the mall owner: " + buy);
+        Account other = data.getOrCreate(UUID.randomUUID());
+        other.balance = 1_000_000;
+        check(com.baraaoi.reallife.economy.Malls.buyCore(data, mall, u1, other, "Other", today) != null, "taken unit can't be bought");
+        check(com.baraaoi.reallife.economy.Malls.editDenied(data, ten.id, c1) == null && com.baraaoi.reallife.economy.Malls.editDenied(data, ten.id, c0) != null
+                && com.baraaoi.reallife.economy.Malls.editDenied(data, mallOwner, c1) != null && com.baraaoi.reallife.economy.Business.inOwnProperty(data, ten, c1),
+                "tenant builds only in own unit; owner can't touch tenant's unit");
+        com.baraaoi.reallife.economy.LegalBusiness tb = com.baraaoi.reallife.economy.Malls.openInUnit(data, ow, mall, u1, c1, u1.facing.getOpposite(),
+                com.baraaoi.reallife.economy.BizType.SHAWARMA, ten.id, "Tenant");
+        ten.balance = u1.rent;
+        ob = ownerAcc.balance;
+        com.baraaoi.reallife.economy.Malls.processDay(s, data);
+        check(Math.abs(ten.balance) < 1e-6 && u1.unpaid == 0 && Math.abs(ownerAcc.balance - ob - u1.rent) < 1e-6, "rent paid to the mall owner");
+        com.baraaoi.reallife.economy.Malls.processDay(s, data);
+        com.baraaoi.reallife.economy.Malls.processDay(s, data);
+        check(ten.id.equals(u1.tenant) && u1.unpaid == 2, "two unpaid days: still a tenant");
+        com.baraaoi.reallife.economy.Malls.processDay(s, data);
+        check(u1.tenant == null && u1.free() && !data.businesses.contains(tb), "evicted after " + com.baraaoi.reallife.economy.Mall.EVICT_DAYS + " unpaid days, business closed");
+
+        // бот-конкурент в ТЦ
+        BlockPos probe = u2.entrance.relative(u2.facing, 3);
+        check(ow.isEmptyBlock(probe), "unit 2 empty before the bot");
+        com.baraaoi.reallife.economy.Rival r = com.baraaoi.reallife.economy.Rivals.openInMall(ow, data, mall, u2, com.baraaoi.reallife.economy.BizType.ELECTRONICS, today);
+        check(u2.rival == r.id && !u2.free() && !ow.isEmptyBlock(probe) && com.baraaoi.reallife.economy.Rivals.count(data, mb) == 1
+                && Math.abs(com.baraaoi.reallife.economy.Rivals.factor(data, mb) - 0.85) < 1e-9, "bot took a unit: −15% for the same type");
+        check(Math.abs(com.baraaoi.reallife.economy.LegalBiz.dayRevenue(data, mb, 2, 1.0, 1.0) - Math.round(plain * 1.5 * 0.85)) < 1e-6, "rival cuts mall revenue");
+        check("(конкурент)".equals(com.baraaoi.reallife.economy.Malls.signText(data, mall, u2)[2]) && com.baraaoi.reallife.economy.Malls.editDenied(data, mallOwner, probe) != null,
+                "rival unit sign and protection");
+        ob = ownerAcc.balance;
+        com.baraaoi.reallife.economy.Malls.processDay(s, data);
+        check(Math.abs(ownerAcc.balance - ob - u2.rent) < 1e-6, "bots pay rent to the mall owner");
+        List<com.baraaoi.reallife.economy.Rival> fakes = new ArrayList<>();
+        for (int i = 0; i < 4; i++) {
+            com.baraaoi.reallife.economy.Rival f = new com.baraaoi.reallife.economy.Rival();
+            f.id = 90000 + i;
+            f.type = com.baraaoi.reallife.economy.BizType.ELECTRONICS;
+            f.mallId = mall.id;
+            f.until = today + 100;
+            fakes.add(f);
+        }
+        data.rivals.addAll(fakes);
+        check(Math.abs(com.baraaoi.reallife.economy.Rivals.factor(data, mb) - com.baraaoi.reallife.economy.Rivals.MIN_FACTOR) < 1e-9, "competition has a floor (−45%)");
+        data.rivals.removeAll(fakes);
+        r.until = today - 1;
+        com.baraaoi.reallife.economy.Rivals.processDay(s, data);
+        check(!data.rivals.contains(r) && u2.rival == 0 && u2.free() && ow.isEmptyBlock(probe) && com.baraaoi.reallife.economy.Rivals.factor(data, mb) == 1.0,
+                "bot went bankrupt: unit restored and free");
+
+        // уличный ларёк конкурента
+        UUID stOwner = UUID.randomUUID();
+        com.baraaoi.reallife.economy.LegalBusiness street = com.baraaoi.reallife.economy.LegalBiz.register(data, ow, base.offset(-560, 0, -300), Direction.NORTH,
+                com.baraaoi.reallife.economy.BizType.SHAWARMA, stOwner, "Street");
+        BlockPos kAt = base.offset(-535, 0, -300);
+        check(ow.isEmptyBlock(kAt.above()), "kiosk site empty");
+        com.baraaoi.reallife.economy.Rival k = com.baraaoi.reallife.economy.Rivals.build(ow, data, kAt, Direction.EAST, com.baraaoi.reallife.economy.BizType.SHAWARMA, today);
+        check(ow.getBlockEntity(k.sign) instanceof net.minecraft.world.level.block.entity.SignBlockEntity && !ow.isEmptyBlock(kAt.above(4))
+                && Math.abs(com.baraaoi.reallife.economy.Rivals.factor(data, street) - 0.85) < 1e-9, "street kiosk built and competes");
+
+        CompoundTag msave = data.write(new CompoundTag());
+        EconomyData mcopy = new EconomyData();
+        mcopy.read(msave);
+        com.baraaoi.reallife.economy.Mall mallCopy = mcopy.mallById(mall.id);
+        com.baraaoi.reallife.economy.LegalBusiness mbCopy = mcopy.bizAtCounter(mb.counter);
+        check(mallCopy != null && mallCopy.units.size() == 12 && mallCopy.unit(0).sign.equals(u0.sign) && mallCopy.unit(5).price == mall.unit(5).price
+                && mallOwner.equals(mallCopy.unit(0).tenant) && mbCopy != null && mbCopy.customZone && mbCopy.min.equals(mb.min) && mbCopy.mallUnit == 0
+                && mcopy.rivalById(k.id) != null && mcopy.rivalById(k.id).snapshot.size() == k.snapshot.size(), "malls, units and rivals saved");
+
+        com.baraaoi.reallife.economy.Rivals.close(ow, data, k);
+        check(ow.isEmptyBlock(kAt.above(4)) && ow.isEmptyBlock(k.sign) && com.baraaoi.reallife.economy.Rivals.factor(data, street) == 1.0, "kiosk bought out: area restored");
+
+        data.businesses.removeAll(tks);
+        data.businesses.remove(mb);
+        data.businesses.remove(street);
+        data.malls.remove(mall);
+        data.reset(tkOwner);
+        data.reset(mallOwner);
+        data.reset(ten.id);
+        data.reset(other.id);
+        data.reset(stOwner);
+    }
+
+    private static BlockPos unitCenter(com.baraaoi.reallife.economy.Mall.Unit u) {
+        return new BlockPos((u.min.getX() + u.max.getX()) / 2, u.min.getY() + 1, (u.min.getZ() + u.max.getZ()) / 2);
+    }
+
+    private void run(MinecraftServer s) {
+        ServerLevel ow = EconomyData.overworld(s);
+        BlockPos base = new BlockPos(ow.getLevelData().getRespawnData().pos().getX(), 120, ow.getLevelData().getRespawnData().pos().getZ());
+        EconomyData data = EconomyData.get(s);
+
+        // ---- банк и МФО на спавне
+        check(data.spawnBuilt && data.spawnVersion == 3, "bank and mfo built at spawn (v" + data.spawnVersion + ")");
+        check(!data.mfoCenters.isEmpty(), "spawn mfo registered (" + data.mfoCenters + ")");
+        int sx0 = ow.getLevelData().getRespawnData().pos().getX(), sz0 = ow.getLevelData().getRespawnData().pos().getZ();
+        Structure spawnBank = null, spawnMfo = null, casino = null;
+        for (Structure st : data.structures) {
+            LOG.info("structure " + st.type + " " + st.min + " -> " + st.max + " protect=" + st.protect + " cashiers=" + st.cashiers.size());
+            if (st.protect && Structure.BANK.equals(st.type)) spawnBank = st;
+            if (st.protect && Structure.MFO.equals(st.type)) spawnMfo = st;
+            if (Structure.CASINO.equals(st.type)) casino = st;
+        }
+        check(spawnBank != null && spawnMfo != null, "spawn bank and mfo are registered as protected");
+        check(spawnBank.cashiers.size() == 3, "spawn bank has 3 cashier spots");
+        BlockPos sbc = new BlockPos(sx0, spawnBank.cashiers.get(0).getY(), sz0 + 12);
+        check(ow.getBlockState(sbc).getBlock() == ModBlocks.BANK_COUNTER.get() && data.isProtected(sbc), "spawn bank counter is protected at " + sbc);
+        check(!ow.getEntitiesOfClass(CashierEntity.class, new AABB(net.minecraft.world.phys.Vec3.atLowerCornerOf(spawnBank.min), net.minecraft.world.phys.Vec3.atLowerCornerOf(spawnBank.max.offset(1, 1, 1)))).isEmpty(), "spawn bank cashiers present");
+
+        // ---- казино возле спавна
+        check(data.casinoBuilt && casino != null && casino.protect, "casino built near spawn");
+        double cd = Math.sqrt(Math.pow((casino.min.getX() + casino.max.getX()) / 2.0 - sx0, 2) + Math.pow((casino.min.getZ() + casino.max.getZ()) / 2.0 - sz0, 2));
+        check(cd >= 80 && cd <= 192, "casino is not next to spawn but within 12 chunks: " + (int) cd);
+        int slots = 0, coins = 0, roul = 0, anarchy = 0;
+        for (BlockPos p : BlockPos.betweenClosed(casino.min, casino.max)) {
+            net.minecraft.world.level.block.Block b = ow.getBlockState(p).getBlock();
+            if (b == ModBlocks.SLOT_MACHINE.get()) slots++;
+            else if (b == ModBlocks.COIN_TABLE.get()) coins++;
+            else if (b == ModBlocks.ROULETTE_TABLE.get()) roul++;
+            else if (b == ModBlocks.ANARCHY_MACHINE.get()) anarchy++;
+        }
+        check(slots == 24 && coins == 6 && roul == 6 && anarchy == 6, "casino games: slots " + slots + ", coin " + coins + ", roulette " + roul + ", anarchy " + anarchy);
+        BlockPos ce = casino.exit;
+        boolean outside = ce.getX() < casino.min.getX() || ce.getX() > casino.max.getX() || ce.getZ() < casino.min.getZ() || ce.getZ() > casino.max.getZ();
+        boolean near = ce.getX() >= casino.min.getX() - 6 && ce.getX() <= casino.max.getX() + 6 && ce.getZ() >= casino.min.getZ() - 6 && ce.getZ() <= casino.max.getZ() + 6;
+        check(outside && near, "casino exit is just outside: " + ce);
+        check(!ow.getEntitiesOfClass(SellerEntity.class, new AABB(net.minecraft.world.phys.Vec3.atLowerCornerOf(casino.min), net.minecraft.world.phys.Vec3.atLowerCornerOf(casino.max.offset(1, 1, 1)))).isEmpty(), "casino bartender");
+        // v1.9: казино светлое, монстры внутри не живут
+        int lanterns = 0;
+        for (BlockPos q : BlockPos.betweenClosed(casino.min, casino.max)) if (ow.getBlockState(q).getBlock() == Blocks.SEA_LANTERN) lanterns++;
+        check(lanterns >= 100, "casino is well lit: " + lanterns + " sea lanterns");
+        BlockPos inCasino = null;
+        int ccx = (casino.min.getX() + casino.max.getX()) / 2, ccz = (casino.min.getZ() + casino.max.getZ()) / 2;
+        for (int y = casino.min.getY(); y < casino.max.getY() && inCasino == null; y++) {
+            BlockPos q = new BlockPos(ccx + 5, y, ccz);
+            if (ow.isEmptyBlock(q) && ow.isEmptyBlock(q.above()) && ow.getBlockState(q.below()).isSolid()) inCasino = q;
+        }
+        net.minecraft.world.entity.monster.zombie.Zombie zomb = net.minecraft.world.entity.EntityTypes.ZOMBIE.create(ow, net.minecraft.world.entity.EntitySpawnReason.MOB_SUMMONED);
+        if (zomb != null && inCasino != null) {
+            zomb.setPos(inCasino.getX() + 0.5, inCasino.getY(), inCasino.getZ() + 0.5);
+            ow.addFreshEntity(zomb);
+            int cleared = DebtManager.clearCityMobs(data, ow);
+            check(cleared >= 1 && !zomb.isAlive(), "monsters are removed from the casino (" + cleared + ")");
+        } else {
+            check(false, "zombie test spot in casino: " + inCasino);
+        }
+        // v4: шансы подняты, но казино всё ещё (чуть-чуть) в плюсе
+        int wheelSum = 0, wheelWins = 0;
+        for (int m : CasinoService.WHEEL) { wheelSum += m; if (m >= 2) wheelWins++; }
+        check(CasinoService.WHEEL.length == 100 && wheelSum == 99 && wheelWins == 26, "roulette return " + wheelSum + "%, wins " + wheelWins + "%");
+        check(Math.abs(CasinoService.slotsRtp() - 0.96) < 1e-9, "slots theoretical return " + CasinoService.slotsRtp());
+        java.util.Random rnd = new java.util.Random(4242L);
+        int n = 200000, triples = 0, pairs = 0, sevens = 0;
+        double paid = 0;
+        for (int i = 0; i < n; i++) {
+            int[] r = CasinoService.spinSlots(rnd);
+            double mlt = CasinoService.slotMult(r);
+            paid += mlt;
+            if (r[0] == r[1] && r[1] == r[2]) { triples++; if (r[0] == 0) sevens++; }
+            else if (r[0] == r[1] || r[1] == r[2] || r[0] == r[2]) pairs++;
+        }
+        LOG.info("slots sample: triples " + triples + ", 777 " + sevens + ", pairs " + pairs + ", return " + paid / n);
+        check(triples > n * 0.065 && triples < n * 0.08 && pairs < n * 0.08 && pairs > triples * 0.8, "slots: more triples (" + triples * 100.0 / n + "%), fewer pairs (" + pairs * 100.0 / n + "%)");
+        check(Math.abs(paid / n - 0.96) < 0.03, "slots sampled return " + paid / n);
+        check(CasinoService.anarchyRtp() > 0.97 && CasinoService.anarchyRtp() < 1.0, "anarchy return " + CasinoService.anarchyRtp());
+        check(CasinoService.COIN_WIN > 0.475 && CasinoService.COIN_WIN < 0.5, "coin chance " + CasinoService.COIN_WIN);
+        check(ItemValues.valueOf(new ItemStack(Items.DIAMOND)) >= 300 && ItemValues.valueOf(new ItemStack(ModItems.BANKNOTE_100.get())) == 100, "item values doubled, banknotes at face value");
+        check(!s.getRecipeManager().byKey(net.minecraft.resources.ResourceKey.create(net.minecraft.core.registries.Registries.RECIPE, net.minecraft.resources.Identifier.fromNamespaceAndPath("reallife", "money_printer"))).isPresent(), "money printer can not be crafted");
+
+        Blueprint bank = Buildings.buildBank(ow, base, Direction.SOUTH);
+        check(ow.getBlockState(bank.pos(0, 1, 6)).getBlock() == ModBlocks.BANK_COUNTER.get(), "bank counter placed");
+        check(ow.getBlockState(bank.pos(-2, 1, 1)).getBlock() == ModBlocks.ATM.get(), "bank atm placed");
+        check(ow.getBlockState(bank.pos(-8, 1, 3)).getBlock() == ModBlocks.VENDING_FOOD.get(), "bank vending placed");
+        check(!data.isProtected(bank.pos(0, 1, 6)), "permit-built bank is not protected");
+        List<CashierEntity> cashiers = ow.getEntitiesOfClass(CashierEntity.class, new AABB(net.minecraft.world.phys.Vec3.atLowerCornerOf(bank.min()), net.minecraft.world.phys.Vec3.atLowerCornerOf(bank.max().offset(1, 1, 1))));
+        check(cashiers.size() == 3, "3 cashiers in bank (" + cashiers.size() + ")");
+        check(cashiers.get(0).getAttributeValue(Attributes.MAX_HEALTH) > 0, "cashier has hp");
+        List<SellerEntity> sellers = ow.getEntitiesOfClass(SellerEntity.class, new AABB(net.minecraft.world.phys.Vec3.atLowerCornerOf(bank.min()), net.minecraft.world.phys.Vec3.atLowerCornerOf(bank.max().offset(1, 1, 1))));
+        check(sellers.size() == 2, "2 sellers in bank (" + sellers.size() + ")");
+        for (SellerEntity se : sellers) check(se.getOffers().size() >= 10, "seller " + se.getVariant() + " has offers: " + se.getOffers().size());
+        check(Trades.vending(Trades.VENDING_FOOD).size() > 5 && Trades.vending(Trades.VENDING_RESOURCES).size() > 5, "vending offers");
+        // перекупка невыгодна: каждый товар стоит дороже, чем за него даст банк
+        check(Trades.seller(Trades.SELLER_CASINO).size() >= 8, "casino bar offers");
+        for (int v = 0; v < 3; v++) {
+            for (net.minecraft.world.item.trading.MerchantOffer o : Trades.seller(v)) {
+                double price = ItemValues.stackValue(o.getCostA());
+                double back = ItemValues.stackValue(o.getResult());
+                check(back < price, "no arbitrage " + o.getResult() + " " + back + " < " + price);
+            }
+        }
+
+        Blueprint mfo = Buildings.buildMfo(ow, base.east(40), Direction.WEST);
+        check(ow.getBlockState(mfo.pos(0, 1, 5)).getBlock() == ModBlocks.MFO_COUNTER.get(), "mfo counter placed (rotated)");
+        BlockPos mfoCenter = mfo.pos(0, 0, 3);
+        boolean registered = false;
+        for (BlockPos m : data.mfoCenters) if (m.equals(mfoCenter)) registered = true;
+        check(registered, "mfo center registered");
+        check(ow.getBlockState(mfo.pos(-1, 1, 1)).getBlock() == Blocks.LOOM, "mfo has no free printer (loom instead)");
+
+        // ---- дома
+        Direction[] dirs = {Direction.SOUTH, Direction.WEST, Direction.NORTH, Direction.EAST};
+        Blueprint stone = null;
+        for (HouseType h : HouseType.values()) {
+            Blueprint b = Buildings.buildHouse(ow, base.offset(h.ordinal() * 40, 0, 80), dirs[h.ordinal() % 4], h);
+            LOG.info("built " + h.name() + " box " + b.min() + " -> " + b.max());
+            check(!ow.isEmptyBlock(b.pos(0, -1, 2)), h.name() + " has floor");
+            int fridges = 0, full = 0;
+            for (BlockPos p : BlockPos.betweenClosed(b.min(), b.max())) {
+                BlockEntity te = ow.getBlockEntity(p);
+                if (te instanceof FridgeTileEntity) fridges++;
+                if (te instanceof Container && !((Container) te).isEmpty()) full++;
+            }
+            LOG.info(h.name() + ": fridges " + fridges + ", filled containers " + full);
+            check(full >= 1, h.name() + " has filled containers");
+            if (h.ordinal() >= HouseType.WOODEN_HUT.ordinal()) check(fridges >= 1, h.name() + " has fridge");
+            if (h == HouseType.STONE_HOUSE) {
+                stone = b;
+                check(ow.getBlockState(b.pos(-3, 0, 6)).getBlock() instanceof net.minecraft.world.level.block.BedBlock, "stone house bed is whole");
+            }
+            if (h == HouseType.MANSION) check(ow.getBlockState(b.pos(-6, 0, 1)).getBlock() == ModBlocks.ATM.get(), "mansion atm");
+            if (h == HouseType.PENTHOUSE) {
+                check(ow.getBlockState(b.pos(5, 0, 5)).getBlock() == ModBlocks.ATM.get(), "penthouse atm");
+                check(ow.getBlockState(b.pos(1, 13, -3)).getBlock() == Blocks.WATER && ow.getBlockState(b.pos(1, 11, -3)).getBlock() == Blocks.GLASS,
+                        "penthouse cantilevered glass pool");
+                check(ow.isEmptyBlock(b.pos(1, 15, 0)) && ow.isEmptyBlock(b.pos(1, 16, 0)) && ow.isEmptyBlock(b.pos(0, 15, 3)), "terrace opens into the pool");
+                BlockEntity stand = ow.getBlockEntity(b.pos(5, 15, 3));
+                BlockEntity bar = ow.getBlockEntity(b.pos(5, 15, 1));
+                check(stand instanceof Container && ((Container) stand).getItem(0).getItem() == Items.POTION, "bar brewing stand has drinks");
+                check(bar instanceof Container && ((Container) bar).countItem(Items.POTION) >= 5, "bar barrel has drinks");
+            }
+        }
+
+        // ---- СИЗО в небе со снимком
+        Account jailed = data.getOrCreate(UUID.randomUUID());
+        jailed.captivity = Account.JAIL;
+        DebtManager.buildCell(s, data, jailed, null);
+        BlockPos jc = jailed.cellCenter;
+        check(jailed.cellActive && ow.getBlockState(jc).getBlock() == ModBlocks.JAIL_WALL.get(), "sky jail built at " + jc);
+        check(jc.getY() > 200, "jail is in the sky");
+        Account jailed2 = data.getOrCreate(UUID.randomUUID());
+        jailed2.captivity = Account.JAIL;
+        DebtManager.buildCell(s, data, jailed2, null);
+        check(!jailed2.cellCenter.equals(jc) && jailed2.cellCenter.distManhattan(jc) >= 14, "second jail is separate: " + jailed2.cellCenter);
+        DebtManager.restoreCell(s, data, jailed);
+        DebtManager.restoreCell(s, data, jailed2);
+        check(ow.isEmptyBlock(jc) && ow.isEmptyBlock(jc.above(5)) && ow.isEmptyBlock(jailed2.cellCenter), "jails removed, sky restored");
+
+        // ---- подвал под МФО со снимком
+        BlockPos probe = mfoCenter.offset(1, -11, 0);
+        ow.setBlock(probe, Blocks.GOLD_BLOCK.defaultBlockState(), 3);
+        Account pit = data.getOrCreate(UUID.randomUUID());
+        pit.captivity = Account.PIT;
+        DebtManager.buildCell(s, data, pit, mfoCenter);
+        BlockPos pc = pit.cellCenter;
+        check(ow.getBlockState(pc).getBlock() == ModBlocks.JAIL_WALL.get(), "pit built at " + pc);
+        check(ow.getBlockState(pc.offset(0, 1, 3)).getBlock() == ModBlocks.PIT_RECEIVER.get(), "pit receiver");
+        check(Buildings.pitValue(new ItemStack(Items.DIAMOND)) == 200 && Buildings.pitValue(new ItemStack(Items.DIRT)) == 3
+                && Buildings.pitValue(new ItemStack(Items.DIAMOND_SWORD)) == 0, "pit loot values");
+        check(pc.getX() == mfoCenter.getX() && pc.getZ() == mfoCenter.getZ() && pc.getY() + 5 < mfoCenter.getY(), "pit is under the mfo");
+        Account pit2 = data.getOrCreate(UUID.randomUUID());
+        pit2.captivity = Account.PIT;
+        DebtManager.buildCell(s, data, pit2, mfoCenter);
+        check(Math.abs(pit2.cellCenter.getY() - pc.getY()) >= 8 || Math.abs(pit2.cellCenter.getX() - pc.getX()) >= 12, "second pit does not overlap: " + pit2.cellCenter);
+        DebtManager.restoreCell(s, data, pit);
+        DebtManager.restoreCell(s, data, pit2);
+        check(ow.getBlockState(probe).getBlock() == Blocks.GOLD_BLOCK, "pit removed, original blocks restored");
+        check(ow.getBlockState(pc).getBlock() != ModBlocks.JAIL_WALL.get(), "no jail wall left");
+
+        // ---- подпольный бизнес v4: станки ставит сам игрок, все печатают в «Сундук цеха»
+        Account biz = data.getOrCreate(UUID.randomUUID());
+        biz.hasHouse = true;
+        biz.houseMin = stone.min();
+        biz.houseMax = stone.max();
+        biz.hasBusiness = true;
+        List<BlockPos> floor = Visitors.floorSpots(ow, biz.houseMin, biz.houseMax);
+        check(floor.size() >= 6, "stone house has free floor (" + floor.size() + ")");
+        BlockPos pr1 = floor.get(0), pr2 = floor.get(floor.size() / 2), chestPos = floor.get(floor.size() - 1);
+        ow.setBlock(pr1, ModBlocks.MONEY_PRINTER.get().defaultBlockState(), 3);
+        ow.setBlock(pr2, ModBlocks.MONEY_PRINTER.get().defaultBlockState(), 3);
+        check(Business.registerPrinter(data, biz, pr1) == Business.OK && Business.registerPrinter(data, biz, pr2) == Business.OK, "printers register inside own house");
+        check(Business.registerPrinter(data, biz, pr1) == Business.ALREADY, "printer is not registered twice");
+        BlockPos outLand = biz.houseMax.offset(7, 0, 7);
+        check(Business.registerPrinter(data, biz, outLand) == Business.NOT_OWNER, "printer outside own property is refused");
+        data.claim(biz.id, EconomyData.chunkKey(outLand));
+        check(Business.inOwnProperty(data, biz, outLand) && Business.registerPrinter(data, biz, outLand) == Business.OK, "printer on own claimed land is accepted");
+        ow.getChunkAt(outLand);
+        check(Business.workingPrinters(ow, biz) == 2 && biz.printerList.size() == 2, "missing printer block is dropped from the list");
+        ow.setBlock(chestPos, ModBlocks.BUSINESS_CHEST.get().defaultBlockState(), 3);
+        BlockEntity bizChest = ow.getBlockEntity(chestPos);
+        check(bizChest instanceof FridgeTileEntity && "Сундук цеха".equals(((FridgeTileEntity) bizChest).getDisplayName().getString()), "business chest block works");
+        biz.businessChest = chestPos;
+        // станок v5: печать по номиналу в «Сундук цеха», без него — в свой лоток
+        BlockEntity pte1 = ow.getBlockEntity(pr1);
+        check(pte1 instanceof com.baraaoi.reallife.tile.PrinterTileEntity, "printer has a tile entity");
+        com.baraaoi.reallife.tile.PrinterTileEntity pt1 = (com.baraaoi.reallife.tile.PrinterTileEntity) pte1;
+        pt1.setOwner(biz.id);
+        pt1.setDenomIdx(2);
+        check(pt1.denom() == 500 && com.baraaoi.reallife.tile.PrinterTileEntity.TICKS[0] == 100
+                && com.baraaoi.reallife.tile.PrinterTileEntity.TICKS[4] == 60000, "printer denominations: 10₽/5с … 5000₽/50мин");
+        check(pt1.printOne() && pt1.printOne(), "printer prints");
+        check(((Container) bizChest).countItem(ModItems.DIRTY_MONEY.get()) == 2, "printed notes go to the business chest");
+        ItemStack printedNote = ((Container) bizChest).getItem(0);
+        check(com.baraaoi.reallife.item.DirtyMoneyItem.denom(printedNote) == 500 && ItemValues.stackValue(printedNote) == 1000, "dirty 500₽ notes, value " + ItemValues.stackValue(printedNote));
+        ((Container) bizChest).clearContent();
+        biz.businessChest = BlockPos.ZERO;
+        pt1.setDenomIdx(0);
+        check(pt1.printOne() && pt1.countItem(ModItems.DIRTY_MONEY.get()) == 1, "without a chest the printer fills its own tray");
+        pt1.clearContent();
+        biz.businessChest = chestPos;
+        for (int i = 0; i < 120; i++) pt1.tick();
+        check(pt1.getStatus() == com.baraaoi.reallife.tile.PrinterTileEntity.WORKING, "registered printer works: status " + pt1.getStatus());
+        check(ItemValues.valueOf(new ItemStack(ModItems.DIRTY_MONEY.get())) == 100, "dirty money worth 100");
+        check(Config.PRINTER_COST.get() < 3000, "printer is cheaper now");
+        ow.setBlock(pr2, Blocks.AIR.defaultBlockState(), 3);
+        Business.workingPrinters(ow, biz);
+        check(biz.printerList.size() == 1, "removed printer is dropped");
+        // старый подвал: станки переносятся в список
+        biz.businessMin = base.offset(700, -20, 0);
+        biz.businessMax = biz.businessMin.offset(8, 5, 8);
+        BlockPos legacy = biz.businessMin.offset(2, 1, 2);
+        ow.setBlock(legacy, ModBlocks.MONEY_PRINTER.get().defaultBlockState(), 3);
+        Business.migrateLegacy(ow, biz);
+        check(biz.printerList.contains(legacy) && Business.inOwnProperty(data, biz, legacy), "legacy basement printer migrated");
+        biz.chestGiven = true;
+        Account bizCopy = Account.read(biz.write());
+        check(bizCopy.printerList.size() == biz.printerList.size() && bizCopy.chestGiven, "printers and chest flag saved");
+        CompoundTag oldBiz = biz.write();
+        oldBiz.remove("bizVersion");
+        oldBiz.remove("chestGiven");
+        Account oldCopy = Account.read(oldBiz);
+        check(oldCopy.chestGiven && oldCopy.needPrinters, "old save: chest counts as given, printers will be migrated");
+        ow.setBlock(legacy, Blocks.AIR.defaultBlockState(), 3);
+        biz.businessMin = BlockPos.ZERO;
+        biz.businessMax = BlockPos.ZERO;
+        DebtManager.demolishHouse(ow, biz);
+        check(biz.hasBusiness && Business.workingPrinters(ow, biz) == 0 && biz.businessChest.equals(BlockPos.ZERO) && !biz.chestGiven,
+                "house seizure takes printers and chest, next printer comes with a new chest");
+        data.landOwners.remove(EconomyData.chunkKey(outLand));
+
+        // ---- случайные гости
+        check(Visitors.eventKinds().size() == VisitorKind.values().length - 5 && Visitors.eventKinds().size() >= 19, "visitor kinds: " + Visitors.eventIds());
+        for (VisitorKind k : VisitorKind.values()) {
+            boolean tex = RealLife.class.getResource("/" + "assets/reallife/textures/entity/visitor/" + k.id() + ".png") != null;
+            check(tex, "texture for visitor " + k.id());
+        }
+        VisitorEntity ve = ModEntities.VISITOR.get().create(ow, net.minecraft.world.entity.EntitySpawnReason.MOB_SUMMONED);
+        check(ve != null, "create visitor");
+        ve.setKind(VisitorKind.GRANNY);
+        check(ve.getKind() == VisitorKind.GRANNY && ve.getAttributeValue(Attributes.MAX_HEALTH) > 0, "visitor kind and hp");
+        check(VisitorKind.byName("horse_thief") == VisitorKind.HORSE_THIEF, "visitor names");
+        check(Visitors.taxLimit(500) == 7000, "tax limit");
+        Blueprint vh = Buildings.buildHouse(ow, base.offset(0, 0, 300), Direction.SOUTH, HouseType.STONE_HOUSE);
+        BlockPos vmin = vh.min(), vmax = vh.max();
+        List<BlockPos> vfloor = Visitors.floorSpots(ow, vmin, vmax);
+        check(vfloor.size() >= 8, "visitor house floor (" + vfloor.size() + ")");
+        int l0 = Visitors.countLights(ow, vmin, vmax);
+        ow.setBlock(vfloor.get(0), Blocks.GLOWSTONE.defaultBlockState(), 3);
+        check(Visitors.countLights(ow, vmin, vmax) == l0 + 1, "electrician counts lights (" + l0 + " + 1)");
+        int f0 = Visitors.countFurnaces(ow, vmin, vmax);
+        ow.setBlock(vfloor.get(1), Blocks.FURNACE.defaultBlockState(), 3);
+        ow.setBlock(vfloor.get(2), Blocks.SMOKER.defaultBlockState(), 3);
+        check(Visitors.countFurnaces(ow, vmin, vmax) == f0 + 2, "fire inspector counts furnaces");
+        check(Visitors.findLava(ow, vmin, vmax, 64).isEmpty(), "no lava yet");
+        ow.setBlock(vfloor.get(3), Blocks.LAVA.defaultBlockState(), 3);
+        check(Visitors.findLava(ow, vmin, vmax, 64).contains(vfloor.get(3)), "fire inspector finds lava");
+        ow.setBlock(vfloor.get(3), Blocks.AIR.defaultBlockState(), 3);
+        double v0 = Visitors.houseValue(ow, vmin, vmax);
+        ow.setBlock(vfloor.get(4), Blocks.CHEST.defaultBlockState(), 3);
+        BlockEntity vc = ow.getBlockEntity(vfloor.get(4));
+        check(vc instanceof Container, "tax test chest");
+        ((Container) vc).setItem(0, new ItemStack(Items.DIAMOND, 10));
+        double v1 = Visitors.houseValue(ow, vmin, vmax);
+        check(Math.abs(v1 - v0 - 10 * ItemValues.valueOf(new ItemStack(Items.DIAMOND))) < 0.01, "tax inspector values house chests (" + v0 + " -> " + v1 + ")");
+        ItemStack taken = Visitors.confiscateBest(ow, vmin, vmax);
+        check(!taken.isEmpty() && Visitors.houseValue(ow, vmin, vmax) < v1, "tax inspector confiscates the best stack: " + taken);
+        // площадка вокруг дома (дома в тесте висят в воздухе)
+        for (BlockPos p : BlockPos.betweenClosed(new BlockPos(vmin.getX() - 4, vmin.getY(), vmin.getZ() - 4), new BlockPos(vmax.getX() + 5, vmin.getY(), vmax.getZ() + 5))) {
+            if (ow.isEmptyBlock(p)) ow.setBlock(p.immutable(), Blocks.STONE.defaultBlockState(), 2);
+        }
+        int inLeak = Visitors.leak(ow, vmin, vmax, true, 3, new java.util.Random(5));
+        int outLeak = Visitors.leak(ow, vmin, vmax, false, 4, new java.util.Random(6));
+        check(inLeak == 3 && outLeak == 4, "plumber leaks inside " + inLeak + ", outside " + outLeak);
+        BlockPos box = Visitors.buildNeighborBox(ow, data, vmin, vmax);
+        check(box != null && ow.getBlockState(box).getBlock() == Blocks.DIRT && ow.isEmptyBlock(box.offset(1, 1, 1))
+                && ow.getBlockState(box.offset(1, 2, 1)).getBlock() == Blocks.DIRT, "neighbor dirt box at " + box);
+
+        // ---- v5: станки видно — стучат; ОБЭП копает и всё восстанавливает
+        BlockPos spot = base.offset(0, 30, 900);
+        for (BlockPos p : BlockPos.betweenClosed(spot.offset(-6, -1, -6), spot.offset(6, -1, 6))) ow.setBlock(p.immutable(), Blocks.STONE.defaultBlockState(), 2);
+        BlockPos eye = spot.offset(-5, 1, 0);
+        check(com.baraaoi.reallife.event.Raids.canSee(ow, new net.minecraft.world.phys.Vec3(eye.getX() + 0.5, eye.getY() + 0.6, eye.getZ() + 0.5), spot),
+                "npc sees an open printer");
+        ow.setBlock(spot.offset(-2, 0, 0), Blocks.STONE.defaultBlockState(), 2);
+        ow.setBlock(spot.offset(-2, 1, 0), Blocks.STONE.defaultBlockState(), 2);
+        ow.setBlock(spot.offset(-3, 0, 0), Blocks.STONE.defaultBlockState(), 2);
+        ow.setBlock(spot.offset(-3, 1, 0), Blocks.STONE.defaultBlockState(), 2);
+        check(!com.baraaoi.reallife.event.Raids.canSee(ow, new net.minecraft.world.phys.Vec3(eye.getX() + 0.5, eye.getY() + 0.6, eye.getZ() + 0.5), spot),
+                "wall hides the printer");
+        ow.setBlock(spot.offset(-2, 0, 0), Blocks.GLASS.defaultBlockState(), 2);
+        ow.setBlock(spot.offset(-2, 1, 0), Blocks.GLASS.defaultBlockState(), 2);
+        ow.setBlock(spot.offset(-3, 0, 0), Blocks.GLASS.defaultBlockState(), 2);
+        ow.setBlock(spot.offset(-3, 1, 0), Blocks.GLASS.defaultBlockState(), 2);
+        check(com.baraaoi.reallife.event.Raids.canSee(ow, new net.minecraft.world.phys.Vec3(eye.getX() + 0.5, eye.getY() + 0.6, eye.getZ() + 0.5), spot),
+                "glass does not hide the printer");
+        // тоннель: каменный куб вокруг цели, копаем и восстанавливаем
+        for (BlockPos p : BlockPos.betweenClosed(spot.offset(-6, 0, -6), spot.offset(6, 4, 6))) ow.setBlock(p.immutable(), Blocks.STONE.defaultBlockState(), 2);
+        ow.setBlock(spot.offset(-4, 1, 0), Blocks.CHEST.defaultBlockState(), 2);
+        ((Container) ow.getBlockEntity(spot.offset(-4, 1, 0))).setItem(0, new ItemStack(Items.EMERALD, 7));
+        ow.setBlock(spot, Blocks.AIR.defaultBlockState(), 2);
+        net.minecraft.nbt.ListTag tunnel = new net.minecraft.nbt.ListTag();
+        BlockPos cur = spot.offset(-6, 0, 0);
+        int steps = 0;
+        while (!com.baraaoi.reallife.event.Raids.arrived(cur, spot) && steps < 40) {
+            BlockPos nx = com.baraaoi.reallife.event.Raids.nextCell(cur, spot, steps++);
+            check(com.baraaoi.reallife.event.Raids.dig(ow, data, tunnel, nx, spot) && com.baraaoi.reallife.event.Raids.dig(ow, data, tunnel, nx.above(), spot), "dig " + nx);
+            cur = nx;
+        }
+        check(com.baraaoi.reallife.event.Raids.arrived(cur, spot) && ow.isEmptyBlock(spot.offset(-4, 1, 0)) && tunnel.size() >= 8,
+                "obep tunnel reaches the tip (" + steps + " steps, " + tunnel.size() + " blocks)");
+        ow.setBlock(spot.offset(0, 8, 0), Blocks.BEDROCK.defaultBlockState(), 2);
+        check(!com.baraaoi.reallife.event.Raids.dig(ow, data, new net.minecraft.nbt.ListTag(), spot.offset(0, 8, 0), spot), "obep cannot dig through bedrock");
+        ow.setBlock(spot.offset(0, 8, 0), Blocks.AIR.defaultBlockState(), 2);
+        Blueprint.restore(ow, tunnel);
+        check(ow.getBlockState(spot.offset(-5, 0, 0)).getBlock() == Blocks.STONE && ow.getBlockState(spot.offset(-4, 1, 0)).getBlock() == Blocks.CHEST
+                && ((Container) ow.getBlockEntity(spot.offset(-4, 1, 0))).countItem(Items.EMERALD) == 7, "nothing found: everything restored, chest contents too");
+        check(Visitors.interval(1000) == 1800, "many printers - visitors every 90 s");
+        check(com.baraaoi.reallife.event.Raids.snoopInterval(20) == 1800 && com.baraaoi.reallife.event.Raids.snoopInterval(1) > 6000, "more printers - more snoops");
+
+        // ---- v6: легальный бизнес, который игрок строит сам
+        UUID bizOwner = UUID.randomUUID();
+        Account bo = data.getOrCreate(bizOwner);
+        BlockPos lot = base.offset(0, 30, 1000);
+        for (BlockPos p : BlockPos.betweenClosed(lot.offset(-9, -1, -9), lot.offset(50, -1, 9))) ow.setBlock(p.immutable(), Blocks.STONE.defaultBlockState(), 2);
+        for (BlockPos p : BlockPos.betweenClosed(lot.offset(-9, 0, -9), lot.offset(50, 3, 9))) ow.setBlock(p.immutable(), Blocks.AIR.defaultBlockState(), 2);
+        String bsite = com.baraaoi.reallife.economy.LegalBiz.checkSite(ow, lot, data, bizOwner);
+        check(bsite == null, "business site accepted (" + bsite + ")");
+        int bizBefore = data.businesses.size();
+        com.baraaoi.reallife.economy.LegalBusiness shop = com.baraaoi.reallife.economy.LegalBiz.register(data, ow, lot, Direction.SOUTH,
+                com.baraaoi.reallife.economy.BizType.MINIMARKET, bizOwner, "Test");
+        check(ow.getBlockState(lot).getBlock() == ModBlocks.BIZ_COUNTER.get() && data.bizAtCounter(lot) == shop, "main counter placed and registered");
+        String overlap = com.baraaoi.reallife.economy.LegalBiz.checkSite(ow, lot.offset(5, 0, 5), data, UUID.randomUUID());
+        check(overlap != null, "overlapping business zone refused: " + overlap);
+        check(com.baraaoi.reallife.economy.LegalBiz.bizContaining(data, lot.offset(7, 2, -7)) == shop, "zone contains nearby blocks");
+        com.baraaoi.reallife.economy.LegalBiz.Scan sc0 = com.baraaoi.reallife.economy.LegalBiz.scan(ow, shop);
+        check(sc0.counterOk && sc0.sets == 0 && sc0.allowed == 0, "counter alone is not a business");
+        BlockPos[] shelves = {lot.offset(-3, 0, 3), lot.offset(-2, 0, 3), lot.offset(-1, 0, 3)};
+        for (BlockPos sp : shelves) ow.setBlock(sp, ModBlocks.SHOP_SHELF.get().defaultBlockState(), 3);
+        ow.setBlock(lot.offset(1, 0, 3), ModBlocks.FRIDGE.get().defaultBlockState(), 3);
+        com.baraaoi.reallife.economy.LegalBiz.Scan scNoRack = com.baraaoi.reallife.economy.LegalBiz.scan(ow, shop);
+        check(!scNoRack.warehouse && scNoRack.sets == 0, "v1.7: without a storage rack (warehouse) the business can't work");
+        ow.setBlock(lot.offset(2, 0, 3), ModBlocks.STORAGE_RACK.get().defaultBlockState(), 3);
+        com.baraaoi.reallife.economy.LegalBiz.Scan sc1 = com.baraaoi.reallife.economy.LegalBiz.scan(ow, shop);
+        check(sc1.warehouse && sc1.sets == 1 && sc1.allowed == 1 && sc1.stores.size() == 5 && sc1.back.size() == 1 && sc1.visible.size() == 4, "one full kit = one worker (sets " + sc1.sets + ", stores " + sc1.stores.size() + ")");
+        BlockPos wspot = com.baraaoi.reallife.economy.LegalBiz.workerSpot(ow, shop, sc1);
+        check(wspot != null && shop.contains(wspot, 0), "worker spot in the zone: " + wspot);
+        com.baraaoi.reallife.entity.WorkerEntity worker = wspot == null ? null : com.baraaoi.reallife.economy.LegalBiz.spawnWorker(ow, shop, wspot);
+        check(worker != null && shop.workers.size() == 1 && ow.getEntity(shop.workers.get(0)) == worker, "worker hired");
+        Item supply = ModItems.SUPPLY.get(com.baraaoi.reallife.economy.BizType.MINIMARKET).get();
+        ItemStack rest = com.baraaoi.reallife.economy.LegalBiz.deliver(ow, shop, new ItemStack(supply, 64));
+        com.baraaoi.reallife.economy.LegalBiz.Scan sc2 = com.baraaoi.reallife.economy.LegalBiz.scan(ow, shop);
+        check(rest.isEmpty() && sc2.stock == 64, "supplies delivered onto shelves: " + sc2.stock);
+        int filled = 0;
+        for (BlockPos sp : shelves) if (ow.getBlockState(sp).getValue(com.baraaoi.reallife.block.ShelfBlock.FILL) > 0) filled++;
+        check(filled == 3, "all shelves look filled: " + filled);
+        com.baraaoi.reallife.economy.LegalBusiness grill = com.baraaoi.reallife.economy.LegalBiz.register(data, ow, lot.offset(40, 0, 0), Direction.SOUTH,
+                com.baraaoi.reallife.economy.BizType.SHAWARMA, bizOwner, "Test");
+        check(com.baraaoi.reallife.economy.LegalBiz.checkSite(ow, lot.offset(28, 0, 0), data, bizOwner) != null, "zones must not overlap even for the owner");
+        double bal0 = bo.balance;
+        com.baraaoi.reallife.economy.LegalBiz.processDay(s, data);
+        com.baraaoi.reallife.economy.LegalBiz.Scan sc3 = com.baraaoi.reallife.economy.LegalBiz.scan(ow, shop);
+        check(shop.days == 1 && sc3.stock == 64 - com.baraaoi.reallife.economy.BizType.SUPPLY_PER_WORKER && bo.balance != bal0,
+                "working business consumes supplies and earns (" + Finance.money(shop.lastProfit) + ", " + shop.lastNote + ")");
+        check(grill.days == 0 && grill.lastProfit == 0, "business without equipment/workers is closed: " + grill.lastNote);
+        // v1.7: коробки не стакаются, склад принимает излишки, одного стеллажа хватает на любое число работников
+        check(new ItemStack(supply).getMaxStackSize() == 1, "supply boxes don't stack");
+        ItemStack rest2 = com.baraaoi.reallife.economy.LegalBiz.deliver(ow, shop, new ItemStack(supply, 60));
+        com.baraaoi.reallife.economy.LegalBiz.Scan sc4 = com.baraaoi.reallife.economy.LegalBiz.scan(ow, shop);
+        net.minecraft.world.Container rackInv = sc4.back.get(0);
+        int rackUsed = 0;
+        boolean single = true;
+        for (int i = 0; i < rackInv.getContainerSize(); i++) {
+            ItemStack it = rackInv.getItem(i);
+            if (it.getCount() > 1) single = false;
+            if (!it.isEmpty()) rackUsed++;
+        }
+        check(single, "one box per slot");
+        check(rest2.isEmpty() && sc4.stock == 63 + 60 && rackUsed > 0, "overflow goes to the warehouse rack: " + rackUsed + ", stock " + sc4.stock);
+        check(com.baraaoi.reallife.tile.ShelfTileEntity.fillFor(0) == 0 && com.baraaoi.reallife.tile.ShelfTileEntity.fillFor(8) == 1
+                && com.baraaoi.reallife.tile.ShelfTileEntity.fillFor(9) == 2 && com.baraaoi.reallife.tile.ShelfTileEntity.fillFor(18) == 3, "shelf fill by slots");
+        for (com.baraaoi.reallife.economy.BizType bt : com.baraaoi.reallife.economy.BizType.values()) {
+            check(bt.need(com.baraaoi.reallife.economy.BizEquip.RACK) == 0 && bt.total(com.baraaoi.reallife.economy.BizEquip.RACK, bt.maxWorkers) == 1,
+                    "one rack is enough for " + bt.id());
+        }
+        // v1.7: покупатели
+        com.baraaoi.reallife.entity.CustomerEntity cust = com.baraaoi.reallife.economy.LegalBiz.spawnCustomer(ow, shop);
+        check(cust != null && cust.bizId == shop.id && !cust.targets.isEmpty() && shop.counter.equals(cust.targets.get(cust.targets.size() - 1)),
+                "customer spawned and heads to the counter");
+        if (cust != null) cust.discard();
+        check(com.baraaoi.reallife.economy.LegalBiz.isOpen(shop), "shop with worker, kit and stock is open for customers");
+        // v1.9: СЭС, документы, пломба
+        long iday = BankService.today(s);
+        com.baraaoi.reallife.event.Inspections.Report rep1 = com.baraaoi.reallife.event.Inspections.sanepid(ow, shop, iday, false);
+        LOG.info("SES report: " + rep1.lines + " = " + rep1.fine);
+        check(com.baraaoi.reallife.event.Inspections.undocumented(shop, iday) == 1 && rep1.violations >= 2 && rep1.fine >= 800,
+                "SES finds undocumented workers and no sink: " + rep1.lines);
+        shop.docsUntil = iday + com.baraaoi.reallife.event.Inspections.DOCS_DAYS;
+        shop.docsWorkers = 1;
+        com.baraaoi.reallife.event.Inspections.Report rep2 = com.baraaoi.reallife.event.Inspections.sanepid(ow, shop, iday, false);
+        check(com.baraaoi.reallife.event.Inspections.undocumented(shop, iday) == 0 && rep2.fine == rep1.fine - 800, "documents remove the med-book fine");
+        check(com.baraaoi.reallife.event.Inspections.undocumented(shop, iday + 7) == 1, "documents expire after 7 days");
+        com.baraaoi.reallife.event.Inspections.seal(shop, iday, 2, "test");
+        check(com.baraaoi.reallife.event.Inspections.sealed(shop, iday) && com.baraaoi.reallife.event.Inspections.sealed(shop, iday + 1)
+                && !com.baraaoi.reallife.event.Inspections.sealed(shop, iday + 2), "business sealed for 2 days");
+        CompoundTag sealedSave = shop.write();
+        com.baraaoi.reallife.economy.LegalBusiness sealedCopy = com.baraaoi.reallife.economy.LegalBusiness.read(sealedSave);
+        check(sealedCopy.sealedUntil == shop.sealedUntil && sealedCopy.docsWorkers == 1 && "test".equals(sealedCopy.sealReason), "seal and documents saved");
+        shop.sealedUntil = 0;
+        shop.sealReason = "";
+        shop.docsUntil = 0;
+        shop.docsWorkers = 0;
+        for (int i = 0; i < com.baraaoi.reallife.entity.CustomerEntity.VARIANTS; i++) {
+            boolean ct = RealLife.class.getResource("/" + "assets/reallife/textures/entity/customer/c" + i + ".png") != null;
+            check(ct, "customer texture c" + i);
+        }
+        // v1.7: участок 3x3
+        long landC = net.minecraft.world.level.ChunkPos.pack(5000, 5000);
+        UUID landA = UUID.randomUUID(), landB = UUID.randomUUID();
+        check(com.baraaoi.reallife.event.DebtManager.plotChunks(data, landA, landC).size() == 9, "free 3x3 plot = 9 chunks");
+        data.claim(landB, net.minecraft.world.level.ChunkPos.pack(5001, 5001));
+        java.util.List<Long> plot = com.baraaoi.reallife.event.DebtManager.plotChunks(data, landA, landC);
+        check(plot.size() == 8 && !plot.contains(net.minecraft.world.level.ChunkPos.pack(5001, 5001)), "someone else's chunk is skipped");
+        check(com.baraaoi.reallife.event.DebtManager.plotPrice(8) == 8 * Config.LAND_PRICE.get(), "plot price = chunk price x free chunks");
+        // v1.7: версия и новые гости
+        check(!"?".equals(RealLife.version()) && !RealLife.version().startsWith("1.0"), "mod version " + RealLife.version());
+        check(Visitors.eventKinds().contains(VisitorKind.HOBO) && Visitors.eventKinds().contains(VisitorKind.BLACK_DIGGER), "nomad visitors present");
+        check(com.baraaoi.reallife.economy.LegalBiz.revenue(com.baraaoi.reallife.economy.BizType.MINIMARKET, 2, 1.0, 1.0) == 3325
+                && com.baraaoi.reallife.economy.LegalBiz.revenue(com.baraaoi.reallife.economy.BizType.MINIMARKET, 1, 1.0, 0.5) == 875, "revenue formula (v1.10: x1.75)");
+        for (com.baraaoi.reallife.economy.BizType bt : com.baraaoi.reallife.economy.BizType.values()) {
+            check(bt.need(com.baraaoi.reallife.economy.BizEquip.COUNTER) == 1 && bt.kitPrice() > 1500 && bt.supplyPrice() > 0 && bt.maxWorkers >= 2,
+                    bt.id() + " kit: " + com.baraaoi.reallife.economy.LegalBiz.kitText(bt) + " = " + bt.kitPrice());
+            check(ModItems.SUPPLY.get(bt).get() instanceof com.baraaoi.reallife.item.SupplyItem, "supply item " + bt.id());
+            boolean wt = RealLife.class.getResource("/" + "assets/reallife/textures/entity/worker/" + bt.id() + ".png") != null;
+            check(wt, "worker texture " + bt.id());
+        }
+        for (com.baraaoi.reallife.economy.BizEquip e : com.baraaoi.reallife.economy.BizEquip.values()) {
+            check(e.block.get() != null && com.baraaoi.reallife.economy.BizEquip.of(e.block.get()) == e && e.price > 0, "equipment " + e.title);
+        }
+        java.util.List<com.baraaoi.reallife.economy.Wholesale.Lot> supLots = com.baraaoi.reallife.economy.Wholesale.lots();
+        int supplyLots = 0;
+        for (com.baraaoi.reallife.economy.Wholesale.Lot l : supLots) if (l.supply != null) supplyLots++;
+        check(supplyLots == com.baraaoi.reallife.economy.BizType.values().length, "supply lots in wholesale: " + supplyLots);
+        // отмыв — от вчерашней прибыли
+        com.baraaoi.reallife.economy.LegalBusiness lossy = new com.baraaoi.reallife.economy.LegalBusiness();
+        lossy.lastProfit = -300;
+        check(com.baraaoi.reallife.economy.LegalBiz.safeLimit(lossy) == 0 && com.baraaoi.reallife.economy.LegalBiz.launderChance(0, 0, 10) >= 0.9,
+                "after a loss nothing can be laundered safely");
+        lossy.lastProfit = 2000;
+        check(Math.abs(com.baraaoi.reallife.economy.LegalBiz.safeLimit(lossy) - 300) < 1e-6, "safe laundering = 15% of yesterday's profit");
+        check(com.baraaoi.reallife.economy.LegalBiz.launderChance(2000, 0, 300) == 0, "within the limit - no risk");
+        double c1 = com.baraaoi.reallife.economy.LegalBiz.launderChance(2000, 0, 600);
+        double c2 = com.baraaoi.reallife.economy.LegalBiz.launderChance(2000, 600, 1000);
+        check(c1 > 0 && c2 > c1, "risk grows: " + c1 + " -> " + c2);
+        v110(s, ow, data, base);
+        java.util.Random lr = new java.util.Random(7);
+        double sum = 0, lucky = 0;
+        for (int i = 0; i < 4000; i++) {
+            sum += com.baraaoi.reallife.economy.LegalBiz.roll(lr, 0).mult;
+            lucky += com.baraaoi.reallife.economy.LegalBiz.roll(lr, 0.3).mult;
+        }
+        check(sum / 4000 > 0.9 && sum / 4000 < 1.3 && lucky > sum, "luck: avg x" + (sum / 4000) + ", with luck x" + (lucky / 4000));
+        CompoundTag dsave = data.write(new CompoundTag());
+        EconomyData dcopy = new EconomyData();
+        dcopy.read(dsave);
+        com.baraaoi.reallife.economy.LegalBusiness shopCopy = dcopy.bizAtCounter(shop.counter);
+        check(shopCopy != null && shopCopy.type == shop.type && shopCopy.workers.size() == 1 && shopCopy.max.equals(shop.max), "businesses saved");
+        if (worker != null) worker.discard();
+        data.businesses.remove(shop);
+        data.businesses.remove(grill);
+        check(data.businesses.size() == bizBefore, "test businesses removed");
+        data.reset(bizOwner);
+
+        // ---- v6: справочник и подозрительный тип
+        ItemStack guide = com.baraaoi.reallife.economy.Guide.book();
+        check(guide.getItem() == Items.WRITTEN_BOOK && com.baraaoi.reallife.economy.Guide.pageCount(guide) >= 20, "guide book has pages");
+        boolean sold = false;
+        for (net.minecraft.world.item.trading.MerchantOffer o : Trades.vending(Trades.VENDING_FOOD)) if (o.getResult().getItem() == Items.WRITTEN_BOOK) sold = true;
+        check(sold, "guide sold in the vending machine");
+        com.baraaoi.reallife.entity.SnoopEntity snoop = ModEntities.SNOOP.get().create(ow, net.minecraft.world.entity.EntitySpawnReason.MOB_SUMMONED);
+        check(snoop != null, "snoop entity created");
+        if (snoop != null) {
+            snoop.snapTo(lot.getX() + 3.5, lot.getY(), lot.getZ() + 0.5, 0F, 0F);
+            ow.addFreshEntity(snoop);
+            boolean ok = true;
+            try {
+                for (int i = 0; i < 60; i++) snoop.tick();
+            } catch (RuntimeException ex) {
+                ok = false;
+                LOG.error("snoop tick failed", ex);
+            }
+            check(ok && snoop.isAlive() && !snoop.isFleeing(), "snoop walks around");
+            net.minecraft.server.level.ServerPlayer fp = new net.minecraft.server.level.ServerPlayer(s, ow,
+                    new com.mojang.authlib.GameProfile(UUID.randomUUID(), "selftest"), net.minecraft.server.level.ClientInformation.createDefault());
+            fp.snapTo(lot.getX() + 1.5, lot.getY(), lot.getZ() + 0.5, 0F, 0F);
+            snoop.hurtServer(ow, ow.damageSources().playerAttack(fp), 1.0F);
+            check(snoop.isFleeing(), "hit snoop runs away");
+            try {
+                for (int i = 0; i < 20; i++) snoop.tick();
+            } catch (RuntimeException ex) {
+                ok = false;
+                LOG.error("snoop flee failed", ex);
+            }
+            check(ok, "snoop flee goal works");
+            snoop.discard();
+        }
+
+        // ---- v5: майнинг-ферма, крипта, опт
+        BlockPos rigPos = spot.offset(0, 10, 0);
+        ow.setBlock(rigPos, ModBlocks.CRYPTO_RIG.get().defaultBlockState(), 3);
+        BlockEntity rte = ow.getBlockEntity(rigPos);
+        check(rte instanceof com.baraaoi.reallife.tile.CryptoRigTileEntity, "rig tile entity");
+        com.baraaoi.reallife.tile.CryptoRigTileEntity rig = (com.baraaoi.reallife.tile.CryptoRigTileEntity) rte;
+        rig.work(100);
+        check(rig.getMined() == 0 && !rig.complete() && rig.missing().size() == 6, "empty rig does not mine: " + rig.missing());
+        Item[] parts = {ModItems.MOTHERBOARD.get(), ModItems.CPU.get(), ModItems.RAM.get(), ModItems.PSU.get(), ModItems.COOLER.get()};
+        for (int i = 0; i < parts.length; i++) {
+            check(com.baraaoi.reallife.tile.CryptoRigTileEntity.fits(i, new ItemStack(parts[i])), "slot " + i + " takes " + net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(parts[i]));
+            rig.setItem(i, new ItemStack(parts[i]));
+        }
+        check(!com.baraaoi.reallife.tile.CryptoRigTileEntity.fits(0, new ItemStack(ModItems.GPU.get())), "gpu does not fit the motherboard slot");
+        rig.work(100);
+        check(rig.getMined() == 0 && rig.missing().size() == 1, "rig without gpu does not mine");
+        rig.setItem(5, new ItemStack(ModItems.GPU.get()));
+        rig.setItem(6, new ItemStack(ModItems.GPU.get()));
+        rig.work(100);
+        check(rig.complete() && rig.gpus() == 2 && Math.abs(rig.getMined() - 200 * Config.BTC_PER_GPU_SECOND.get()) < 1e-12, "full rig mines: " + rig.getMined());
+        double took = rig.takeMined();
+        check(took > 0 && rig.getMined() == 0, "mined btc withdrawn");
+        double rate = Config.BTC_BASE_RATE.get();
+        java.util.Random cr = new java.util.Random(3);
+        for (int i = 0; i < 2000; i++) rate = com.baraaoi.reallife.economy.Crypto.step(rate, Config.BTC_BASE_RATE.get(), cr);
+        check(rate >= Config.BTC_BASE_RATE.get() * 0.19 && rate <= Config.BTC_BASE_RATE.get() * 5.01, "btc rate stays in range: " + rate);
+        rig.clearContent();
+        ow.setBlock(rigPos, Blocks.AIR.defaultBlockState(), 3);
+        java.util.List<com.baraaoi.reallife.economy.Wholesale.Lot> lots = com.baraaoi.reallife.economy.Wholesale.lots();
+        int cheaper = 0;
+        for (com.baraaoi.reallife.economy.Wholesale.Lot l : lots) {
+            if (l.retail > 0) {
+                check(l.price < l.retail, "wholesale " + l.name() + " cheaper: " + l.price + " < " + l.retail);
+                check(l.price >= ItemValues.valueOf(new ItemStack(l.item.get())) * l.count, "wholesale " + l.name() + " not resellable to the bank");
+                cheaper++;
+            }
+        }
+        check(cheaper >= 6, "wholesale lots: " + cheaper);
+        Account ph = data.getOrCreate(UUID.randomUUID());
+        ph.crypto = 0.01;
+        CompoundTag phSave = ph.write();
+        check(Math.abs(Account.read(phSave).crypto - 0.01) < 1e-12, "crypto wallet saved");
+        data.reset(ph.id);
+
+        // ---- ипотека: погашение до постройки не аннулирует ордер
+        Account mo = data.getOrCreate(UUID.randomUUID());
+        mo.mortHouse = HouseType.STONE_HOUSE.ordinal();
+        mo.mortPrincipal = 1000;
+        mo.mortDays = 10;
+        mo.mortRate = 0.01;
+        mo.pendingHouse = HouseType.STONE_HOUSE.ordinal();
+        mo.houseOrderId = 12345L;
+        mo.clearMortgage();
+        check(!mo.hasMortgage() && mo.pendingHouse == HouseType.STONE_HOUSE.ordinal() && mo.houseOrderId == 12345L, "paid-off mortgage keeps the house order");
+        check(!BankService.mortgageRefusal(mo, HouseType.DIRT_HUT, BankService.today(s)).isEmpty(), "no new mortgage while a house is pending");
+        CompoundTag moSaved = mo.write();
+        check(Account.read(moSaved).pendingHouse == HouseType.STONE_HOUSE.ordinal(), "pending house saved");
+
+        // ---- площадка под дом: ровная — можно; на доме, на банке, на склоне — нельзя
+        BlockPos pad = base.offset(600, 80, 0);
+        for (BlockPos p : BlockPos.betweenClosed(pad.offset(-12, -1, -12), pad.offset(12, -1, 12))) ow.setBlock(p.immutable(), Blocks.STONE.defaultBlockState(), 2);
+        UUID owner = UUID.randomUUID();
+        String ok = Buildings.checkHouseSite(ow, pad, Direction.SOUTH, HouseType.DIRT_HUT, data, owner);
+        check(ok == null, "flat site accepted (" + ok + ")");
+        Blueprint hut = Buildings.buildHouse(ow, pad, Direction.SOUTH, HouseType.DIRT_HUT);
+        Account ho = data.getOrCreate(owner);
+        ho.hasHouse = true;
+        ho.houseMin = hut.min();
+        ho.houseMax = hut.max();
+        String onHouse = Buildings.checkHouseSite(ow, pad.offset(1, 5, 1), Direction.SOUTH, HouseType.WOODEN_HUT, data, UUID.randomUUID());
+        check(onHouse != null, "house on top of a house refused: " + onHouse);
+        String onBank = Buildings.checkHouseSite(ow, bank.pos(0, 8, 4), Direction.SOUTH, HouseType.DIRT_HUT, data, owner);
+        check(onBank != null && onBank.contains("банк"), "house on the bank refused: " + onBank);
+        String edge = Buildings.checkHouseSite(ow, pad.offset(11, 0, 0), Direction.SOUTH, HouseType.STONE_HOUSE, data, owner);
+        check(edge != null, "uneven site refused: " + edge);
+        data.reset(owner);
+        data.reset(mo.id);
+
+        // ---- земля и выселение
+        long ck = EconomyData.chunkKey(base.offset(400, 0, 0));
+        UUID builder = UUID.randomUUID();
+        for (int i = 0; i < 50; i++) data.addPlaced(ck, builder, base.offset(400, 0, i % 16));
+        check(data.placedCount(ck, builder) == 16, "placed blocks counted per position");
+        data.claim(builder, ck);
+        check(builder.equals(data.owner(ck)) && data.placedCount(ck, builder) == 0, "land claim");
+        int cx = (base.getX() + 400) >> 4, cz = base.getZ() >> 4;
+        DebtManager.wipeLayers(ow, cx, cz, ow.getMaxY(), ow.getMinY());
+        boolean clean = true;
+        for (int y = ow.getMinY() + 5; y < ow.getMaxY(); y++) if (!ow.isEmptyBlock(new BlockPos((cx << 4) + 7, y, (cz << 4) + 7))) clean = false;
+        check(clean, "evicted chunk wiped");
+        check(ow.getBlockState(new BlockPos(cx << 4, ow.getMinY(), cz << 4)).getBlock() == Blocks.BEDROCK, "bedrock remains");
+
+        // ---- v1.9: пожар, обвал, домушник
+        BlockPos fp = base.offset(-60, 0, 60);
+        for (int dx = -1; dx <= 1; dx++) for (int dz = -1; dz <= 1; dz++) ow.setBlock(fp.offset(dx, 0, dz), Blocks.OAK_PLANKS.defaultBlockState(), 3);
+        List<BlockPos> fspots = com.baraaoi.reallife.event.Inspections.fireSpots(ow, fp.offset(-1, 0, -1), fp.offset(1, 1, 1), 2, new java.util.Random(1), null);
+        check(!fspots.isEmpty(), "fire spots on planks: " + fspots.size());
+        com.baraaoi.reallife.event.Inspections.ignite(ow, fspots);
+        check(com.baraaoi.reallife.event.Inspections.countFire(ow, fp.offset(-2, 0, -2), fp.offset(2, 2, 2)) >= 1, "fire started");
+        com.baraaoi.reallife.event.Inspections.extinguish(ow, fp.offset(-2, 0, -2), fp.offset(2, 2, 2));
+        check(com.baraaoi.reallife.event.Inspections.countFire(ow, fp.offset(-2, 0, -2), fp.offset(2, 2, 2)) == 0, "fire extinguished");
+        for (BlockPos q : BlockPos.betweenClosed(fp.offset(-2, 0, -2), fp.offset(2, 2, 2))) ow.setBlock(q.immutable(), Blocks.AIR.defaultBlockState(), 3);
+        BlockPos cp0 = base.offset(-80, 0, 80);
+        for (int dx = -3; dx <= 3; dx++) for (int dz = -3; dz <= 3; dz++) ow.setBlock(cp0.offset(dx, 4, dz), Blocks.STONE.defaultBlockState(), 3);
+        List<BlockPos> cave = com.baraaoi.reallife.event.Inspections.caveIn(ow, cp0, data);
+        check(cave.size() >= 15, "cave-in finds ceiling rock: " + cave.size());
+        int fell = com.baraaoi.reallife.event.Inspections.collapse(ow, cave);
+        check(fell == cave.size() && ow.getBlockState(cave.get(0)).getBlock() == Blocks.GRAVEL, "ceiling turns into falling gravel");
+        for (BlockPos q : BlockPos.betweenClosed(cp0.offset(-3, 4, -3), cp0.offset(3, 4, 3))) ow.setBlock(q.immutable(), Blocks.AIR.defaultBlockState(), 2);
+        BlockPos chestAt = base.offset(-90, 0, 40);
+        ow.setBlock(chestAt, Blocks.CHEST.defaultBlockState(), 3);
+        net.minecraft.world.level.block.entity.BlockEntity cte = ow.getBlockEntity(chestAt);
+        if (cte instanceof net.minecraft.world.Container) ((net.minecraft.world.Container) cte).setItem(0, new ItemStack(Items.DIAMOND, 3));
+        BlockPos btarget = com.baraaoi.reallife.event.Inspections.burglarTarget(ow, java.util.Collections.singletonList(new BlockPos[]{chestAt.offset(-2, -1, -2), chestAt.offset(2, 1, 2)}), new java.util.Random(2));
+        check(chestAt.equals(btarget), "burglar goes for the chest with loot: " + btarget);
+        if (cte instanceof net.minecraft.world.Container) ((net.minecraft.world.Container) cte).clearContent();
+        ow.setBlock(chestAt, Blocks.AIR.defaultBlockState(), 3);
+        check(Visitors.eventKinds().contains(VisitorKind.SANEPID) && Visitors.eventKinds().contains(VisitorKind.BURGLAR)
+                && Visitors.eventKinds().contains(VisitorKind.CAVE_IN), "scary events registered");
+
+        // ---- экономика
+        Account a = data.getOrCreate(UUID.randomUUID());
+        long today = BankService.today(s);
+        a.createdDay = today;
+        int fresh = CreditRating.score(a, today);
+        LOG.info("fresh score " + fresh + ", max loan " + CreditRating.maxLoan(a, today));
+        check(fresh >= 450 && CreditRating.maxLoan(a, today) > 0, "new client can get a small loan");
+        a.balance = 3000;
+        a.lifetimeDeposited = 6000;
+        int rich = CreditRating.score(a, today);
+        check(rich > fresh, "savings and income raise score (" + rich + ")");
+        a.ratingBonus = CreditRating.bonusFor(a, today, 777);
+        check(CreditRating.score(a, today) == 777, "admin rating command math");
+        a.ratingBonus = 0;
+
+        BankService.autoCreditPaused = true; // эскалацию проверяем без автокредита
+        a.loanPrincipal = 1000;
+        a.loanRate = 0.01;
+        a.loanDays = 10;
+        a.balance = 250;
+        double pay = a.loanPayment();
+        LOG.info("loan payment " + Finance.money(pay));
+        BankService.processDay(s, data);
+        check(a.arrears < 0.01 && a.onTimePayments == 1, "first payment auto-debited");
+        a.balance = 0;
+        for (int d = 1; d <= 6; d++) {
+            BankService.processDay(s, data);
+            LOG.info("day " + d + ": arrears " + Finance.money(a.arrears) + ", overdue " + a.overdueDays + ", stage " + DebtManager.bankStage(a));
+        }
+        check(DebtManager.bankStage(a) == 3, "bank escalates to police");
+        check(CreditRating.score(a, today) < rich, "late payments lower score");
+
+        // ---- МФО
+        Account m = data.getOrCreate(UUID.randomUUID());
+        m.mfoDebt = 1000;
+        m.mfoPrincipal = 1000;
+        m.mfoDays = 2;
+        for (int d = 1; d <= 6; d++) {
+            BankService.processDay(s, data);
+            LOG.info("mfo day " + d + ": debt " + Finance.money(m.mfoDebt) + ", stage " + DebtManager.mfoStage(m));
+        }
+        check(m.mfoDebt > 2000, "mfo compound interest grows");
+        check(DebtManager.mfoStage(m) == 3, "mfo escalates to lethal");
+        BankService.autoCreditPaused = false;
+
+        // ---- v1.8: автокредит, рейтинг, крипта
+        Account ac = data.getOrCreate(UUID.randomUUID());
+        ac.createdDay = today;
+        ac.lifetimeDeposited = 5000;
+        ac.peakBalance = 5000;
+        ac.balance = -800;
+        ac.arrears = 300;
+        ac.overdueDays = 1;
+        double acLimit = CreditRating.autoCreditLimit(ac, today);
+        BankService.autoCredit(null, ac, today);
+        LOG.info("auto credit limit " + Finance.money(acLimit) + ", loan " + Finance.money(ac.loanPrincipal) + ", balance " + Finance.money(ac.balance));
+        check(acLimit >= 1100 && ac.balance >= -0.01 && ac.arrears < 0.01 && ac.overdueDays == 0
+                && Math.abs(ac.loanPrincipal - 1100) < 1.01 && ac.loanDays == BankService.AUTO_CREDIT_DAYS, "auto credit covers minus and fines");
+        ac.balance = -500;
+        BankService.autoCredit(null, ac, today);
+        check(ac.balance >= -0.01 && Math.abs(ac.loanPrincipal - 1600) < 2.01, "auto credit tops up the existing loan");
+        Account bad = data.getOrCreate(UUID.randomUUID());
+        bad.createdDay = today;
+        bad.defaults = 10;
+        bad.balance = -300;
+        BankService.autoCredit(null, bad, today);
+        check(CreditRating.autoCreditLimit(bad, today) == 0 && bad.balance < -299 && !bad.hasLoan(), "bad rating - no auto credit");
+        Account sp = data.getOrCreate(UUID.randomUUID());
+        sp.createdDay = today;
+        sp.lifetimeDeposited = 20000;
+        sp.balance = 20000;
+        sp.peakBalance = 20000;
+        int before = CreditRating.score(sp, today);
+        sp.balance = 150;
+        check(CreditRating.score(sp, today) == before, "spending money does not lower the rating (" + before + ")");
+        sp.bizDays = 15;
+        check(CreditRating.score(sp, today) >= Math.min(850, before + 50), "working business raises the rating: " + CreditRating.score(sp, today));
+        sp.coins[com.baraaoi.reallife.economy.Crypto.Coin.DOGE.ordinal()] = 123.5;
+        sp.crypto = 0.25;
+        Account spCopy = Account.read(sp.write());
+        check(spCopy.coins[com.baraaoi.reallife.economy.Crypto.Coin.DOGE.ordinal()] == 123.5 && spCopy.crypto == 0.25
+                && spCopy.peakBalance == 20000 && spCopy.bizDays == 15, "coins, peak balance and business days saved");
+        for (com.baraaoi.reallife.economy.Crypto.Coin coin : com.baraaoi.reallife.economy.Crypto.Coin.values()) {
+            double r = coin.base(), mn = r, mx = r;
+            java.util.Random cr2 = new java.util.Random(coin.ordinal() + 11);
+            for (int i = 0; i < 5000; i++) {
+                r = com.baraaoi.reallife.economy.Crypto.step(r, coin.base(), coin.vol, 0.97, cr2);
+                mn = Math.min(mn, r);
+                mx = Math.max(mx, r);
+            }
+            LOG.info(coin.ticker + " base " + coin.base() + " range " + mn + " .. " + mx);
+            check(mn >= coin.base() * 0.19 && mx <= coin.base() * 5.01 && mx > mn * 1.2, coin.ticker + " rate moves within range");
+        }
+        double pf = com.baraaoi.reallife.economy.Crypto.portfolio(data, sp);
+        check(pf > 0, "crypto portfolio value " + pf);
+        check(com.baraaoi.reallife.economy.Crypto.sync(data, sp).size() == com.baraaoi.reallife.economy.Crypto.Coin.values().length, "crypto sync lists all coins");
+        int bads = 0;
+        java.util.Random br = new java.util.Random(5);
+        for (int i = 0; i < 10000; i++) if (com.baraaoi.reallife.economy.LegalBiz.roll(br, 0).kind == com.baraaoi.reallife.economy.LegalBiz.BAD) bads++;
+        check(bads < 700, "bad business days are rare: " + bads + "/10000");
+        boolean twice = false;
+        for (int i = 0; i < 2000; i++) if (com.baraaoi.reallife.economy.LegalBiz.roll(br, 0, true).kind == com.baraaoi.reallife.economy.LegalBiz.BAD) twice = true;
+        check(!twice, "no bad days twice in a row");
+        for (Account x : new Account[]{ac, bad, sp}) data.reset(x.id);
+
+        // ---- NPC
+        EntityType<?>[] types = {ModEntities.ZHORA.get(), ModEntities.ALEXANDER.get(), ModEntities.POLICE.get(),
+                ModEntities.VOVAN.get(), ModEntities.BRATOK.get(), ModEntities.INSPECTOR.get(), ModEntities.AMBAL.get()};
+        for (EntityType<?> t : types) {
+            DebtNpcEntity e = (DebtNpcEntity) t.create(ow, net.minecraft.world.entity.EntitySpawnReason.MOB_SUMMONED);
+            check(e != null, "create " + net.minecraft.world.entity.EntityType.getKey(t));
+            e.setPos(base.getX(), base.getY() + 2, base.getZ() + 3);
+            ow.addFreshEntity(e);
+            check(e.getAttributeValue(Attributes.MAX_HEALTH) > 0, e.npcName() + " hp=" + e.getHealth());
+            e.discard();
+        }
+        data.reset(a.id);
+        data.reset(m.id);
+        for (Account x : new Account[]{jailed, jailed2, pit, pit2, biz}) data.reset(x.id);
+        data.landOwners.remove(ck);
+        data.structures.removeIf(st -> !st.protect);
+        data.setDirty();
+    }
+}

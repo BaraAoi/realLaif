@@ -1,0 +1,8 @@
+{
+  "parent": "minecraft:block/orientable",
+  "textures": {
+    "top": "reallife:block/vending_top",
+    "front": "reallife:block/vending_food_front",
+    "side": "reallife:block/vending_side"
+  }
+}

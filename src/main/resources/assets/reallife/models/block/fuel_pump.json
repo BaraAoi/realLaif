@@ -1,0 +1,8 @@
+{
+  "parent": "minecraft:block/orientable",
+  "textures": {
+    "top": "reallife:block/fuel_pump_top",
+    "front": "reallife:block/fuel_pump_front",
+    "side": "reallife:block/fuel_pump_side"
+  }
+}

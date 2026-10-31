@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "IGI",
+    "IPI",
+    "IRI"
+  ],
+  "key": {
+    "I": "minecraft:iron_ingot",
+    "G": "minecraft:glass_pane",
+    "P": "reallife:banknote_1000",
+    "R": "minecraft:redstone"
+  },
+  "result": {
+    "id": "reallife:atm"
+  }
+}

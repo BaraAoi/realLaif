@@ -1,0 +1,8 @@
+{
+  "parent": "minecraft:block/orientable",
+  "textures": {
+    "top": "reallife:block/pit_receiver_top",
+    "front": "reallife:block/pit_receiver_front",
+    "side": "reallife:block/pit_receiver_side"
+  }
+}
