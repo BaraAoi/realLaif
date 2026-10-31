@@ -1,0 +1,18 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "GDG",
+    "RQR",
+    "III"
+  ],
+  "key": {
+    "G": "minecraft:gold_ingot",
+    "D": "minecraft:diamond",
+    "R": "minecraft:redstone",
+    "Q": "minecraft:quartz",
+    "I": "minecraft:iron_ingot"
+  },
+  "result": {
+    "id": "reallife:gpu"
+  }
+}

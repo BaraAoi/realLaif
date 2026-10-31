@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "GGG",
+    "IPI",
+    "SSS"
+  ],
+  "key": {
+    "G": "minecraft:glass",
+    "I": "minecraft:gold_ingot",
+    "P": "minecraft:paper",
+    "S": "minecraft:polished_andesite"
+  },
+  "result": {
+    "id": "reallife:bank_counter"
+  }
+}

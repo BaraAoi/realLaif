@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "GDG",
+    "EPE",
+    "GDG"
+  ],
+  "key": {
+    "G": "minecraft:gold_block",
+    "D": "minecraft:diamond",
+    "E": "minecraft:emerald",
+    "P": "minecraft:paper"
+  },
+  "result": {
+    "id": "reallife:casino_permit"
+  }
+}
