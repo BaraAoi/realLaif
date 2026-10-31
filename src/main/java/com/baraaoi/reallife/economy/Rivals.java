@@ -197,7 +197,7 @@ public final class Rivals {
             int z = b.counter.getZ() + (int) Math.round(Math.sin(ang) * dist);
             BlockPos probe = new BlockPos(x, 64, z);
             if (!w.isLoaded(probe) || !w.isLoaded(probe.offset(8, 0, 8)) || !w.isLoaded(probe.offset(-8, 0, -8))) continue;
-            int h = w.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
+            int h = com.baraaoi.reallife.util.Ground.height(w, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
             if (Math.abs(h - b.counter.getY()) > 12) continue;
             BlockPos origin = new BlockPos(x, h, z);
             BlockState ground = w.getBlockState(origin.below());
@@ -217,7 +217,7 @@ public final class Rivals {
     static boolean flat(Level w, Blueprint b, int h) {
         for (int[] c : new int[][]{{-3, 0}, {3, 0}, {-3, 6}, {3, 6}, {0, 3}}) {
             BlockPos p = b.pos(c[0], 0, c[1]);
-            int y = w.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, p.getX(), p.getZ());
+            int y = com.baraaoi.reallife.util.Ground.height(w, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, p.getX(), p.getZ());
             if (Math.abs(y - h) > 2) return false;
             if (w.getBlockState(new BlockPos(p.getX(), y - 1, p.getZ())).liquid()) return false;
         }

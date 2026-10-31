@@ -103,7 +103,7 @@ public final class Inspections {
         for (BlockPos mp : BlockPos.betweenClosed(b.min, b.max)) {
             BlockState st = w.getBlockState(mp);
             if (st.getBlock() == Blocks.COBWEB) cobweb++;
-            if (st.getBlock() == Blocks.CAULDRON && st.getValue(LayeredCauldronBlock.LEVEL) > 0) sink = true;
+            if (st.getBlock() == Blocks.WATER_CAULDRON) sink = true;
             if (mp.getY() < floorY || !st.isAir() || w.canSeeSky(mp)) continue;
             BlockPos pos = mp.immutable();
             for (Direction d : Direction.values()) {

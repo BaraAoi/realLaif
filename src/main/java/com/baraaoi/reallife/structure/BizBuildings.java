@@ -45,7 +45,7 @@ public final class BizBuildings {
     }
 
     static BlockState water() {
-        return Blocks.CAULDRON.defaultBlockState().setValue(LayeredCauldronBlock.LEVEL, 3);
+        return Blocks.WATER_CAULDRON.defaultBlockState().setValue(LayeredCauldronBlock.LEVEL, 3);
     }
 
     /** Решётка/забор, соединённые вдоль x (east-west) или вдоль z. */

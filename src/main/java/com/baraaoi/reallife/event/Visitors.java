@@ -633,7 +633,7 @@ public final class Visitors {
                 for (int z = min.getZ() - 3; z <= max.getZ() + 3; z++) {
                     boolean ring = x < min.getX() - 1 || x > max.getX() + 1 || z < min.getZ() - 1 || z > max.getZ() + 1;
                     if (!ring) continue;
-                    int y = w.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
+                    int y = com.baraaoi.reallife.util.Ground.height(w, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
                     BlockPos p = new BlockPos(x, y, z);
                     if (standable(w, p)) spots.add(p);
                 }
@@ -654,7 +654,7 @@ public final class Visitors {
         int cx = (min.getX() + max.getX()) / 2;
         int[][] corners = {{max.getX() + 2, cz - 1}, {min.getX() - 4, cz - 1}, {cx - 1, max.getZ() + 2}, {cx - 1, min.getZ() - 4}};
         for (int[] c : corners) {
-            int y = w.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, c[0] + 1, c[1] + 1);
+            int y = com.baraaoi.reallife.util.Ground.height(w, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, c[0] + 1, c[1] + 1);
             BlockPos lo = new BlockPos(c[0], y, c[1]);
             BlockPos hi = lo.offset(2, 2, 2);
             boolean ok = true;
@@ -1362,9 +1362,9 @@ public final class Visitors {
             double ang = R.nextDouble() * Math.PI * 2;
             int r = 30 + R.nextInt(31);
             int x = (int) Math.round(p.getX() + Math.cos(ang) * r), z = (int) Math.round(p.getZ() + Math.sin(ang) * r);
-            int top = w.getHeight(Heightmap.Types.OCEAN_FLOOR, x, z);
+            int top = com.baraaoi.reallife.util.Ground.height(w, Heightmap.Types.OCEAN_FLOOR, x, z);
             BlockPos pos = new BlockPos(x, top - 4, z);
-            if (pos.getY() < 6 || data.owner(EconomyData.chunkKey(pos)) != null) continue;
+            if (pos.getY() < w.getMinY() + 6 || data.owner(EconomyData.chunkKey(pos)) != null) continue;
             if (!w.getFluidState(pos.above(4)).isEmpty()) continue;
             w.setBlock(pos, Blocks.CHEST.defaultBlockState(), 2);
             BlockEntity te = w.getBlockEntity(pos);

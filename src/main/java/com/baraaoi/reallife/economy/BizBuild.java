@@ -62,7 +62,7 @@ public final class BizBuild {
         BlockPos p1 = b.pos(x1, y1, z1), p2 = b.pos(x2, y2, z2);
         BlockPos min = new BlockPos(Math.min(p1.getX(), p2.getX()), Math.min(p1.getY(), p2.getY()), Math.min(p1.getZ(), p2.getZ()));
         BlockPos max = new BlockPos(Math.max(p1.getX(), p2.getX()), Math.max(p1.getY(), p2.getY()), Math.max(p1.getZ(), p2.getZ()));
-        if (min.getY() < 3 || max.getY() > 250) return "слишком высоко или низко";
+        if (min.getY() < w.getMinY() + 3 || max.getY() > w.getMaxY() - 5) return "слишком высоко или низко";
         for (Mall m : data.malls) {
             if (min.getX() <= m.max.getX() + 1 && max.getX() >= m.min.getX() - 1 && min.getZ() <= m.max.getZ() + 1
                     && max.getZ() >= m.min.getZ() - 1 && min.getY() <= m.max.getY() + 1 && max.getY() >= m.min.getY() - 1) {

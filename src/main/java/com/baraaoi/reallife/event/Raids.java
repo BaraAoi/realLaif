@@ -235,7 +235,7 @@ public final class Raids {
             int x = center.getX() + (int) Math.round(Math.cos(ang) * dist);
             int z = center.getZ() + (int) Math.round(Math.sin(ang) * dist);
             if (!w.isLoaded(new BlockPos(x, 64, z))) continue;
-            int y = w.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
+            int y = com.baraaoi.reallife.util.Ground.height(w, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
             BlockPos p = new BlockPos(x, y, z);
             if (Math.abs(y - center.getY()) > 24) continue;
             if (w.getBlockState(p.below()).liquid()) continue;

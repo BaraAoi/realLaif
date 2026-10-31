@@ -891,9 +891,9 @@ public class SelfTest {
         data.claim(builder, ck);
         check(builder.equals(data.owner(ck)) && data.placedCount(ck, builder) == 0, "land claim");
         int cx = (base.getX() + 400) >> 4, cz = base.getZ() >> 4;
-        DebtManager.wipeLayers(ow, cx, cz, ow.getMaxY(), 0);
+        DebtManager.wipeLayers(ow, cx, cz, ow.getMaxY(), ow.getMinY());
         boolean clean = true;
-        for (int y = 5; y < 255; y++) if (!ow.isEmptyBlock(new BlockPos((cx << 4) + 7, y, (cz << 4) + 7))) clean = false;
+        for (int y = ow.getMinY() + 5; y < ow.getMaxY(); y++) if (!ow.isEmptyBlock(new BlockPos((cx << 4) + 7, y, (cz << 4) + 7))) clean = false;
         check(clean, "evicted chunk wiped");
         check(ow.getBlockState(new BlockPos(cx << 4, 0, cz << 4)).getBlock() == Blocks.BEDROCK, "bedrock remains");
 

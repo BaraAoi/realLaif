@@ -192,7 +192,7 @@ public final class LegalBiz {
     
     public static String checkSite(Level world, BlockPos pos, EconomyData data, UUID owner) {
         if (world.dimension() != Level.OVERWORLD) return "заведения открывают только в обычном мире";
-        if (pos.getY() < 2 || pos.getY() > 250) return "слишком высоко или низко";
+        if (pos.getY() < world.getMinY() + 2 || pos.getY() > world.getMaxY() - 5) return "слишком высоко или низко";
         if (data.isProtected(pos)) return "это городская постройка";
         for (LegalBusiness b : data.businesses) {
             if (LegalBusiness.zonesOverlap(b.counter, pos)) {
@@ -393,7 +393,7 @@ public final class LegalBiz {
         BlockPos.MutableBlockPos m = new BlockPos.MutableBlockPos();
         for (int x = b.min.getX(); x <= b.max.getX(); x++)
             for (int z = b.min.getZ(); z <= b.max.getZ(); z++)
-                for (int y = Math.max(0, b.min.getY()); y <= Math.min(255, b.max.getY()); y++) {
+                for (int y = Math.max(w.getMinY(), b.min.getY()); y <= Math.min(w.getMaxY(), b.max.getY()); y++) {
                     m.set(x, y, z);
                     BlockState st = w.getBlockState(m);
                     if (st.isAir()) continue;

@@ -448,7 +448,7 @@ public class Buildings {
         // 2 этаж: гардероб, ванная, кабинет, растения
         b.set(-4, 5, 3, s(Blocks.BARREL)); b.set(-4, 6, 3, s(Blocks.BARREL));
         b.set(-4, 5, 4, s(Blocks.BARREL)); b.set(-4, 6, 4, s(Blocks.BARREL));
-        b.set(3, 5, 6, s(Blocks.CAULDRON).setValue(LayeredCauldronBlock.LEVEL, 3));
+        b.set(3, 5, 6, s(Blocks.WATER_CAULDRON).setValue(LayeredCauldronBlock.LEVEL, 3));
         b.set(3, 5, 5, s(Blocks.QUARTZ_SLAB));
         b.set(2, 5, 6, s(Blocks.CARPET.white()));
         b.set(4, 5, 2, s(Blocks.LECTERN));
@@ -548,8 +548,8 @@ public class Buildings {
         b.set(-6, 6, 3, s(Blocks.BARREL)); b.set(-6, 7, 3, s(Blocks.BARREL));
         b.set(-6, 6, 4, s(Blocks.BARREL)); b.set(-6, 7, 4, s(Blocks.BARREL));
         b.set(-6, 6, 5, chest(Direction.EAST));
-        b.set(4, 6, 1, s(Blocks.CAULDRON).setValue(LayeredCauldronBlock.LEVEL, 3));
-        b.set(5, 6, 1, s(Blocks.CAULDRON).setValue(LayeredCauldronBlock.LEVEL, 3));
+        b.set(4, 6, 1, s(Blocks.WATER_CAULDRON).setValue(LayeredCauldronBlock.LEVEL, 3));
+        b.set(5, 6, 1, s(Blocks.WATER_CAULDRON).setValue(LayeredCauldronBlock.LEVEL, 3));
         for (int x = 3; x <= 5; x++) b.set(x, 6, 2, s(Blocks.CARPET.white()));
         b.set(5, 6, 3, s(Blocks.POTTED_BAMBOO));
         b.set(3, 6, 4, s(Blocks.POTTED_ORANGE_TULIP));
@@ -709,7 +709,7 @@ public class Buildings {
         // пентхаус: холодильник, ванна
         b.set(4, 15, 8, counter(ModBlocks.FRIDGE.get(), Direction.WEST));
         b.set(4, 16, 8, counter(ModBlocks.FRIDGE.get(), Direction.WEST));
-        b.set(5, 15, 10, s(Blocks.CAULDRON).setValue(LayeredCauldronBlock.LEVEL, 3));
+        b.set(5, 15, 10, s(Blocks.WATER_CAULDRON).setValue(LayeredCauldronBlock.LEVEL, 3));
         return b;
     }
 

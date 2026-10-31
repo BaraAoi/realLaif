@@ -88,10 +88,10 @@ public class DebtManager {
     private static void tickEvictions(ServerLevel ow) {
         if (EVICTIONS.isEmpty()) return;
         Eviction e = EVICTIONS.get(0);
-        int to = Math.max(0, e.y - 7);
+        int to = Math.max(ow.getMinY(), e.y - 7);
         wipeLayers(ow, e.cx, e.cz, e.y, to);
         e.y = to - 1;
-        if (e.y < 0) EVICTIONS.remove(0);
+        if (e.y < ow.getMinY()) EVICTIONS.remove(0);
     }
 
     // ================================================================== стадии
@@ -329,7 +329,7 @@ public class DebtManager {
         }
         if (w.dimension() == Level.OVERWORLD) {
             int x = base.getX() + 3, z = base.getZ() + 3;
-            int y = w.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
+            int y = com.baraaoi.reallife.util.Ground.height(w, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
             if (Math.abs(y - base.getY()) < 6) return new BlockPos(x, y, z);
         }
         return base;
@@ -631,7 +631,7 @@ public class DebtManager {
                 double d = m.distSqr(ref);
                 if (d < best) { best = d; mfo = m; }
             }
-            int floor = mfo != null ? mfo.getY() : ow.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, sx, sz);
+            int floor = mfo != null ? mfo.getY() : com.baraaoi.reallife.util.Ground.height(ow, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, sx, sz);
             int mx = mfo != null ? mfo.getX() : sx, mz = mfo != null ? mfo.getZ() : sz;
             int y = floor - 10;
             BlockPos c = new BlockPos(mx, y, mz);
@@ -755,7 +755,7 @@ public class DebtManager {
         }
         LevelData info = ow.getLevelData();
         int x = info.getRespawnData().pos().getX(), z = info.getRespawnData().pos().getZ();
-        int y = ow.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
+        int y = com.baraaoi.reallife.util.Ground.height(ow, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
         p.teleportTo(ow, x + 0.5, y, z + 0.5, java.util.Set.of(), p.getYRot(), p.getXRot(), false);
         return "на точку спавна мира (кровати и дома нет — поставьте кровать и поспите в ней)";
     }
@@ -769,7 +769,7 @@ public class DebtManager {
                         for (int dz = -d; dz <= d; dz++) {
                             if (Math.max(Math.abs(dx), Math.abs(dz)) != d) continue;
                             BlockPos q = pos.offset(dx, dy * sy, dz);
-                            if (q.getY() < 1 || q.getY() > 254) continue;
+                            if (q.getY() < w.getMinY() + 1 || q.getY() > w.getMaxY() - 1) continue;
                             if (w.isEmptyBlock(q) && w.isEmptyBlock(q.above()) && w.getBlockState(q.below()).isSolid()
                                     && !w.getBlockState(q.below()).liquid()) return q;
                         }
@@ -1159,9 +1159,9 @@ public class DebtManager {
         int sx = info.getRespawnData().pos().getX(), sz = info.getRespawnData().pos().getZ();
         net.minecraft.core.Direction south = net.minecraft.core.Direction.SOUTH;
         if (Config.SPAWN_BUILDINGS.get() && !data.spawnBuilt) {
-            int by = ow.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, sx, sz + 6);
+            int by = com.baraaoi.reallife.util.Ground.height(ow, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, sx, sz + 6);
             Buildings.buildBank(ow, new BlockPos(sx, by, sz + 6), south, true);
-            int my = ow.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, sx - 18, sz + 6);
+            int my = com.baraaoi.reallife.util.Ground.height(ow, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, sx - 18, sz + 6);
             Buildings.buildMfo(ow, new BlockPos(sx - 18, my, sz + 6), south, true);
             data.spawnBuilt = true;
             data.spawnVersion = 3;
@@ -1169,10 +1169,10 @@ public class DebtManager {
         } else if (data.spawnBuilt && data.spawnVersion < 3) {
             // мир с версии 2: находим банк и МФО по стойкам, перестраиваем банк (кассиры) и делаем оба неразрушимыми
             BlockPos bc = findInColumn(ow, sx, sz + 11, com.baraaoi.reallife.registry.ModBlocks.BANK_COUNTER.get());
-            int by = bc != null ? bc.getY() - 1 : ow.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, sx, sz + 6);
+            int by = bc != null ? bc.getY() - 1 : com.baraaoi.reallife.util.Ground.height(ow, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, sx, sz + 6);
             Buildings.buildBank(ow, new BlockPos(sx, by, sz + 6), south, true);
             BlockPos mc = findInColumn(ow, sx - 18, sz + 11, com.baraaoi.reallife.registry.ModBlocks.MFO_COUNTER.get());
-            int my = mc != null ? mc.getY() - 1 : ow.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, sx - 18, sz + 6);
+            int my = mc != null ? mc.getY() - 1 : com.baraaoi.reallife.util.Ground.height(ow, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, sx - 18, sz + 6);
             Buildings.buildMfo(ow, new BlockPos(sx - 18, my, sz + 6), south, true);
             data.spawnVersion = 3;
             com.baraaoi.reallife.RealLife.LOG.info("Real Life: spawn bank rebuilt (v3), bank y=" + by + ", mfo y=" + my);
@@ -1199,7 +1199,7 @@ public class DebtManager {
     }
 
     private static BlockPos findInColumn(ServerLevel w, int x, int z, net.minecraft.world.level.block.Block b) {
-        for (int y = w.getMaxY(); y > 0; y--) {
+        for (int y = w.getMaxY(); y > w.getMinY(); y--) {
             BlockPos p = new BlockPos(x, y, z);
             if (w.getBlockState(p).getBlock() == b) return p;
         }
@@ -1225,7 +1225,7 @@ public class DebtManager {
                 for (int lx : new int[]{-16, 0, 16})
                     for (int lz : new int[]{-8, 12, 31}) {
                         BlockPos q = probe.pos(lx, 0, lz);
-                        int h = ow.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, q.getX(), q.getZ());
+                        int h = com.baraaoi.reallife.util.Ground.height(ow, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, q.getX(), q.getZ());
                         hs[n++] = h;
                         if (ow.getBlockState(new BlockPos(q.getX(), h - 1, q.getZ())).liquid()) water++;
                         long ck = EconomyData.chunkKey(q);
