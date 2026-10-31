@@ -23,7 +23,7 @@ public final class RealLife {
 
     /** Версия мода (из mods.toml / gradle.properties: mod_version). */
     public static String version() {
-        return net.minecraftforge.fml.ModList.get().getModContainerById(MODID)
+        return net.minecraftforge.fml.ModList.getModContainerById(MODID)
                 .map(c -> c.getModInfo().getVersion().toString()).orElse("?");
     }
 

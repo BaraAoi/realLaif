@@ -34,7 +34,7 @@ public class ItemValues {
         put(Items.WHEAT, 1); put(Items.BREAD, 3); put(Items.CARROT, 1); put(Items.POTATO, 1); put(Items.BAKED_POTATO, 2);
         put(Items.BEETROOT, 1); put(Items.SUGAR_CANE, 1); put(Items.PUMPKIN, 2); put(Items.MELON, 3);
         put(Items.COOKED_BEEF, 4); put(Items.COOKED_PORKCHOP, 4); put(Items.COOKED_CHICKEN, 3); put(Items.COOKED_MUTTON, 3);
-        put(Items.LEATHER, 3); put(Items.WHITE_WOOL, 2); put(Items.EGG, 1); put(Items.HONEY_BOTTLE, 4);
+        put(Items.LEATHER, 3); put(Items.WOOL.white(), 2); put(Items.EGG, 1); put(Items.HONEY_BOTTLE, 4);
         put(Items.OAK_LOG, 2); put(Items.SPRUCE_LOG, 2); put(Items.BIRCH_LOG, 2); put(Items.JUNGLE_LOG, 2);
         put(Items.ACACIA_LOG, 2); put(Items.DARK_OAK_LOG, 2);
         put(Items.STRING, 1); put(Items.BONE, 1); put(Items.GUNPOWDER, 3); put(Items.ENDER_PEARL, 15);

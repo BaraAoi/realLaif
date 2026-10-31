@@ -102,19 +102,19 @@ public class Trades {
             swap(o, Items.POTATO, 8, Items.BAKED_POTATO, 3);
         } else {
             sell(o, 10, Items.GLASS, 16);
-            sell(o, 10, Items.WHITE_WOOL, 4);
+            sell(o, 10, Items.WOOL.white(), 4);
             sell(o, 10, Items.SAND, 32);
             sell(o, 10, Items.BRICKS, 8);
             sell(o, 10, Items.LADDER, 8);
             sell(o, 10, Items.LANTERN, 2);
-            sell(o, 10, Items.WHITE_BED, 1);
+            sell(o, 10, Items.BED.white(), 1);
             sell(o, 10, Items.CHEST, 2);
             // обмен ресурсов
             swap(o, Items.ROTTEN_FLESH, 16, Items.LEATHER, 1);
             swap(o, Items.GRAVEL, 4, Items.FLINT, 1);
             swap(o, Items.COBBLESTONE, 32, Items.STONE_BRICKS, 16);
             swap(o, Items.BONE, 3, Items.BONE_MEAL, 12);
-            swap(o, Items.STRING, 4, Items.WHITE_WOOL, 1);
+            swap(o, Items.STRING, 4, Items.WOOL.white(), 1);
         }
         return o;
     }

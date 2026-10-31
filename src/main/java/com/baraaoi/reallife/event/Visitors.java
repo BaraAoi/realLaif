@@ -258,8 +258,8 @@ public final class Visitors {
         }
         if (p instanceof ServerPlayer) {
             ServerPlayer sp = (ServerPlayer) p;
-            BlockPos bed = sp.func_241140_K_();
-            if (bed != null && sp.func_241141_L_() == Level.OVERWORLD) l.add(bed);
+            BlockPos bed = (sp.getRespawnConfig() == null ? null : sp.getRespawnConfig().respawnData().pos());
+            if (bed != null && (sp.getRespawnConfig() == null ? null : sp.getRespawnConfig().respawnData().dimension()) == Level.OVERWORLD) l.add(bed);
         }
         return l;
     }
@@ -289,16 +289,16 @@ public final class Visitors {
         List<LegalBusiness> l = new ArrayList<>();
         for (LegalBusiness b : EconomyData.get(server).bizOf(a.id)) {
             if (withWorkers ? b.workers.isEmpty() : (b.workers.isEmpty() && b.days == 0)) continue;
-            if (b.counter.distanceSq(p.getX(), p.getY(), p.getZ(), true) > 64 * 64) continue;
+            if (b.counter.distSqr(p.getX(), p.getY(), p.getZ(), true) > 64 * 64) continue;
             l.add(b);
         }
         return l.isEmpty() ? null : l.get(R.nextInt(l.size()));
     }
 
     static void title(ServerPlayer p, String title, String sub) {
-        p.connection.sendPacket(new ClientboundSetTitleTextPacket(5, 60, 20));
-        p.connection.sendPacket(new ClientboundSetTitleTextPacket(ClientboundSetTitleTextPacket.Type.SUBTITLE, Component.literal(sub)));
-        p.connection.sendPacket(new ClientboundSetTitleTextPacket(ClientboundSetTitleTextPacket.Type.TITLE, Component.literal(title)));
+        p.connection.send(new net.minecraft.network.protocol.game.ClientboundSetTitlesAnimationPacket(5, 60, 20));
+        p.connection.send(new net.minecraft.network.protocol.game.ClientboundSetSubtitleTextPacket(Component.literal(sub)));
+        p.connection.send(new ClientboundSetTitleTextPacket(Component.literal(title)));
     }
 
     public static void tick(MinecraftServer server) {
@@ -482,7 +482,7 @@ public final class Visitors {
 
     private static void finishQuiet(Session s) {
         // игрок умер/вышел посреди пожара — огонь гасят, чтобы не сгорело всё без него
-        if (s.kind == VisitorKind.FIRE && s.stage == 1 && s.box != null && s.world != null) Inspections.clearFire(s.world, s.box[0], s.box[1]);
+        if (s.kind == VisitorKind.FIRE && s.stage == 1 && s.box != null && s.world != null) Inspections.extinguish(s.world, s.box[0], s.box[1]);
         for (VisitorEntity e : s.npcs) {
             MANAGED.remove(e.getUUID());
             if (e.isAlive()) e.discard();
@@ -508,12 +508,11 @@ public final class Visitors {
 
     static ItemStack named(Item item, int count, String name, String... lore) {
         ItemStack st = new ItemStack(item, count);
-        st.setDisplayName(Component.literal(name));
+        st.set(net.minecraft.core.component.DataComponents.CUSTOM_NAME, Component.literal(name));
         if (lore.length > 0) {
-            CompoundTag disp = st.getOrCreateTagElement("display");
-            ListTag l = new ListTag();
-            for (String s : lore) l.add(StringTag.valueOf(Component.Serializer.toJson(Component.literal(s))));
-            disp.put("Lore", l);
+            java.util.List<Component> l = new java.util.ArrayList<>();
+            for (String s : lore) l.add(Component.literal(s));
+            st.set(net.minecraft.core.component.DataComponents.LORE, new net.minecraft.world.item.component.ItemLore(l));
         }
         return st;
     }
@@ -586,7 +585,7 @@ public final class Visitors {
         int n = 0;
         for (BlockPos p : BlockPos.betweenClosed(min, max)) {
             BlockState st = w.getBlockState(p);
-            if (st.isAir(w, p) || st.getFluidState().is(FluidTags.LAVA) || st.getBlock() == Blocks.FIRE) continue;
+            if (st.isAir() || st.getFluidState().is(FluidTags.LAVA) || st.getBlock() == Blocks.FIRE) continue;
             if (st.getLightEmission(w, p) > 0) n++;
         }
         return n;
@@ -643,7 +642,7 @@ public final class Visitors {
         int placed = 0;
         for (BlockPos p : spots) {
             if (placed >= n) break;
-            w.setBlockState(p, Blocks.WATER.defaultBlockState(), 3);
+            w.setBlock(p, Blocks.WATER.defaultBlockState(), 3);
             placed++;
         }
         return placed;
@@ -666,7 +665,7 @@ public final class Visitors {
             if (!ok) continue;
             BlockPos center = lo.offset(1, 1, 1);
             for (BlockPos p : BlockPos.betweenClosed(lo, hi)) {
-                w.setBlockState(p.immutable(), p.equals(center) ? Blocks.AIR.defaultBlockState() : Blocks.DIRT.defaultBlockState(), 3);
+                w.setBlock(p.immutable(), p.equals(center) ? Blocks.AIR.defaultBlockState() : Blocks.DIRT.defaultBlockState(), 3);
             }
             return lo;
         }
@@ -675,8 +674,8 @@ public final class Visitors {
 
     private static AbstractHorse findHorse(Player p) {
         List<AbstractHorse> l = p.level().getEntitiesOfClass(AbstractHorse.class, p.getBoundingBox().inflate(64.0D),
-                h -> h.isAlive() && h.isTame() && h.isSaddled() && !h.isVehicle() && !(h instanceof Llama)
-                        && p.getUUID().equals(h.getOwnerUniqueId()));
+                h -> h.isAlive() && h.isTamed() && h.isSaddled() && !h.isVehicle() && !(h instanceof Llama)
+                        && h.getOwnerReference() != null && p.getUUID().equals(h.getOwnerReference().getUUID()));
         return l.isEmpty() ? null : l.get(0);
     }
 
@@ -713,7 +712,7 @@ public final class Visitors {
     }
 
     private static Session start(ServerPlayer p, Account a, VisitorKind k, long now, boolean forced) {
-        ServerLevel w = p.getServerWorld();
+        ServerLevel w = p.level();
         Session s = new Session(p.getUUID(), k, now);
         s.forced = forced;
         ACTIVE.put(p.getUUID(), s);
@@ -765,7 +764,7 @@ public final class Visitors {
                 if (horse == null) { ACTIVE.remove(p.getUUID()); return null; }
                 e = ModEntities.VISITOR.get().create(w, net.minecraft.world.entity.EntitySpawnReason.MOB_SUMMONED);
                 if (e == null) { ACTIVE.remove(p.getUUID()); return null; }
-                e.snapTo(horse.getX(), horse.getY(), horse.getZ(), horse.rotationYaw, 0F);
+                e.snapTo(horse.getX(), horse.getY(), horse.getZ(), horse.getYRot(), 0F);
                 e.setKind(k);
                 e.targetId = p.getUUID();
                 e.setCustomName(Component.literal(k.display));
@@ -774,7 +773,7 @@ public final class Visitors {
                 MANAGED.add(e.getUUID());
                 w.addFreshEntity(e);
                 s.npcs.add(e);
-                e.startRiding(horse, true);
+                e.startRiding(horse, true, true);
                 s.horse = horse;
                 note(p, "§c§l[!] Конокрад уводит вашу лошадь! §fДогоните и ударьте его — иначе через 90 секунд её не найти.");
                 break;
@@ -919,7 +918,7 @@ public final class Visitors {
         Session s = new Session(p.getUUID(), VisitorKind.REALTOR, now);
         s.visit = visit;
         ACTIVE.put(p.getUUID(), s);
-        spawn(s, p.getServerWorld(), p, VisitorKind.REALTOR, 3, 6);
+        spawn(s, p.level(), p, VisitorKind.REALTOR, 3, 6);
         if (s.npcs.isEmpty()) { ACTIVE.remove(p.getUUID()); return; }
         s.price = 200 + (visit - 1) * 50;
         String hello = visit == 1 ? "Здравствуйте! Эдуард, агентство «Честный метр»." : visit == 2 ? "Это снова я, Эдуард! Я подумал..." : "Последнее предложение, честно!";
@@ -932,12 +931,12 @@ public final class Visitors {
         switch (r) {
             case 0:
                 real = R.nextDouble() < 0.3;
-                s.offer = named(real ? Items.DIAMOND : Items.LIGHT_BLUE_STAINED_GLASS, 1, "§bАлмаз (настоящий)");
+                s.offer = named(real ? Items.DIAMOND : Items.STAINED_GLASS.lightBlue(), 1, "§bАлмаз (настоящий)");
                 break;
             case 1:
                 real = R.nextDouble() < 0.4;
                 s.offer = PotionContents.createItemStack(Items.POTION, real ? Potions.STRONG_REGENERATION : Potions.WATER);
-                s.offer.setDisplayName(Component.literal("§dЗелье бессмертия"));
+                s.offer.set(net.minecraft.core.component.DataComponents.CUSTOM_NAME, Component.literal("§dЗелье бессмертия"));
                 break;
             case 2:
                 s.offer = named(Items.BRICK, 1, "§fАйфон 15 Про Макс", "§7В коробке. Тяжёленький какой-то...");
@@ -973,7 +972,7 @@ public final class Visitors {
     }
 
     private static void onAnswer(Session s, ServerPlayer p, Account a, boolean yes, long now) {
-        ServerLevel w = p.getServerWorld();
+        ServerLevel w = p.level();
         switch (s.kind) {
             case TAX:
                 if (yes) {
@@ -1209,7 +1208,7 @@ public final class Visitors {
                     if (yes && BankService.charge(p, a, s.price)) {
                         if (R.nextDouble() < 0.6) {
                             ItemStack pick = named(Items.DIAMOND_PICKAXE, 1, "§bКирка «с объекта»", "§7Без документов. Не спрашивай.");
-                            pick.setDamage(pick.getMaxDamage() * 2 / 3);
+                            pick.setDamageValue(pick.getMaxDamage() * 2 / 3);
                             BankService.give(p, pick);
                             say(s, p, "Держи. Почти новая. Если что — ты меня не видел.");
                         } else {
@@ -1277,7 +1276,7 @@ public final class Visitors {
                     BankService.give(p, new ItemStack(Items.TORCH, 32));
                     BankService.give(p, new ItemStack(Items.BREAD, 8));
                     BankService.give(p, new ItemStack(Items.COOKED_BEEF, 4));
-                    BankService.give(p, new ItemStack(Items.RED_BED, 1));
+                    BankService.give(p, new ItemStack(Items.BED.red(), 1));
                     if (R.nextDouble() < 0.25) BankService.give(p, named(Items.COMPASS, 1, "§fКомпас (китайский)", "§7Показывает куда-то"));
                     say(s, p, "Носи на здоровье, дорогой! Кровать — ортопедическая. Почти.");
                 } else {
@@ -1367,7 +1366,7 @@ public final class Visitors {
             BlockPos pos = new BlockPos(x, top - 4, z);
             if (pos.getY() < 6 || data.owner(EconomyData.chunkKey(pos)) != null) continue;
             if (!w.getFluidState(pos.above(4)).isEmpty()) continue;
-            w.setBlockState(pos, Blocks.CHEST.defaultBlockState(), 2);
+            w.setBlock(pos, Blocks.CHEST.defaultBlockState(), 2);
             BlockEntity te = w.getBlockEntity(pos);
             if (!(te instanceof Container)) continue;
             Container inv = (Container) te;
@@ -1434,7 +1433,7 @@ public final class Visitors {
             "Не я прихожу к должнику. Это долг в %s приходит ко мне. Подумай об этом."};
 
     private static void second(Session s, ServerPlayer p, Account a, long now) {
-        ServerLevel w = p.getServerWorld();
+        ServerLevel w = p.level();
         VisitorEntity m = s.main();
         if (s.kind == VisitorKind.HORSE_THIEF) {
             horseThief(s, p, now);
@@ -1659,7 +1658,7 @@ public final class Visitors {
             if (!s.spots.isEmpty()) {
                 say(s, p, "§c§lЛАВА В ЖИЛОМ ДОМЕ?! §fВызываю расчёт!");
                 for (int i = 0; i < 2; i++) {
-                    VisitorEntity f = spawn(s, p.getServerWorld(), p, VisitorKind.FIREMAN, 3, 6);
+                    VisitorEntity f = spawn(s, p.level(), p, VisitorKind.FIREMAN, 3, 6);
                     if (f != null) {
                         f.mode = VisitorEntity.GOTO;
                         f.gotoPos = s.spots.get(0);
@@ -1676,7 +1675,7 @@ public final class Visitors {
             int n = 0;
             for (BlockPos pos : s.spots) {
                 if (w.getFluidState(pos).is(FluidTags.LAVA)) {
-                    w.setBlockState(pos, Blocks.WATER.defaultBlockState(), 3);
+                    w.setBlock(pos, Blocks.WATER.defaultBlockState(), 3);
                     n++;
                 }
             }
@@ -1787,7 +1786,7 @@ public final class Visitors {
         int done = 0;
         while (done < n && !b.workers.isEmpty()) {
             UUID u = b.workers.remove(b.workers.size() - 1);
-            Entity e = w.getEntityByUuid(u);
+            Entity e = w.getEntity(u);
             if (e != null) e.discard();
             done++;
         }
@@ -1799,7 +1798,7 @@ public final class Visitors {
         MinecraftServer server = p.level().getServer();
         if (server == null || s.biz == null) { leave(s, now, 60); return; }
         long today = BankService.today(server);
-        ServerLevel w = p.getServerWorld();
+        ServerLevel w = p.level();
         LegalBusiness b = s.biz;
         if (s.kind == VisitorKind.SANEPID) {
             if (s.stage == 0) {
@@ -1902,7 +1901,7 @@ public final class Visitors {
                         VisitorEntity f = spawn(s, w, p, VisitorKind.FIREMAN, 3, 6);
                         if (f != null) { f.mode = VisitorEntity.GOTO; f.gotoPos = s.target; }
                     }
-                    int put = Inspections.clearFire(w, s.box[0], s.box[1]);
+                    int put = Inspections.extinguish(w, s.box[0], s.box[1]);
                     double fine = 1500 + 100.0 * put;
                     forceCharge(p, a, fine);
                     s.stage = 2;
@@ -2015,8 +2014,8 @@ public final class Visitors {
             case GOPNIK_FRIEND:
                 if (s.stage < 2 && s.leaveAt < 0) {
                     if (s.npcs.size() < 3) {
-                        spawn(s, p.getServerWorld(), p, VisitorKind.GOPNIK_FRIEND, 3, 5);
-                        spawn(s, p.getServerWorld(), p, VisitorKind.GOPNIK_FRIEND, 3, 5);
+                        spawn(s, p.level(), p, VisitorKind.GOPNIK_FRIEND, 3, 5);
+                        spawn(s, p.level(), p, VisitorKind.GOPNIK_FRIEND, 3, 5);
                     }
                     say(s, p, "§cТы чё, бессмертный?!");
                     fight(s, p, now);

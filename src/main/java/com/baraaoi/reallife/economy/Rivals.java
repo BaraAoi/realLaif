@@ -60,7 +60,7 @@ public final class Rivals {
             if (r.type != b.type) continue;
             if (b.inMall()) {
                 if (r.mallId == b.mallId) n++;
-            } else if (!r.inMall() && r.center().distanceSq(b.counter) <= (double) RADIUS * RADIUS) n++;
+            } else if (!r.inMall() && r.center().distSqr(b.counter) <= (double) RADIUS * RADIUS) n++;
         }
         return n;
     }
@@ -97,7 +97,7 @@ public final class Rivals {
                 if (count(data, b) >= MAX_NEAR || R.nextDouble() >= Config.RIVAL_CHANCE.get()) continue;
                 Rival r = spawnNear(ow, data, b, today);
                 if (r != null) {
-                    int dist = (int) Math.sqrt(r.center().distanceSq(b.counter));
+                    int dist = (int) Math.sqrt(r.center().distSqr(b.counter));
                     BankService.msg(p, RIV + "§cВ " + dist + " блоках от «" + b.type.title + "» открылся «" + r.name + "»!§f Пока он работает, "
                             + "выручка −" + Math.round(PER_RIVAL * 100) + "%. Разорится сам через несколько дней — или выкупите его за "
                             + Finance.money(buyoutPrice(r)) + " (ПКМ по вывеске).");
@@ -121,7 +121,7 @@ public final class Rivals {
         }
         LegalBusiness best = null;
         for (LegalBusiness b : data.businesses)
-            if (!b.inMall() && (best == null || b.counter.distanceSq(p.blockPosition()) < best.counter.distanceSq(p.blockPosition()))) best = b;
+            if (!b.inMall() && (best == null || b.counter.distSqr(p.blockPosition()) < best.counter.distSqr(p.blockPosition()))) best = b;
         if (best == null) {
             BankService.msg(p, RIV + "Рядом нет уличных заведений.");
             return;
@@ -228,7 +228,7 @@ public final class Rivals {
         for (LegalBusiness lb : data.businesses)
             if (Math.abs(lb.counter.getX() - origin.getX()) <= LegalBusiness.R_XZ + 11 && Math.abs(lb.counter.getZ() - origin.getZ()) <= LegalBusiness.R_XZ + 11) return true;
         for (Rival r : data.rivals)
-            if (!r.inMall() && r.center().distanceSq(origin) < 16 * 16) return true;
+            if (!r.inMall() && r.center().distSqr(origin) < 16 * 16) return true;
         return false;
     }
 
@@ -281,7 +281,7 @@ public final class Rivals {
     static void notifyClosed(MinecraftServer server, EconomyData data, Rival r, String how) {
         for (LegalBusiness b : data.businesses) {
             if (b.type != r.type) continue;
-            boolean affected = r.inMall() ? b.mallId == r.mallId : !b.inMall() && r.center().distanceSq(b.counter) <= (double) RADIUS * RADIUS;
+            boolean affected = r.inMall() ? b.mallId == r.mallId : !b.inMall() && r.center().distSqr(b.counter) <= (double) RADIUS * RADIUS;
             if (!affected) continue;
             ServerPlayer p = server.getPlayerList().getPlayer(b.owner);
             if (p != null) BankService.msg(p, RIV + "§aКонкурент «" + r.name + "» " + how + ".§f Покупатели возвращаются в «" + b.type.title + "».");
@@ -306,7 +306,7 @@ public final class Rivals {
                 + ". Разорится примерно через " + left + " дн.");
         net.minecraft.network.chat.MutableComponent b = Component.literal("§c§l[Выкупить и закрыть за " + Finance.money(buyoutPrice(r)) + "]");
         b.setStyle(Style.EMPTY.withClickEvent(new ClickEvent.RunCommand("/reallife rival buyout " + r.id)));
-        p.sendMessage(Component.literal("§c  ").append(b), p.getUUID());
+        p.sendSystemMessage(Component.literal("§c  ").append(b));
     }
 
     public static void buyout(ServerPlayer p, int id) {

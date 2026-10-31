@@ -108,7 +108,7 @@ public final class Raids {
             last = bp;
             if (bp.equals(target)) return true;
             BlockState st = w.getBlockState(bp);
-            if (st.isSolidRender(w, bp)) return false;
+            if (st.isSolidRender()) return false;
         }
         return true;
     }
@@ -122,7 +122,7 @@ public final class Raids {
     
     private static Entity spotter(ServerLevel w, BlockPos printer) {
         int r = Config.SPOT_RANGE.get();
-        AABB box = new AABB(printer).grow(r);
+        AABB box = new AABB(printer).inflate(r);
         for (Entity e : w.getEntitiesOfClass(Entity.class, box, Raids::isObserver)) {
             if (!e.isAlive() || e.distanceToSqr(printer.getX() + 0.5, printer.getY() + 0.5, printer.getZ() + 0.5) > r * r) continue;
             if (canSee(w, e.getEyePosition(1.0F), printer)) return e;
@@ -221,7 +221,7 @@ public final class Raids {
         double bd = Double.MAX_VALUE;
         for (BlockPos pos : a.printerList) {
             if (!w.isLoaded(pos)) continue;
-            double d = pos.distanceSq(p.getX(), p.getY(), p.getZ(), true);
+            double d = pos.distSqr(p.getX(), p.getY(), p.getZ(), true);
             if (d < bd) { bd = d; best = pos; }
         }
         return best;
@@ -255,7 +255,7 @@ public final class Raids {
         BlockPos printer = nearestPrinter(w, p, a);
         BlockPos anchor = printer;
         if (anchor == null && a.hasHouse && !a.houseMin.equals(BlockPos.ZERO) && w.isLoaded(a.houseMin)
-                && a.houseMin.distanceSq(p.blockPosition()) < 64 * 64) anchor = a.houseMin;
+                && a.houseMin.distSqr(p.blockPosition()) < 64 * 64) anchor = a.houseMin;
         if (anchor == null) anchor = p.blockPosition();
         com.baraaoi.reallife.entity.SnoopEntity e = ModEntities.SNOOP.get().create(w, net.minecraft.world.entity.EntitySpawnReason.MOB_SUMMONED);
         if (e == null) return null;
@@ -352,7 +352,7 @@ public final class Raids {
     public static boolean dig(ServerLevel w, EconomyData data, ListTag snap, BlockPos pos, BlockPos target) {
         if (pos.equals(target)) return true;
         BlockState st = w.getBlockState(pos);
-        if (st.isAir(w, pos)) return true;
+        if (st.isAir()) return true;
         if (st.getBlock() == ModBlocks.MONEY_PRINTER.get()) return true; // станки не трогаем — их изымут
         if (st.getDestroySpeed(w, pos) < 0 || data.isProtected(pos)) return false;
         CompoundTag t = new CompoundTag();
@@ -360,12 +360,12 @@ public final class Raids {
         t.put("s", NbtUtils.writeBlockState(st));
         BlockEntity te = w.getBlockEntity(pos);
         if (te != null) {
-            t.put("t", te.write(new CompoundTag()));
-            if (te instanceof Container) ((Container) te).clear();
+            t.put("t", com.baraaoi.reallife.util.Nbt.saveBE(te));
+            if (te instanceof Container) ((Container) te).clearContent();
         }
         snap.add(t);
-        w.levelEvent(2001, pos, Block.getStateId(st));
-        w.setBlockState(pos, Blocks.AIR.defaultBlockState(), Blueprint.FLAGS);
+        w.levelEvent(2001, pos, Block.getId(st));
+        w.setBlock(pos, Blocks.AIR.defaultBlockState(), Blueprint.FLAGS);
         return true;
     }
 
@@ -399,7 +399,7 @@ public final class Raids {
         Account a = data.get(p);
         List<BlockPos> found = new ArrayList<>();
         for (BlockPos pos : new ArrayList<>(a.printerList)) {
-            if (pos.distanceSq(r.target) <= 6 * 6 && isPrinter(w, pos)) found.add(pos);
+            if (pos.distSqr(r.target) <= 6 * 6 && isPrinter(w, pos)) found.add(pos);
         }
         if (isPrinter(w, r.target) && !found.contains(r.target)) found.add(r.target);
         if (found.isEmpty()) {
@@ -410,9 +410,9 @@ public final class Raids {
         }
         for (BlockPos pos : found) {
             BlockEntity te = w.getBlockEntity(pos);
-            if (te instanceof Container) ((Container) te).clear();
+            if (te instanceof Container) ((Container) te).clearContent();
             BlockState st = w.getBlockState(pos);
-            w.setBlockState(pos, Blocks.AIR.defaultBlockState(), 3);
+            w.setBlock(pos, Blocks.AIR.defaultBlockState(), 3);
             Business.onBroken(server, pos, st);
         }
         double fine = Config.RAID_FINE.get() * found.size();

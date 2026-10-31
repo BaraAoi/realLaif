@@ -277,7 +277,7 @@ public final class LegalBiz {
     /** Зарегистрировать заведение с главной кассой в pos (касса ставится, если её там нет). Используется и самотестом. */
     public static LegalBusiness register(EconomyData data, Level world, BlockPos pos, Direction facing, BizType type, UUID owner, String ownerName) {
         if (world.getBlockState(pos).getBlock() != ModBlocks.BIZ_COUNTER.get()) {
-            world.setBlockState(pos, ModBlocks.BIZ_COUNTER.get().defaultBlockState().setValue(HorizontalDirectionalBlock.HORIZONTAL_FACING, facing), 3);
+            world.setBlock(pos, ModBlocks.BIZ_COUNTER.get().defaultBlockState().setValue(HorizontalDirectionalBlock.FACING, facing), 3);
         }
         LegalBusiness b = new LegalBusiness();
         b.id = data.nextBizId++;
@@ -294,7 +294,7 @@ public final class LegalBiz {
     public static void close(MinecraftServer server, EconomyData data, LegalBusiness b, ServerPlayer by) {
         ServerLevel ow = EconomyData.overworld(server);
         for (UUID u : b.workers) {
-            Entity e = ow.getEntityByUuid(u);
+            Entity e = ow.getEntity(u);
             if (e != null) e.discard();
         }
         b.workers.clear();
@@ -390,11 +390,11 @@ public final class LegalBiz {
         Scan s = new Scan();
         s.warehouse = true;
         s.counterOk = w.getBlockState(b.counter).getBlock() == ModBlocks.BIZ_COUNTER.get();
-        BlockPos.Mutable m = new BlockPos.Mutable();
+        BlockPos.MutableBlockPos m = new BlockPos.MutableBlockPos();
         for (int x = b.min.getX(); x <= b.max.getX(); x++)
             for (int z = b.min.getZ(); z <= b.max.getZ(); z++)
                 for (int y = Math.max(0, b.min.getY()); y <= Math.min(255, b.max.getY()); y++) {
-                    m.setPos(x, y, z);
+                    m.set(x, y, z);
                     BlockState st = w.getBlockState(m);
                     if (st.isAir()) continue;
                     Block block = st.getBlock();
@@ -499,8 +499,8 @@ public final class LegalBiz {
         if (e == null) return null;
         float yaw = R.nextFloat() * 360F;
         e.snapTo(at.getX() + 0.5, at.getY(), at.getZ() + 0.5, yaw, 0F);
-        e.rotationYawHead = yaw;
-        e.renderYawOffset = yaw;
+        e.yHeadRot = yaw;
+        e.yBodyRot = yaw;
         e.setBizType(b.type);
         e.bizId = b.id;
         String name = b.workers.isEmpty() ? b.type.workerName : b.type.workerName + " " + (b.workers.size() + 1) + "-й";
@@ -514,11 +514,11 @@ public final class LegalBiz {
     /** Убрать из списка работников, которых больше нет (только если зона загружена). */
     static void pruneWorkers(ServerLevel w, LegalBusiness b) {
         if (!w.isLoaded(b.counter)) return;
-        b.workers.removeIf(u -> w.getEntityByUuid(u) == null);
+        b.workers.removeIf(u -> w.getEntity(u) == null);
     }
 
     static void hire(ServerPlayer p, Account a, LegalBusiness b) {
-        ServerLevel w = p.getServerWorld();
+        ServerLevel w = p.level();
         pruneWorkers(w, b);
         Scan s = scan(w, b);
         if (!s.counterOk) { BankService.msg(p, BIZ + "§cГлавная касса пропала."); return; }
@@ -548,11 +548,11 @@ public final class LegalBiz {
     }
 
     static void fire(ServerPlayer p, LegalBusiness b) {
-        ServerLevel w = p.getServerWorld();
+        ServerLevel w = p.level();
         pruneWorkers(w, b);
         if (b.workers.isEmpty()) { BankService.msg(p, BIZ + "Увольнять некого."); return; }
         UUID u = b.workers.remove(b.workers.size() - 1);
-        Entity e = w.getEntityByUuid(u);
+        Entity e = w.getEntity(u);
         if (e != null) e.discard();
         EconomyData.get(p.level().getServer()).setDirty();
         BankService.msg(p, BIZ + "§eРаботник уволен. §fОсталось: " + b.workers.size() + ".");
@@ -698,7 +698,7 @@ public final class LegalBiz {
     static void docs(ServerPlayer p, Account a, LegalBusiness b) {
         MinecraftServer server = p.level().getServer();
         if (server == null) return;
-        pruneWorkers(p.getServerWorld(), b);
+        pruneWorkers(p.level(), b);
         int n = b.workers.size();
         if (n == 0) { BankService.msg(p, BIZ + "Сначала наймите работников — оформлять пока некого."); return; }
         long today = BankService.today(server);

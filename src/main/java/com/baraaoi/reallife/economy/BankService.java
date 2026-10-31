@@ -220,12 +220,12 @@ public class BankService {
         t.putDouble("btcBase", Config.BTC_BASE_RATE.get());
         t.put("coins", Crypto.sync(data, a));
         t.putDouble("cryptoValue", Crypto.portfolio(data, a));
-        if (p.openContainer instanceof com.baraaoi.reallife.container.BizContainer) {
-            LegalBusiness ob = LegalBiz.bizForCounter(data, ((com.baraaoi.reallife.container.BizContainer) p.openContainer).getPos());
+        if (p.containerMenu instanceof com.baraaoi.reallife.container.BizContainer) {
+            LegalBusiness ob = LegalBiz.bizForCounter(data, ((com.baraaoi.reallife.container.BizContainer) p.containerMenu).getPos());
             if (ob != null) t.put("openBiz", LegalBiz.info(p.level(), ob, today, true));
         }
-        if (p.openContainer instanceof com.baraaoi.reallife.container.CryptoContainer) {
-            net.minecraft.world.level.block.entity.BlockEntity te = p.level().getBlockEntity(((com.baraaoi.reallife.container.CryptoContainer) p.openContainer).getPos());
+        if (p.containerMenu instanceof com.baraaoi.reallife.container.CryptoContainer) {
+            net.minecraft.world.level.block.entity.BlockEntity te = p.level().getBlockEntity(((com.baraaoi.reallife.container.CryptoContainer) p.containerMenu).getPos());
             if (te instanceof com.baraaoi.reallife.tile.CryptoRigTileEntity) {
                 com.baraaoi.reallife.tile.CryptoRigTileEntity rig = (com.baraaoi.reallife.tile.CryptoRigTileEntity) te;
                 CompoundTag r = new CompoundTag();
@@ -278,8 +278,8 @@ public class BankService {
     // ---------------------------------------------------------------- действия банка
 
     public static void handle(ServerPlayer p, int action, int arg1, int arg2) {
-        if (p.openContainer instanceof com.baraaoi.reallife.container.CasinoContainer) {
-            com.baraaoi.reallife.container.CasinoContainer cc = (com.baraaoi.reallife.container.CasinoContainer) p.openContainer;
+        if (p.containerMenu instanceof com.baraaoi.reallife.container.CasinoContainer) {
+            com.baraaoi.reallife.container.CasinoContainer cc = (com.baraaoi.reallife.container.CasinoContainer) p.containerMenu;
             if (action == Actions.CASINO_PLAY && cc.stillValid(p)) CasinoService.play(p, cc, arg1, arg2);
             return;
         }
@@ -288,30 +288,30 @@ public class BankService {
             return;
         }
         if (action == Actions.PRINTER_SET) {
-            if (p.openContainer instanceof com.baraaoi.reallife.container.PrinterContainer) {
-                com.baraaoi.reallife.container.PrinterContainer pc = (com.baraaoi.reallife.container.PrinterContainer) p.openContainer;
+            if (p.containerMenu instanceof com.baraaoi.reallife.container.PrinterContainer) {
+                com.baraaoi.reallife.container.PrinterContainer pc = (com.baraaoi.reallife.container.PrinterContainer) p.containerMenu;
                 if (pc.stillValid(p)) pc.setDenom(p, arg1);
             }
             return;
         }
-        if (p.openContainer instanceof com.baraaoi.reallife.container.BizContainer
-                || p.openContainer instanceof com.baraaoi.reallife.container.CryptoContainer) {
-            if (!p.openContainer.stillValid(p)) return;
+        if (p.containerMenu instanceof com.baraaoi.reallife.container.BizContainer
+                || p.containerMenu instanceof com.baraaoi.reallife.container.CryptoContainer) {
+            if (!p.containerMenu.stillValid(p)) return;
             MinecraftServer srv = p.level().getServer();
             if (srv == null) return;
             EconomyData d = EconomyData.get(srv);
             Account acc = d.get(p);
-            if (p.openContainer instanceof com.baraaoi.reallife.container.BizContainer) {
-                LegalBiz.counterAction(p, acc, (com.baraaoi.reallife.container.BizContainer) p.openContainer, action);
+            if (p.containerMenu instanceof com.baraaoi.reallife.container.BizContainer) {
+                LegalBiz.counterAction(p, acc, (com.baraaoi.reallife.container.BizContainer) p.containerMenu, action);
             } else if (action == Actions.CRYPTO_WITHDRAW) {
-                Crypto.withdrawRig(p, acc, (com.baraaoi.reallife.container.CryptoContainer) p.openContainer);
+                Crypto.withdrawRig(p, acc, (com.baraaoi.reallife.container.CryptoContainer) p.containerMenu);
             }
             d.setDirty();
             sync(p);
             return;
         }
-        if (!(p.openContainer instanceof FinanceContainer)) return;
-        FinanceContainer c = (FinanceContainer) p.openContainer;
+        if (!(p.containerMenu instanceof FinanceContainer)) return;
+        FinanceContainer c = (FinanceContainer) p.containerMenu;
         if (!c.stillValid(p)) return;
         MinecraftServer server = p.level().getServer();
         if (server == null) return;

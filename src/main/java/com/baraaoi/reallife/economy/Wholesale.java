@@ -150,8 +150,8 @@ public final class Wholesale {
             BankService.give(p, new ItemStack(item, n));
             left -= n;
         }
-        p.sendSystemMessage(new net.minecraft.network.chat.Component("§3[Опт] §fПартия доставлена: §e" + lot.count + "× ")
-                .append(new net.minecraft.network.chat.Component(item.getDescriptionId()))
+        p.sendSystemMessage(net.minecraft.network.chat.Component.literal("§3[Опт] §fПартия доставлена: §e" + lot.count + "× ")
+                .append(new ItemStack(item).getHoverName())
                 .append("§f за §a" + Finance.money(lot.price)
                         + (lot.retail > 0 ? "§f (в рознице " + Finance.money(lot.retail) + ")" : "") + "."));
     }

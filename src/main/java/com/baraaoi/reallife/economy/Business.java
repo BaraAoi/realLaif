@@ -87,7 +87,7 @@ public final class Business {
     }
 
     static void give(Player p, ItemStack st) {
-        if (!p.getInventory().add(st)) p.drop(st, false);
+        if (!p.getInventory().add(st)) p.drop(st, false, false);
     }
 
     // ------------------------------------------------------------------ события блоков

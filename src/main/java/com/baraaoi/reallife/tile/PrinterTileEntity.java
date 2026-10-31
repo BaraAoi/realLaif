@@ -66,7 +66,7 @@ public class PrinterTileEntity extends BlockEntity implements Container, MenuPro
         }
 
         @Override
-        public int size() {
+        public int getCount() {
             return 5;
         }
     };

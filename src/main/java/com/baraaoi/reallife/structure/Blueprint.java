@@ -81,7 +81,7 @@ public class Blueprint {
         t.put("s", NbtUtils.writeBlockState(world.getBlockState(p)));
         BlockEntity te = world.getBlockEntity(p);
         if (te != null) {
-            t.put("t", te.write(new CompoundTag()));
+            t.put("t", com.baraaoi.reallife.util.Nbt.saveBE(te));
         }
         snapshot.add(t);
     }
@@ -94,17 +94,17 @@ public class Blueprint {
         for (CompoundTag t : list) {
             BlockPos p = BlockPos.of(t.getLongOr("p", 0L));
             BlockEntity te = world.getBlockEntity(p);
-            if (te instanceof Container) ((Container) te).clear();
-            world.setBlockState(p, Blocks.AIR.defaultBlockState(), FLAGS);
+            if (te instanceof Container) ((Container) te).clearContent();
+            world.setBlock(p, Blocks.AIR.defaultBlockState(), FLAGS);
         }
         for (CompoundTag t : list) {
             BlockPos p = BlockPos.of(t.getLongOr("p", 0L));
             BlockState st = com.baraaoi.reallife.util.Nbt.readBlockState(t.getCompoundOrEmpty("s"));
-            world.setBlockState(p, st, FLAGS);
+            world.setBlock(p, st, FLAGS);
             if (t.contains("t")) {
                 BlockEntity te = world.getBlockEntity(p);
                 if (te != null) {
-                    te.read(st, t.getCompoundOrEmpty("t"));
+                    com.baraaoi.reallife.util.Nbt.loadBE(te, t.getCompoundOrEmpty("t"));
                     te.setChanged();
                 }
             }
@@ -122,7 +122,7 @@ public class Blueprint {
     public void set(int x, int y, int z, BlockState state) {
         BlockPos p = pos(x, y, z);
         remember(p);
-        world.setBlockState(p, state.rotate(rotation), FLAGS);
+        world.setBlock(p, state.rotate(rotation), FLAGS);
         track(p);
     }
 
@@ -164,8 +164,8 @@ public class Blueprint {
                 for (int y = -2; y >= -12; y--) {
                     BlockPos p = pos(x, y, z);
                     BlockState s = world.getBlockState(p);
-                    if (!s.isAir(world, p) && !s.liquid() && !s.canBeReplaced()) break;
-                    world.setBlockState(p, state, FLAGS);
+                    if (!s.isAir() && !s.liquid() && !s.canBeReplaced()) break;
+                    world.setBlock(p, state, FLAGS);
                 }
             }
     }
@@ -179,7 +179,7 @@ public class Blueprint {
 
     /** Кровать. facing — направление от ног к голове (локально). */
     public void bed(int x, int y, int z, BlockState bed, Direction facing) {
-        BlockState base = bed.setValue(BedBlock.HORIZONTAL_FACING, facing);
+        BlockState base = bed.setValue(BedBlock.FACING, facing);
         set(x, y, z, base.setValue(BedBlock.PART, BedPart.FOOT));
         int hx = x + offX(facing), hz = z + offZ(facing);
         set(hx, y, hz, base.setValue(BedBlock.PART, BedPart.HEAD));
@@ -196,7 +196,8 @@ public class Blueprint {
         if (te instanceof SignBlockEntity) {
             SignBlockEntity sign = (SignBlockEntity) te;
             for (int i = 0; i < 4 && i < lines.length; i++) {
-                sign.setText(i, Component.literal(lines[i]));
+                final int li = i;
+                sign.updateText(_t -> _t.setMessage(li, Component.literal(lines[li])), true);
             }
             sign.setChanged();
             BlockState st = world.getBlockState(pos(x, y, z));

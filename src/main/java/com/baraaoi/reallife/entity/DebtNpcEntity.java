@@ -39,7 +39,7 @@ public abstract class DebtNpcEntity extends PathfinderMob {
         this.setPersistenceRequired();
     }
 
-    public void setTarget(Player player) {
+    public void setDebtor(Player player) {
         this.targetId = player.getUUID();
     }
 

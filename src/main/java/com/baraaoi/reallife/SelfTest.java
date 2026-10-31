@@ -279,13 +279,13 @@ public class SelfTest {
 
     private void run(MinecraftServer s) {
         ServerLevel ow = EconomyData.overworld(s);
-        BlockPos base = new BlockPos(ow.getLevelData().getSpawnX(), 120, ow.getLevelData().getSpawnZ());
+        BlockPos base = new BlockPos(ow.getLevelData().getRespawnData().pos().getX(), 120, ow.getLevelData().getRespawnData().pos().getZ());
         EconomyData data = EconomyData.get(s);
 
         // ---- банк и МФО на спавне
         check(data.spawnBuilt && data.spawnVersion == 3, "bank and mfo built at spawn (v" + data.spawnVersion + ")");
         check(!data.mfoCenters.isEmpty(), "spawn mfo registered (" + data.mfoCenters + ")");
-        int sx0 = ow.getLevelData().getSpawnX(), sz0 = ow.getLevelData().getSpawnZ();
+        int sx0 = ow.getLevelData().getRespawnData().pos().getX(), sz0 = ow.getLevelData().getRespawnData().pos().getZ();
         Structure spawnBank = null, spawnMfo = null, casino = null;
         for (Structure st : data.structures) {
             LOG.info("structure " + st.type + " " + st.min + " -> " + st.max + " protect=" + st.protect + " cashiers=" + st.cashiers.size());
@@ -329,7 +329,7 @@ public class SelfTest {
         }
         net.minecraft.world.entity.monster.zombie.Zombie zomb = EntityType.ZOMBIE.create(ow, net.minecraft.world.entity.EntitySpawnReason.MOB_SUMMONED);
         if (zomb != null && inCasino != null) {
-            zomb.setPosition(inCasino.getX() + 0.5, inCasino.getY(), inCasino.getZ() + 0.5);
+            zomb.setPos(inCasino.getX() + 0.5, inCasino.getY(), inCasino.getZ() + 0.5);
             ow.addFreshEntity(zomb);
             int cleared = DebtManager.clearCityMobs(data, ow);
             check(cleared >= 1 && !zomb.isAlive(), "monsters are removed from the casino (" + cleared + ")");
@@ -357,7 +357,7 @@ public class SelfTest {
         check(CasinoService.anarchyRtp() > 0.97 && CasinoService.anarchyRtp() < 1.0, "anarchy return " + CasinoService.anarchyRtp());
         check(CasinoService.COIN_WIN > 0.475 && CasinoService.COIN_WIN < 0.5, "coin chance " + CasinoService.COIN_WIN);
         check(ItemValues.valueOf(new ItemStack(Items.DIAMOND)) >= 300 && ItemValues.valueOf(new ItemStack(ModItems.BANKNOTE_100.get())) == 100, "item values doubled, banknotes at face value");
-        check(!s.recipeAccess().getRecipe(new net.minecraft.resources.Identifier("reallife", "money_printer")).isPresent(), "money printer can not be crafted");
+        check(!s.getRecipeManager().byKey(net.minecraft.resources.ResourceKey.create(net.minecraft.core.registries.Registries.RECIPE, net.minecraft.resources.Identifier.fromNamespaceAndPath("reallife", "money_printer"))).isPresent(), "money printer can not be crafted");
 
         Blueprint bank = Buildings.buildBank(ow, base, Direction.SOUTH);
         check(ow.getBlockState(bank.pos(0, 1, 6)).getBlock() == ModBlocks.BANK_COUNTER.get(), "bank counter placed");
@@ -418,7 +418,7 @@ public class SelfTest {
                 BlockEntity stand = ow.getBlockEntity(b.pos(5, 15, 3));
                 BlockEntity bar = ow.getBlockEntity(b.pos(5, 15, 1));
                 check(stand instanceof Container && ((Container) stand).getItem(0).getItem() == Items.POTION, "bar brewing stand has drinks");
-                check(bar instanceof Container && ((Container) bar).count(Items.POTION) >= 5, "bar barrel has drinks");
+                check(bar instanceof Container && ((Container) bar).countItem(Items.POTION) >= 5, "bar barrel has drinks");
             }
         }
 
@@ -432,14 +432,14 @@ public class SelfTest {
         Account jailed2 = data.getOrCreate(UUID.randomUUID());
         jailed2.captivity = Account.JAIL;
         DebtManager.buildCell(s, data, jailed2, null);
-        check(!jailed2.cellCenter.equals(jc) && jailed2.cellCenter.manhattanDistance(jc) >= 14, "second jail is separate: " + jailed2.cellCenter);
+        check(!jailed2.cellCenter.equals(jc) && jailed2.cellCenter.distManhattan(jc) >= 14, "second jail is separate: " + jailed2.cellCenter);
         DebtManager.restoreCell(s, data, jailed);
         DebtManager.restoreCell(s, data, jailed2);
         check(ow.isEmptyBlock(jc) && ow.isEmptyBlock(jc.above(5)) && ow.isEmptyBlock(jailed2.cellCenter), "jails removed, sky restored");
 
         // ---- подвал под МФО со снимком
         BlockPos probe = mfoCenter.offset(1, -11, 0);
-        ow.setBlockState(probe, Blocks.GOLD_BLOCK.defaultBlockState(), 3);
+        ow.setBlock(probe, Blocks.GOLD_BLOCK.defaultBlockState(), 3);
         Account pit = data.getOrCreate(UUID.randomUUID());
         pit.captivity = Account.PIT;
         DebtManager.buildCell(s, data, pit, mfoCenter);
@@ -467,8 +467,8 @@ public class SelfTest {
         List<BlockPos> floor = Visitors.floorSpots(ow, biz.houseMin, biz.houseMax);
         check(floor.size() >= 6, "stone house has free floor (" + floor.size() + ")");
         BlockPos pr1 = floor.get(0), pr2 = floor.get(floor.size() / 2), chestPos = floor.get(floor.size() - 1);
-        ow.setBlockState(pr1, ModBlocks.MONEY_PRINTER.get().defaultBlockState(), 3);
-        ow.setBlockState(pr2, ModBlocks.MONEY_PRINTER.get().defaultBlockState(), 3);
+        ow.setBlock(pr1, ModBlocks.MONEY_PRINTER.get().defaultBlockState(), 3);
+        ow.setBlock(pr2, ModBlocks.MONEY_PRINTER.get().defaultBlockState(), 3);
         check(Business.registerPrinter(data, biz, pr1) == Business.OK && Business.registerPrinter(data, biz, pr2) == Business.OK, "printers register inside own house");
         check(Business.registerPrinter(data, biz, pr1) == Business.ALREADY, "printer is not registered twice");
         BlockPos outLand = biz.houseMax.offset(7, 0, 7);
@@ -477,7 +477,7 @@ public class SelfTest {
         check(Business.inOwnProperty(data, biz, outLand) && Business.registerPrinter(data, biz, outLand) == Business.OK, "printer on own claimed land is accepted");
         ow.getChunkAt(outLand);
         check(Business.workingPrinters(ow, biz) == 2 && biz.printerList.size() == 2, "missing printer block is dropped from the list");
-        ow.setBlockState(chestPos, ModBlocks.BUSINESS_CHEST.get().defaultBlockState(), 3);
+        ow.setBlock(chestPos, ModBlocks.BUSINESS_CHEST.get().defaultBlockState(), 3);
         BlockEntity bizChest = ow.getBlockEntity(chestPos);
         check(bizChest instanceof FridgeTileEntity && "Сундук цеха".equals(((FridgeTileEntity) bizChest).getDisplayName().getString()), "business chest block works");
         biz.businessChest = chestPos;
@@ -490,27 +490,27 @@ public class SelfTest {
         check(pt1.denom() == 500 && com.baraaoi.reallife.tile.PrinterTileEntity.TICKS[0] == 100
                 && com.baraaoi.reallife.tile.PrinterTileEntity.TICKS[4] == 60000, "printer denominations: 10₽/5с … 5000₽/50мин");
         check(pt1.printOne() && pt1.printOne(), "printer prints");
-        check(((Container) bizChest).count(ModItems.DIRTY_MONEY.get()) == 2, "printed notes go to the business chest");
+        check(((Container) bizChest).countItem(ModItems.DIRTY_MONEY.get()) == 2, "printed notes go to the business chest");
         ItemStack printedNote = ((Container) bizChest).getItem(0);
         check(com.baraaoi.reallife.item.DirtyMoneyItem.denom(printedNote) == 500 && ItemValues.stackValue(printedNote) == 1000, "dirty 500₽ notes, value " + ItemValues.stackValue(printedNote));
         ((Container) bizChest).clear();
         biz.businessChest = BlockPos.ZERO;
         pt1.setDenomIdx(0);
-        check(pt1.printOne() && pt1.count(ModItems.DIRTY_MONEY.get()) == 1, "without a chest the printer fills its own tray");
+        check(pt1.printOne() && pt1.countItem(ModItems.DIRTY_MONEY.get()) == 1, "without a chest the printer fills its own tray");
         pt1.clear();
         biz.businessChest = chestPos;
         for (int i = 0; i < 120; i++) pt1.tick();
         check(pt1.getStatus() == com.baraaoi.reallife.tile.PrinterTileEntity.WORKING, "registered printer works: status " + pt1.getStatus());
         check(ItemValues.valueOf(new ItemStack(ModItems.DIRTY_MONEY.get())) == 100, "dirty money worth 100");
         check(Config.PRINTER_COST.get() < 3000, "printer is cheaper now");
-        ow.setBlockState(pr2, Blocks.AIR.defaultBlockState(), 3);
+        ow.setBlock(pr2, Blocks.AIR.defaultBlockState(), 3);
         Business.workingPrinters(ow, biz);
         check(biz.printerList.size() == 1, "removed printer is dropped");
         // старый подвал: станки переносятся в список
         biz.businessMin = base.offset(700, -20, 0);
         biz.businessMax = biz.businessMin.offset(8, 5, 8);
         BlockPos legacy = biz.businessMin.offset(2, 1, 2);
-        ow.setBlockState(legacy, ModBlocks.MONEY_PRINTER.get().defaultBlockState(), 3);
+        ow.setBlock(legacy, ModBlocks.MONEY_PRINTER.get().defaultBlockState(), 3);
         Business.migrateLegacy(ow, biz);
         check(biz.printerList.contains(legacy) && Business.inOwnProperty(data, biz, legacy), "legacy basement printer migrated");
         biz.chestGiven = true;
@@ -521,7 +521,7 @@ public class SelfTest {
         oldBiz.remove("chestGiven");
         Account oldCopy = Account.read(oldBiz);
         check(oldCopy.chestGiven && oldCopy.needPrinters, "old save: chest counts as given, printers will be migrated");
-        ow.setBlockState(legacy, Blocks.AIR.defaultBlockState(), 3);
+        ow.setBlock(legacy, Blocks.AIR.defaultBlockState(), 3);
         biz.businessMin = BlockPos.ZERO;
         biz.businessMax = BlockPos.ZERO;
         DebtManager.demolishHouse(ow, biz);
@@ -532,9 +532,8 @@ public class SelfTest {
         // ---- случайные гости
         check(Visitors.eventKinds().size() == VisitorKind.values().length - 5 && Visitors.eventKinds().size() >= 19, "visitor kinds: " + Visitors.eventIds());
         for (VisitorKind k : VisitorKind.values()) {
-            java.nio.file.Path tex = net.minecraftforge.fml.ModList.get().getModFileById(RealLife.MODID).getFile()
-                    .findResource("assets/reallife/textures/entity/visitor/" + k.id() + ".png");
-            check(java.nio.file.Files.exists(tex), "texture for visitor " + k.id());
+            boolean tex = RealLife.class.getResource("/" + "assets/reallife/textures/entity/visitor/" + k.id() + ".png") != null;
+            check(tex, "texture for visitor " + k.id());
         }
         VisitorEntity ve = ModEntities.VISITOR.get().create(ow, net.minecraft.world.entity.EntitySpawnReason.MOB_SUMMONED);
         check(ve != null, "create visitor");
@@ -547,18 +546,18 @@ public class SelfTest {
         List<BlockPos> vfloor = Visitors.floorSpots(ow, vmin, vmax);
         check(vfloor.size() >= 8, "visitor house floor (" + vfloor.size() + ")");
         int l0 = Visitors.countLights(ow, vmin, vmax);
-        ow.setBlockState(vfloor.get(0), Blocks.GLOWSTONE.defaultBlockState(), 3);
+        ow.setBlock(vfloor.get(0), Blocks.GLOWSTONE.defaultBlockState(), 3);
         check(Visitors.countLights(ow, vmin, vmax) == l0 + 1, "electrician counts lights (" + l0 + " + 1)");
         int f0 = Visitors.countFurnaces(ow, vmin, vmax);
-        ow.setBlockState(vfloor.get(1), Blocks.FURNACE.defaultBlockState(), 3);
-        ow.setBlockState(vfloor.get(2), Blocks.SMOKER.defaultBlockState(), 3);
+        ow.setBlock(vfloor.get(1), Blocks.FURNACE.defaultBlockState(), 3);
+        ow.setBlock(vfloor.get(2), Blocks.SMOKER.defaultBlockState(), 3);
         check(Visitors.countFurnaces(ow, vmin, vmax) == f0 + 2, "fire inspector counts furnaces");
         check(Visitors.findLava(ow, vmin, vmax, 64).isEmpty(), "no lava yet");
-        ow.setBlockState(vfloor.get(3), Blocks.LAVA.defaultBlockState(), 3);
+        ow.setBlock(vfloor.get(3), Blocks.LAVA.defaultBlockState(), 3);
         check(Visitors.findLava(ow, vmin, vmax, 64).contains(vfloor.get(3)), "fire inspector finds lava");
-        ow.setBlockState(vfloor.get(3), Blocks.AIR.defaultBlockState(), 3);
+        ow.setBlock(vfloor.get(3), Blocks.AIR.defaultBlockState(), 3);
         double v0 = Visitors.houseValue(ow, vmin, vmax);
-        ow.setBlockState(vfloor.get(4), Blocks.CHEST.defaultBlockState(), 3);
+        ow.setBlock(vfloor.get(4), Blocks.CHEST.defaultBlockState(), 3);
         BlockEntity vc = ow.getBlockEntity(vfloor.get(4));
         check(vc instanceof Container, "tax test chest");
         ((Container) vc).setItem(0, new ItemStack(Items.DIAMOND, 10));
@@ -568,7 +567,7 @@ public class SelfTest {
         check(!taken.isEmpty() && Visitors.houseValue(ow, vmin, vmax) < v1, "tax inspector confiscates the best stack: " + taken);
         // площадка вокруг дома (дома в тесте висят в воздухе)
         for (BlockPos p : BlockPos.betweenClosed(new BlockPos(vmin.getX() - 4, vmin.getY(), vmin.getZ() - 4), new BlockPos(vmax.getX() + 5, vmin.getY(), vmax.getZ() + 5))) {
-            if (ow.isEmptyBlock(p)) ow.setBlockState(p.immutable(), Blocks.STONE.defaultBlockState(), 2);
+            if (ow.isEmptyBlock(p)) ow.setBlock(p.immutable(), Blocks.STONE.defaultBlockState(), 2);
         }
         int inLeak = Visitors.leak(ow, vmin, vmax, true, 3, new java.util.Random(5));
         int outLeak = Visitors.leak(ow, vmin, vmax, false, 4, new java.util.Random(6));
@@ -579,27 +578,27 @@ public class SelfTest {
 
         // ---- v5: станки видно — стучат; ОБЭП копает и всё восстанавливает
         BlockPos spot = base.offset(0, 30, 900);
-        for (BlockPos p : BlockPos.betweenClosed(spot.offset(-6, -1, -6), spot.offset(6, -1, 6))) ow.setBlockState(p.immutable(), Blocks.STONE.defaultBlockState(), 2);
+        for (BlockPos p : BlockPos.betweenClosed(spot.offset(-6, -1, -6), spot.offset(6, -1, 6))) ow.setBlock(p.immutable(), Blocks.STONE.defaultBlockState(), 2);
         BlockPos eye = spot.offset(-5, 1, 0);
         check(com.baraaoi.reallife.event.Raids.canSee(ow, new net.minecraft.world.phys.Vec3(eye.getX() + 0.5, eye.getY() + 0.6, eye.getZ() + 0.5), spot),
                 "npc sees an open printer");
-        ow.setBlockState(spot.offset(-2, 0, 0), Blocks.STONE.defaultBlockState(), 2);
-        ow.setBlockState(spot.offset(-2, 1, 0), Blocks.STONE.defaultBlockState(), 2);
-        ow.setBlockState(spot.offset(-3, 0, 0), Blocks.STONE.defaultBlockState(), 2);
-        ow.setBlockState(spot.offset(-3, 1, 0), Blocks.STONE.defaultBlockState(), 2);
+        ow.setBlock(spot.offset(-2, 0, 0), Blocks.STONE.defaultBlockState(), 2);
+        ow.setBlock(spot.offset(-2, 1, 0), Blocks.STONE.defaultBlockState(), 2);
+        ow.setBlock(spot.offset(-3, 0, 0), Blocks.STONE.defaultBlockState(), 2);
+        ow.setBlock(spot.offset(-3, 1, 0), Blocks.STONE.defaultBlockState(), 2);
         check(!com.baraaoi.reallife.event.Raids.canSee(ow, new net.minecraft.world.phys.Vec3(eye.getX() + 0.5, eye.getY() + 0.6, eye.getZ() + 0.5), spot),
                 "wall hides the printer");
-        ow.setBlockState(spot.offset(-2, 0, 0), Blocks.GLASS.defaultBlockState(), 2);
-        ow.setBlockState(spot.offset(-2, 1, 0), Blocks.GLASS.defaultBlockState(), 2);
-        ow.setBlockState(spot.offset(-3, 0, 0), Blocks.GLASS.defaultBlockState(), 2);
-        ow.setBlockState(spot.offset(-3, 1, 0), Blocks.GLASS.defaultBlockState(), 2);
+        ow.setBlock(spot.offset(-2, 0, 0), Blocks.GLASS.defaultBlockState(), 2);
+        ow.setBlock(spot.offset(-2, 1, 0), Blocks.GLASS.defaultBlockState(), 2);
+        ow.setBlock(spot.offset(-3, 0, 0), Blocks.GLASS.defaultBlockState(), 2);
+        ow.setBlock(spot.offset(-3, 1, 0), Blocks.GLASS.defaultBlockState(), 2);
         check(com.baraaoi.reallife.event.Raids.canSee(ow, new net.minecraft.world.phys.Vec3(eye.getX() + 0.5, eye.getY() + 0.6, eye.getZ() + 0.5), spot),
                 "glass does not hide the printer");
         // тоннель: каменный куб вокруг цели, копаем и восстанавливаем
-        for (BlockPos p : BlockPos.betweenClosed(spot.offset(-6, 0, -6), spot.offset(6, 4, 6))) ow.setBlockState(p.immutable(), Blocks.STONE.defaultBlockState(), 2);
-        ow.setBlockState(spot.offset(-4, 1, 0), Blocks.CHEST.defaultBlockState(), 2);
+        for (BlockPos p : BlockPos.betweenClosed(spot.offset(-6, 0, -6), spot.offset(6, 4, 6))) ow.setBlock(p.immutable(), Blocks.STONE.defaultBlockState(), 2);
+        ow.setBlock(spot.offset(-4, 1, 0), Blocks.CHEST.defaultBlockState(), 2);
         ((Container) ow.getBlockEntity(spot.offset(-4, 1, 0))).setItem(0, new ItemStack(Items.EMERALD, 7));
-        ow.setBlockState(spot, Blocks.AIR.defaultBlockState(), 2);
+        ow.setBlock(spot, Blocks.AIR.defaultBlockState(), 2);
         net.minecraft.nbt.ListTag tunnel = new net.minecraft.nbt.ListTag();
         BlockPos cur = spot.offset(-6, 0, 0);
         int steps = 0;
@@ -610,12 +609,12 @@ public class SelfTest {
         }
         check(com.baraaoi.reallife.event.Raids.arrived(cur, spot) && ow.isEmptyBlock(spot.offset(-4, 1, 0)) && tunnel.size() >= 8,
                 "obep tunnel reaches the tip (" + steps + " steps, " + tunnel.size() + " blocks)");
-        ow.setBlockState(spot.offset(0, 8, 0), Blocks.BEDROCK.defaultBlockState(), 2);
+        ow.setBlock(spot.offset(0, 8, 0), Blocks.BEDROCK.defaultBlockState(), 2);
         check(!com.baraaoi.reallife.event.Raids.dig(ow, data, new net.minecraft.nbt.ListTag(), spot.offset(0, 8, 0), spot), "obep cannot dig through bedrock");
-        ow.setBlockState(spot.offset(0, 8, 0), Blocks.AIR.defaultBlockState(), 2);
+        ow.setBlock(spot.offset(0, 8, 0), Blocks.AIR.defaultBlockState(), 2);
         Blueprint.restore(ow, tunnel);
         check(ow.getBlockState(spot.offset(-5, 0, 0)).getBlock() == Blocks.STONE && ow.getBlockState(spot.offset(-4, 1, 0)).getBlock() == Blocks.CHEST
-                && ((Container) ow.getBlockEntity(spot.offset(-4, 1, 0))).count(Items.EMERALD) == 7, "nothing found: everything restored, chest contents too");
+                && ((Container) ow.getBlockEntity(spot.offset(-4, 1, 0))).countItem(Items.EMERALD) == 7, "nothing found: everything restored, chest contents too");
         check(Visitors.interval(1000) == 1800, "many printers - visitors every 90 s");
         check(com.baraaoi.reallife.event.Raids.snoopInterval(20) == 1800 && com.baraaoi.reallife.event.Raids.snoopInterval(1) > 6000, "more printers - more snoops");
 
@@ -623,8 +622,8 @@ public class SelfTest {
         UUID bizOwner = UUID.randomUUID();
         Account bo = data.getOrCreate(bizOwner);
         BlockPos lot = base.offset(0, 30, 1000);
-        for (BlockPos p : BlockPos.betweenClosed(lot.offset(-9, -1, -9), lot.offset(50, -1, 9))) ow.setBlockState(p.immutable(), Blocks.STONE.defaultBlockState(), 2);
-        for (BlockPos p : BlockPos.betweenClosed(lot.offset(-9, 0, -9), lot.offset(50, 3, 9))) ow.setBlockState(p.immutable(), Blocks.AIR.defaultBlockState(), 2);
+        for (BlockPos p : BlockPos.betweenClosed(lot.offset(-9, -1, -9), lot.offset(50, -1, 9))) ow.setBlock(p.immutable(), Blocks.STONE.defaultBlockState(), 2);
+        for (BlockPos p : BlockPos.betweenClosed(lot.offset(-9, 0, -9), lot.offset(50, 3, 9))) ow.setBlock(p.immutable(), Blocks.AIR.defaultBlockState(), 2);
         String bsite = com.baraaoi.reallife.economy.LegalBiz.checkSite(ow, lot, data, bizOwner);
         check(bsite == null, "business site accepted (" + bsite + ")");
         int bizBefore = data.businesses.size();
@@ -637,17 +636,17 @@ public class SelfTest {
         com.baraaoi.reallife.economy.LegalBiz.Scan sc0 = com.baraaoi.reallife.economy.LegalBiz.scan(ow, shop);
         check(sc0.counterOk && sc0.sets == 0 && sc0.allowed == 0, "counter alone is not a business");
         BlockPos[] shelves = {lot.offset(-3, 0, 3), lot.offset(-2, 0, 3), lot.offset(-1, 0, 3)};
-        for (BlockPos sp : shelves) ow.setBlockState(sp, ModBlocks.SHOP_SHELF.get().defaultBlockState(), 3);
-        ow.setBlockState(lot.offset(1, 0, 3), ModBlocks.FRIDGE.get().defaultBlockState(), 3);
+        for (BlockPos sp : shelves) ow.setBlock(sp, ModBlocks.SHOP_SHELF.get().defaultBlockState(), 3);
+        ow.setBlock(lot.offset(1, 0, 3), ModBlocks.FRIDGE.get().defaultBlockState(), 3);
         com.baraaoi.reallife.economy.LegalBiz.Scan scNoRack = com.baraaoi.reallife.economy.LegalBiz.scan(ow, shop);
         check(!scNoRack.warehouse && scNoRack.sets == 0, "v1.7: without a storage rack (warehouse) the business can't work");
-        ow.setBlockState(lot.offset(2, 0, 3), ModBlocks.STORAGE_RACK.get().defaultBlockState(), 3);
+        ow.setBlock(lot.offset(2, 0, 3), ModBlocks.STORAGE_RACK.get().defaultBlockState(), 3);
         com.baraaoi.reallife.economy.LegalBiz.Scan sc1 = com.baraaoi.reallife.economy.LegalBiz.scan(ow, shop);
         check(sc1.warehouse && sc1.sets == 1 && sc1.allowed == 1 && sc1.stores.size() == 5 && sc1.back.size() == 1 && sc1.visible.size() == 4, "one full kit = one worker (sets " + sc1.sets + ", stores " + sc1.stores.size() + ")");
         BlockPos wspot = com.baraaoi.reallife.economy.LegalBiz.workerSpot(ow, shop, sc1);
         check(wspot != null && shop.contains(wspot, 0), "worker spot in the zone: " + wspot);
         com.baraaoi.reallife.entity.WorkerEntity worker = wspot == null ? null : com.baraaoi.reallife.economy.LegalBiz.spawnWorker(ow, shop, wspot);
-        check(worker != null && shop.workers.size() == 1 && ow.getEntityByUuid(shop.workers.get(0)) == worker, "worker hired");
+        check(worker != null && shop.workers.size() == 1 && ow.getEntity(shop.workers.get(0)) == worker, "worker hired");
         Item supply = ModItems.SUPPLY.get(com.baraaoi.reallife.economy.BizType.MINIMARKET).get();
         ItemStack rest = com.baraaoi.reallife.economy.LegalBiz.deliver(ow, shop, new ItemStack(supply, 64));
         com.baraaoi.reallife.economy.LegalBiz.Scan sc2 = com.baraaoi.reallife.economy.LegalBiz.scan(ow, shop);
@@ -712,9 +711,8 @@ public class SelfTest {
         shop.docsUntil = 0;
         shop.docsWorkers = 0;
         for (int i = 0; i < com.baraaoi.reallife.entity.CustomerEntity.VARIANTS; i++) {
-            java.nio.file.Path ct = net.minecraftforge.fml.ModList.get().getModFileById(RealLife.MODID).getFile()
-                    .findResource("assets/reallife/textures/entity/customer/c" + i + ".png");
-            check(java.nio.file.Files.exists(ct), "customer texture c" + i);
+            boolean ct = RealLife.class.getResource("/" + "assets/reallife/textures/entity/customer/c" + i + ".png") != null;
+            check(ct, "customer texture c" + i);
         }
         // v1.7: участок 3x3
         long landC = net.minecraft.world.level.ChunkPos.pack(5000, 5000);
@@ -733,9 +731,8 @@ public class SelfTest {
             check(bt.need(com.baraaoi.reallife.economy.BizEquip.COUNTER) == 1 && bt.kitPrice() > 1500 && bt.supplyPrice() > 0 && bt.maxWorkers >= 2,
                     bt.id() + " kit: " + com.baraaoi.reallife.economy.LegalBiz.kitText(bt) + " = " + bt.kitPrice());
             check(ModItems.SUPPLY.get(bt).get() instanceof com.baraaoi.reallife.item.SupplyItem, "supply item " + bt.id());
-            java.nio.file.Path wt = net.minecraftforge.fml.ModList.get().getModFileById(RealLife.MODID).getFile()
-                    .findResource("assets/reallife/textures/entity/worker/" + bt.id() + ".png");
-            check(java.nio.file.Files.exists(wt), "worker texture " + bt.id());
+            boolean wt = RealLife.class.getResource("/" + "assets/reallife/textures/entity/worker/" + bt.id() + ".png") != null;
+            check(wt, "worker texture " + bt.id());
         }
         for (com.baraaoi.reallife.economy.BizEquip e : com.baraaoi.reallife.economy.BizEquip.values()) {
             check(e.block.get() != null && com.baraaoi.reallife.economy.BizEquip.of(e.block.get()) == e && e.price > 0, "equipment " + e.title);
@@ -810,7 +807,7 @@ public class SelfTest {
 
         // ---- v5: майнинг-ферма, крипта, опт
         BlockPos rigPos = spot.offset(0, 10, 0);
-        ow.setBlockState(rigPos, ModBlocks.CRYPTO_RIG.get().defaultBlockState(), 3);
+        ow.setBlock(rigPos, ModBlocks.CRYPTO_RIG.get().defaultBlockState(), 3);
         BlockEntity rte = ow.getBlockEntity(rigPos);
         check(rte instanceof com.baraaoi.reallife.tile.CryptoRigTileEntity, "rig tile entity");
         com.baraaoi.reallife.tile.CryptoRigTileEntity rig = (com.baraaoi.reallife.tile.CryptoRigTileEntity) rte;
@@ -818,7 +815,7 @@ public class SelfTest {
         check(rig.getMined() == 0 && !rig.complete() && rig.missing().size() == 6, "empty rig does not mine: " + rig.missing());
         Item[] parts = {ModItems.MOTHERBOARD.get(), ModItems.CPU.get(), ModItems.RAM.get(), ModItems.PSU.get(), ModItems.COOLER.get()};
         for (int i = 0; i < parts.length; i++) {
-            check(com.baraaoi.reallife.tile.CryptoRigTileEntity.fits(i, new ItemStack(parts[i])), "slot " + i + " takes " + parts[i].getRegistryName());
+            check(com.baraaoi.reallife.tile.CryptoRigTileEntity.fits(i, new ItemStack(parts[i])), "slot " + i + " takes " + net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(parts[i]));
             rig.setItem(i, new ItemStack(parts[i]));
         }
         check(!com.baraaoi.reallife.tile.CryptoRigTileEntity.fits(0, new ItemStack(ModItems.GPU.get())), "gpu does not fit the motherboard slot");
@@ -835,7 +832,7 @@ public class SelfTest {
         for (int i = 0; i < 2000; i++) rate = com.baraaoi.reallife.economy.Crypto.step(rate, Config.BTC_BASE_RATE.get(), cr);
         check(rate >= Config.BTC_BASE_RATE.get() * 0.19 && rate <= Config.BTC_BASE_RATE.get() * 5.01, "btc rate stays in range: " + rate);
         rig.clear();
-        ow.setBlockState(rigPos, Blocks.AIR.defaultBlockState(), 3);
+        ow.setBlock(rigPos, Blocks.AIR.defaultBlockState(), 3);
         java.util.List<com.baraaoi.reallife.economy.Wholesale.Lot> lots = com.baraaoi.reallife.economy.Wholesale.lots();
         int cheaper = 0;
         for (com.baraaoi.reallife.economy.Wholesale.Lot l : lots) {
@@ -868,7 +865,7 @@ public class SelfTest {
 
         // ---- площадка под дом: ровная — можно; на доме, на банке, на склоне — нельзя
         BlockPos pad = base.offset(600, 80, 0);
-        for (BlockPos p : BlockPos.betweenClosed(pad.offset(-12, -1, -12), pad.offset(12, -1, 12))) ow.setBlockState(p.immutable(), Blocks.STONE.defaultBlockState(), 2);
+        for (BlockPos p : BlockPos.betweenClosed(pad.offset(-12, -1, -12), pad.offset(12, -1, 12))) ow.setBlock(p.immutable(), Blocks.STONE.defaultBlockState(), 2);
         UUID owner = UUID.randomUUID();
         String ok = Buildings.checkHouseSite(ow, pad, Direction.SOUTH, HouseType.DIRT_HUT, data, owner);
         check(ok == null, "flat site accepted (" + ok + ")");
@@ -902,29 +899,29 @@ public class SelfTest {
 
         // ---- v1.9: пожар, обвал, домушник
         BlockPos fp = base.offset(-60, 0, 60);
-        for (int dx = -1; dx <= 1; dx++) for (int dz = -1; dz <= 1; dz++) ow.setBlockState(fp.offset(dx, 0, dz), Blocks.OAK_PLANKS.defaultBlockState(), 3);
+        for (int dx = -1; dx <= 1; dx++) for (int dz = -1; dz <= 1; dz++) ow.setBlock(fp.offset(dx, 0, dz), Blocks.OAK_PLANKS.defaultBlockState(), 3);
         List<BlockPos> fspots = com.baraaoi.reallife.event.Inspections.fireSpots(ow, fp.offset(-1, 0, -1), fp.offset(1, 1, 1), 2, new java.util.Random(1), null);
         check(!fspots.isEmpty(), "fire spots on planks: " + fspots.size());
         com.baraaoi.reallife.event.Inspections.ignite(ow, fspots);
         check(com.baraaoi.reallife.event.Inspections.countFire(ow, fp.offset(-2, 0, -2), fp.offset(2, 2, 2)) >= 1, "fire started");
-        com.baraaoi.reallife.event.Inspections.clearFire(ow, fp.offset(-2, 0, -2), fp.offset(2, 2, 2));
+        com.baraaoi.reallife.event.Inspections.extinguish(ow, fp.offset(-2, 0, -2), fp.offset(2, 2, 2));
         check(com.baraaoi.reallife.event.Inspections.countFire(ow, fp.offset(-2, 0, -2), fp.offset(2, 2, 2)) == 0, "fire extinguished");
-        for (BlockPos q : BlockPos.betweenClosed(fp.offset(-2, 0, -2), fp.offset(2, 2, 2))) ow.setBlockState(q.immutable(), Blocks.AIR.defaultBlockState(), 3);
+        for (BlockPos q : BlockPos.betweenClosed(fp.offset(-2, 0, -2), fp.offset(2, 2, 2))) ow.setBlock(q.immutable(), Blocks.AIR.defaultBlockState(), 3);
         BlockPos cp0 = base.offset(-80, 0, 80);
-        for (int dx = -3; dx <= 3; dx++) for (int dz = -3; dz <= 3; dz++) ow.setBlockState(cp0.offset(dx, 4, dz), Blocks.STONE.defaultBlockState(), 3);
+        for (int dx = -3; dx <= 3; dx++) for (int dz = -3; dz <= 3; dz++) ow.setBlock(cp0.offset(dx, 4, dz), Blocks.STONE.defaultBlockState(), 3);
         List<BlockPos> cave = com.baraaoi.reallife.event.Inspections.caveIn(ow, cp0, data);
         check(cave.size() >= 15, "cave-in finds ceiling rock: " + cave.size());
         int fell = com.baraaoi.reallife.event.Inspections.collapse(ow, cave);
         check(fell == cave.size() && ow.getBlockState(cave.get(0)).getBlock() == Blocks.GRAVEL, "ceiling turns into falling gravel");
-        for (BlockPos q : BlockPos.betweenClosed(cp0.offset(-3, 4, -3), cp0.offset(3, 4, 3))) ow.setBlockState(q.immutable(), Blocks.AIR.defaultBlockState(), 2);
+        for (BlockPos q : BlockPos.betweenClosed(cp0.offset(-3, 4, -3), cp0.offset(3, 4, 3))) ow.setBlock(q.immutable(), Blocks.AIR.defaultBlockState(), 2);
         BlockPos chestAt = base.offset(-90, 0, 40);
-        ow.setBlockState(chestAt, Blocks.CHEST.defaultBlockState(), 3);
+        ow.setBlock(chestAt, Blocks.CHEST.defaultBlockState(), 3);
         net.minecraft.world.level.block.entity.BlockEntity cte = ow.getBlockEntity(chestAt);
         if (cte instanceof net.minecraft.world.Container) ((net.minecraft.world.Container) cte).setItem(0, new ItemStack(Items.DIAMOND, 3));
         BlockPos btarget = com.baraaoi.reallife.event.Inspections.burglarTarget(ow, java.util.Collections.singletonList(new BlockPos[]{chestAt.offset(-2, -1, -2), chestAt.offset(2, 1, 2)}), new java.util.Random(2));
         check(chestAt.equals(btarget), "burglar goes for the chest with loot: " + btarget);
         if (cte instanceof net.minecraft.world.Container) ((net.minecraft.world.Container) cte).clear();
-        ow.setBlockState(chestAt, Blocks.AIR.defaultBlockState(), 3);
+        ow.setBlock(chestAt, Blocks.AIR.defaultBlockState(), 3);
         check(Visitors.eventKinds().contains(VisitorKind.SANEPID) && Visitors.eventKinds().contains(VisitorKind.BURGLAR)
                 && Visitors.eventKinds().contains(VisitorKind.CAVE_IN), "scary events registered");
 
@@ -1038,8 +1035,8 @@ public class SelfTest {
                 ModEntities.VOVAN.get(), ModEntities.BRATOK.get(), ModEntities.INSPECTOR.get(), ModEntities.AMBAL.get()};
         for (EntityType<?> t : types) {
             DebtNpcEntity e = (DebtNpcEntity) t.create(ow, net.minecraft.world.entity.EntitySpawnReason.MOB_SUMMONED);
-            check(e != null, "create " + t.getRegistryName());
-            e.setPosition(base.getX(), base.getY() + 2, base.getZ() + 3);
+            check(e != null, "create " + net.minecraft.world.entity.EntityType.getKey(t));
+            e.setPos(base.getX(), base.getY() + 2, base.getZ() + 3);
             ow.addFreshEntity(e);
             check(e.getAttributeValue(Attributes.MAX_HEALTH) > 0, e.npcName() + " hp=" + e.getHealth());
             e.discard();

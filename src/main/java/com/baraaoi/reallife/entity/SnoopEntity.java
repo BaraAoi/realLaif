@@ -173,14 +173,14 @@ public class SnoopEntity extends PathfinderMob {
         BlockPos me = this.blockPosition();
         for (Account a : data.all()) {
             boolean mine = a.id.equals(targetPlayer);
-            for (BlockPos p : a.printerList) if (mine || p.distanceSq(me) < 40 * 40) l.add(p);
+            for (BlockPos p : a.printerList) if (mine || p.distSqr(me) < 40 * 40) l.add(p);
             if (a.hasHouse && !a.houseMin.equals(BlockPos.ZERO)) {
                 BlockPos c = new BlockPos((a.houseMin.getX() + a.houseMax.getX()) / 2, a.houseMin.getY() + 1,
                         (a.houseMin.getZ() + a.houseMax.getZ()) / 2);
-                if (mine || c.distanceSq(me) < 40 * 40) l.add(c);
+                if (mine || c.distSqr(me) < 40 * 40) l.add(c);
             }
         }
-        l.removeIf(p -> p.distanceSq(me) > 48 * 48);
+        l.removeIf(p -> p.distSqr(me) > 48 * 48);
         return l;
     }
 
@@ -294,7 +294,7 @@ public class SnoopEntity extends PathfinderMob {
 
     
     public ServerPlayer target() {
-        MinecraftServer s = getServer();
+        MinecraftServer s = this.level().getServer();
         return s == null || targetPlayer == null ? null : s.getPlayerList().getPlayer(targetPlayer);
     }
 }

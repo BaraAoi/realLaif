@@ -32,7 +32,7 @@ public class Structure {
     }
 
     public boolean contains(double x, double y, double z, int grow) {
-        return contains(new BlockPos(x, y, z), grow);
+        return contains(BlockPos.containing(x, y, z), grow);
     }
 
     /** Пересекается ли с коробкой (по X/Z, с запасом grow; по Y — с запасом 2). */

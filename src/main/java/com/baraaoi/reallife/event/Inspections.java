@@ -46,7 +46,7 @@ public final class Inspections {
 
     /** «Грязные» отделочные блоки: в торговом зале так нельзя. */
     public static final Set<Block> DIRTY = new HashSet<>(Arrays.asList(Blocks.DIRT, Blocks.COARSE_DIRT, Blocks.GRASS_BLOCK,
-            Blocks.GRASS_PATH, Blocks.PODZOL, Blocks.MYCELIUM, Blocks.GRAVEL, Blocks.SAND, Blocks.RED_SAND, Blocks.COBBLESTONE,
+            Blocks.DIRT_PATH, Blocks.PODZOL, Blocks.MYCELIUM, Blocks.GRAVEL, Blocks.SAND, Blocks.RED_SAND, Blocks.COBBLESTONE,
             Blocks.MOSSY_COBBLESTONE, Blocks.NETHERRACK, Blocks.SOUL_SAND, Blocks.SOUL_SOIL, Blocks.CLAY, Blocks.FARMLAND));
     /** Что считается просрочкой/отравой на полках еды. */
     public static final Set<Item> SPOILED = new HashSet<>(Arrays.asList(Items.ROTTEN_FLESH, Items.SPIDER_EYE, Items.POISONOUS_POTATO,
@@ -103,14 +103,14 @@ public final class Inspections {
         for (BlockPos mp : BlockPos.betweenClosed(b.min, b.max)) {
             BlockState st = w.getBlockState(mp);
             if (st.getBlock() == Blocks.COBWEB) cobweb++;
-            if (st.getBlock() == Blocks.CAULDRON && st.get(LayeredCauldronBlock.LEVEL) > 0) sink = true;
-            if (mp.getY() < floorY || !st.isAir(w, mp) || w.canSeeSky(mp)) continue;
+            if (st.getBlock() == Blocks.CAULDRON && st.getValue(LayeredCauldronBlock.LEVEL) > 0) sink = true;
+            if (mp.getY() < floorY || !st.isAir() || w.canSeeSky(mp)) continue;
             BlockPos pos = mp.immutable();
             for (Direction d : Direction.values()) {
                 BlockPos q = pos.relative(d);
                 if (!b.contains(q, 0) || exposed.contains(q)) continue;
                 BlockState qs = w.getBlockState(q);
-                if (qs.isAir(w, q) || !qs.isSolid()) continue;
+                if (qs.isAir() || !qs.isSolid()) continue;
                 exposed.add(q);
                 if (DIRTY.contains(qs.getBlock())) dirty++;
             }
@@ -184,7 +184,7 @@ public final class Inspections {
         List<BlockPos> cand = new ArrayList<>();
         for (BlockPos mp : BlockPos.betweenClosed(min, max)) {
             BlockState st = w.getBlockState(mp);
-            if (st.isAir(w, mp) || !st.isFlammable(w, mp, Direction.UP)) continue;
+            if (st.isAir() || !st.isFlammable(w, mp, Direction.UP)) continue;
             BlockPos up = mp.above();
             if (!w.isEmptyBlock(up) || (data != null && data.isProtected(up))) continue;
             cand.add(up.immutable());
@@ -194,7 +194,7 @@ public final class Inspections {
         for (BlockPos c : cand) {
             if (out.size() >= n) break;
             boolean far = true;
-            for (BlockPos o : out) if (o.distanceSq(c) < 9) far = false;
+            for (BlockPos o : out) if (o.distSqr(c) < 9) far = false;
             if (far) out.add(c);
         }
         return out;
@@ -202,7 +202,7 @@ public final class Inspections {
 
     public static int ignite(Level w, List<BlockPos> spots) {
         int n = 0;
-        for (BlockPos p : spots) if (w.isEmptyBlock(p)) { w.setBlockState(p, Blocks.FIRE.defaultBlockState(), 11); n++; }
+        for (BlockPos p : spots) if (w.isEmptyBlock(p)) { w.setBlock(p, Blocks.FIRE.defaultBlockState(), 11); n++; }
         return n;
     }
 
@@ -219,7 +219,7 @@ public final class Inspections {
         int n = 0;
         for (BlockPos mp : BlockPos.betweenClosed(min, max)) {
             Block b = w.getBlockState(mp).getBlock();
-            if (b == Blocks.FIRE || b == Blocks.SOUL_FIRE) { w.setBlockState(mp.immutable(), Blocks.AIR.defaultBlockState(), 3); n++; }
+            if (b == Blocks.FIRE || b == Blocks.SOUL_FIRE) { w.setBlock(mp.immutable(), Blocks.AIR.defaultBlockState(), 3); n++; }
         }
         return n;
     }
@@ -250,7 +250,7 @@ public final class Inspections {
         int n = 0;
         for (BlockPos q : blocks) {
             if (!ROCK.contains(w.getBlockState(q).getBlock())) continue;
-            w.setBlockState(q, Blocks.GRAVEL.defaultBlockState(), 3);
+            w.setBlock(q, Blocks.GRAVEL.defaultBlockState(), 3);
             n++;
         }
         return n;

@@ -12,7 +12,7 @@ import net.minecraft.world.entity.Mob;
 import java.util.function.Function;
 
 /** Все люди мода рисуются моделью игрока со своим скином (64×64). */
-public class NpcRenderer<T extends Mob> extends HumanoidMobRenderer<T, NpcRenderer.State, PlayerModel> {
+public class NpcRenderer<T extends Mob> extends HumanoidMobRenderer<T, AvatarRenderState, PlayerModel> {
     public static class State extends AvatarRenderState {
         public Identifier texture;
     }
@@ -38,18 +38,18 @@ public class NpcRenderer<T extends Mob> extends HumanoidMobRenderer<T, NpcRender
     }
 
     @Override
-    public State createRenderState() {
+    public AvatarRenderState createRenderState() {
         return new State();
     }
 
     @Override
-    public void extractRenderState(T entity, State state, float partialTicks) {
+    public void extractRenderState(T entity, AvatarRenderState state, float partialTicks) {
         super.extractRenderState(entity, state, partialTicks);
-        state.texture = texture.apply(entity);
+        if (state instanceof State s) s.texture = texture.apply(entity);
     }
 
     @Override
-    public Identifier getTextureLocation(State state) {
-        return state.texture != null ? state.texture : tex("zhora");
+    public Identifier getTextureLocation(AvatarRenderState state) {
+        return state instanceof State s && s.texture != null ? s.texture : tex("zhora");
     }
 }

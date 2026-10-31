@@ -72,16 +72,16 @@ public class DebtManager {
     /** Стереть слои [yTo..yFrom] чанка (без выпадения вещей, бедрок не трогаем). */
     public static void wipeLayers(ServerLevel w, int cx, int cz, int yFrom, int yTo) {
         BlockState air = Blocks.AIR.defaultBlockState();
-        BlockPos.Mutable m = new BlockPos.Mutable();
+        BlockPos.MutableBlockPos m = new BlockPos.MutableBlockPos();
         for (int y = yFrom; y >= yTo; y--)
             for (int x = 0; x < 16; x++)
                 for (int z = 0; z < 16; z++) {
-                    m.setPos((cx << 4) + x, y, (cz << 4) + z);
+                    m.set((cx << 4) + x, y, (cz << 4) + z);
                     BlockState st = w.getBlockState(m);
-                    if (st.isAir(w, m) || st.getBlock() == Blocks.BEDROCK) continue;
+                    if (st.isAir() || st.getBlock() == Blocks.BEDROCK) continue;
                     net.minecraft.world.level.block.entity.BlockEntity te = w.getBlockEntity(m);
-                    if (te instanceof net.minecraft.world.Container) ((net.minecraft.world.Container) te).clear();
-                    w.setBlockState(m, air, 2 | 16);
+                    if (te instanceof net.minecraft.world.Container) ((net.minecraft.world.Container) te).clearContent();
+                    w.setBlock(m, air, 2 | 16);
                 }
     }
 
@@ -129,7 +129,7 @@ public class DebtManager {
             while (it.hasNext()) {
                 Regen r = it.next();
                 if (now >= r.due) {
-                    if (ow.isEmptyBlock(r.pos)) ow.setBlockState(r.pos, r.state, 3);
+                    if (ow.isEmptyBlock(r.pos)) ow.setBlock(r.pos, r.state, 3);
                     it.remove();
                 }
             }
@@ -158,9 +158,9 @@ public class DebtManager {
         }
 
         for (ServerPlayer p : new ArrayList<>(server.getPlayerList().getPlayers())) {
-            if (p.openContainer instanceof FinanceContainer || p.openContainer instanceof com.baraaoi.reallife.container.CasinoContainer
-                    || p.openContainer instanceof com.baraaoi.reallife.container.BizContainer
-                    || p.openContainer instanceof com.baraaoi.reallife.container.CryptoContainer) BankService.sync(p);
+            if (p.containerMenu instanceof FinanceContainer || p.containerMenu instanceof com.baraaoi.reallife.container.CasinoContainer
+                    || p.containerMenu instanceof com.baraaoi.reallife.container.BizContainer
+                    || p.containerMenu instanceof com.baraaoi.reallife.container.CryptoContainer) BankService.sync(p);
             if ((now / 20 + p.getId()) % 2 == 0) tickPlayer(server, data, p, now);
         }
     }
@@ -172,7 +172,7 @@ public class DebtManager {
             return;
         }
         if (p.isSpectator() || !p.isAlive()) return;
-        ServerLevel w = p.getServerWorld();
+        ServerLevel w = p.level();
         List<DebtNpcEntity> mine = findNpcs(w, p);
 
         // ---------------- ограбление банка: розыск на сутки
@@ -298,7 +298,7 @@ public class DebtManager {
         if (e == null) return null;
         BlockPos pos = findSpawnPos(w, p, minR, maxR);
         e.snapTo(pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5, RANDOM.nextFloat() * 360F, 0F);
-        e.setTarget(p);
+        e.setDebtor(p);
         e.setCustomName(Component.literal(e.npcName()));
         e.setCustomNameVisible(true);
         w.addFreshEntity(e);
@@ -346,7 +346,7 @@ public class DebtManager {
         ServerLevel ow = EconomyData.overworld(server);
         long now = ow.getGameTime();
         if (a.captivity == Account.PIT) {
-            if (p.level() == ow && a.cellActive && Buildings.inPitMine(a.cellCenter, pos) && !state.isAir(ow, pos)) {
+            if (p.level() == ow && a.cellActive && Buildings.inPitMine(a.cellCenter, pos) && !state.isAir()) {
                 // забой: блок ломается как обычно (с добычей), через 5 сек порода нарастает снова
                 REGEN.add(new Regen(pos.immutable(), Buildings.pitBlock(RANDOM), now + 100));
                 return false;
@@ -432,7 +432,7 @@ public class DebtManager {
         double debt = a.arrears + a.loanPrincipal + a.mortPrincipal;
         double seizedCash = Math.max(0, a.balance);
         double seizedItems = BankService.inventoryValue(p);
-        p.getInventory().clear();
+        p.getInventory().clearContent();
         a.balance = Math.min(0, a.balance);
         String house = a.hasHouse ? houseTitle(a) : null;
         demolishHouse(ow, a);
@@ -479,7 +479,7 @@ public class DebtManager {
 
     public static void kidnap(MinecraftServer server, EconomyData data, ServerPlayer p, Account a) {
         double debt = a.mfoDebt;
-        p.getInventory().clear();
+        p.getInventory().clearContent();
         double taken = Math.max(0, a.balance) * 0.5;
         a.balance -= taken;
         arson(server, a, p, true);
@@ -514,16 +514,16 @@ public class DebtManager {
                     for (int z = min.getZ(); z <= max.getZ(); z++) {
                         BlockPos pos = new BlockPos(x, y, z);
                         ow.removeBlockEntity(pos);
-                        ow.setBlockState(pos, Blocks.AIR.defaultBlockState(), 2 | 16);
+                        ow.setBlock(pos, Blocks.AIR.defaultBlockState(), 2 | 16);
                     }
             BlockPos sign = new BlockPos((min.getX() + max.getX()) / 2, min.getY(), min.getZ());
-            ow.setBlockState(sign, Blocks.OAK_SIGN.defaultBlockState(), 3);
+            ow.setBlock(sign, Blocks.OAK_SIGN.defaultBlockState(), 3);
             net.minecraft.world.level.block.entity.BlockEntity te = ow.getBlockEntity(sign);
             if (te instanceof net.minecraft.world.level.block.entity.SignBlockEntity) {
                 net.minecraft.world.level.block.entity.SignBlockEntity s = (net.minecraft.world.level.block.entity.SignBlockEntity) te;
-                s.setText(0, Component.literal("ИЗЪЯТО"));
-                s.setText(1, Component.literal("«Реал Банком»"));
-                s.setText(2, Component.literal("за долги"));
+                s.updateText(_t -> _t.setMessage(0, Component.literal("ИЗЪЯТО")), true);
+                s.updateText(_t -> _t.setMessage(1, Component.literal("«Реал Банком»")), true);
+                s.updateText(_t -> _t.setMessage(2, Component.literal("за долги")), true);
             }
         }
         a.hasHouse = false;
@@ -560,11 +560,11 @@ public class DebtManager {
                 int z = min.getZ() + RANDOM.nextInt(max.getZ() - min.getZ() + 1);
                 BlockPos pos = new BlockPos(x, y, z);
                 if (ow.isEmptyBlock(pos) && ow.getBlockState(pos.below()).isSolid()) {
-                    ow.setBlockState(pos, Blocks.FIRE.defaultBlockState(), 3);
+                    ow.setBlock(pos, Blocks.FIRE.defaultBlockState(), 3);
                     fires--;
                 }
                 if (full && ow.getBlockState(pos).getSoundType() == net.minecraft.world.level.block.SoundType.GLASS) {
-                    ow.setBlockState(pos, Blocks.AIR.defaultBlockState(), 3);
+                    ow.setBlock(pos, Blocks.AIR.defaultBlockState(), 3);
                 }
             }
             if (full) {
@@ -573,12 +573,12 @@ public class DebtManager {
                     for (int y = min.getY(); y <= max.getY(); y++)
                         for (int z = min.getZ(); z <= max.getZ(); z++) {
                             net.minecraft.world.level.block.entity.BlockEntity te = ow.getBlockEntity(new BlockPos(x, y, z));
-                            if (te instanceof net.minecraft.world.Container) ((net.minecraft.world.Container) te).clear();
+                            if (te instanceof net.minecraft.world.Container) ((net.minecraft.world.Container) te).clearContent();
                         }
             }
             if (full && a.hasBusiness) {
                 net.minecraft.world.level.block.entity.BlockEntity te = ow.getBlockEntity(a.businessChest);
-                if (te instanceof net.minecraft.world.Container) ((net.minecraft.world.Container) te).clear();
+                if (te instanceof net.minecraft.world.Container) ((net.minecraft.world.Container) te).clearContent();
             }
             if (p != null) BankService.msg(p, BankService.MFO + (full ? "§4Твой дом горит. Ничего личного." : "§cУ тебя дома что-то загорелось. Случайность, конечно."));
         } else if (p != null && p.level() instanceof ServerLevel && !full) {
@@ -586,9 +586,9 @@ public class DebtManager {
             int lit = 0;
             for (int i = 0; i < 40 && lit < 5; i++) {
                 BlockPos pos = p.blockPosition().offset(RANDOM.nextInt(13) - 6, RANDOM.nextInt(3) - 1, RANDOM.nextInt(13) - 6);
-                if (pos.distanceSq(p.blockPosition()) < 9) continue;
+                if (pos.distSqr(p.blockPosition()) < 9) continue;
                 if (w.isEmptyBlock(pos) && w.getBlockState(pos.below()).isSolid()) {
-                    w.setBlockState(pos, Blocks.FIRE.defaultBlockState(), 3);
+                    w.setBlock(pos, Blocks.FIRE.defaultBlockState(), 3);
                     lit++;
                 }
             }
@@ -612,7 +612,7 @@ public class DebtManager {
         if (a.cellActive || a.captivity == Account.FREE) return;
         ServerLevel ow = EconomyData.overworld(server);
         LevelData info = ow.getLevelData();
-        int sx = info.getSpawnX(), sz = info.getSpawnZ();
+        int sx = info.getRespawnData().pos().getX(), sz = info.getRespawnData().pos().getZ();
         BlockPos center = null;
         if (a.captivity == Account.JAIL) {
             int y = Math.min(228, ow.getMaxY() - 11);
@@ -628,7 +628,7 @@ public class DebtManager {
             double best = Double.MAX_VALUE;
             BlockPos ref = near != null ? near : new BlockPos(sx, 64, sz);
             for (BlockPos m : data.mfoCenters) {
-                double d = m.distanceSq(ref);
+                double d = m.distSqr(ref);
                 if (d < best) { best = d; mfo = m; }
             }
             int floor = mfo != null ? mfo.getY() : ow.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, sx, sz);
@@ -673,7 +673,7 @@ public class DebtManager {
         if (!a.cellActive) buildCell(server, data, a, p.blockPosition());
         ServerLevel ow = EconomyData.overworld(server);
         double[] c = cell(a);
-        p.teleport(ow, c[0], c[1], c[2], p.rotationYaw, p.rotationPitch);
+        p.teleportTo(ow, c[0], c[1], c[2], java.util.Set.of(), p.getYRot(), p.getXRot(), false);
     }
 
     private static void tickCaptivity(MinecraftServer server, EconomyData data, ServerPlayer p, Account a, long now) {
@@ -682,10 +682,10 @@ public class DebtManager {
         ServerLevel ow = EconomyData.overworld(server);
         double[] c = cell(a);
         if (p.level() != ow || p.distanceToSqr(c[0], c[1], c[2]) > 30) {
-            p.teleport(ow, c[0], c[1], c[2], p.rotationYaw, p.rotationPitch);
+            p.teleportTo(ow, c[0], c[1], c[2], java.util.Set.of(), p.getYRot(), p.getXRot(), false);
         }
         if (p.getFoodData().getFoodLevel() < 6) {
-            p.getFoodData().addStat(6, 0.6F);
+            p.getFoodData().eat(6, 0.6F);
             BankService.msg(p, "§7Вам принесли миску баланды.");
         }
         if (a.captivity == Account.JAIL) {
@@ -715,7 +715,7 @@ public class DebtManager {
         a.pitBlocksLeft = 0;
         a.pitDebtLeft = 0;
         a.jailUntil = 0;
-        if (was == Account.PIT) p.getInventory().clear(); // всё, что накопал, остаётся Шайкину
+        if (was == Account.PIT) p.getInventory().clearContent(); // всё, что накопал, остаётся Шайкину
         data.setDirty();
         // сначала увозим домой (кровать → дом → спавн мира), потом разбираем камеру
         String where = sendHome(server, p, a);
@@ -733,13 +733,13 @@ public class DebtManager {
      * и только потом — на общий спавн мира. Возвращает описание, куда отвезли.
      */
     public static String sendHome(MinecraftServer server, ServerPlayer p, Account a) {
-        BlockPos bed = p.func_241140_K_();
+        BlockPos bed = (p.getRespawnConfig() == null ? null : p.getRespawnConfig().respawnData().pos());
         if (bed != null) {
-            ServerLevel bw = server.getWorld(p.func_241141_L_());
+            ServerLevel bw = server.getLevel((p.getRespawnConfig() == null ? null : p.getRespawnConfig().respawnData().dimension()));
             if (bw != null) {
                 BlockPos at = standNear(bw, bed, 3);
                 if (at != null) {
-                    p.teleport(bw, at.getX() + 0.5, at.getY(), at.getZ() + 0.5, p.rotationYaw, p.rotationPitch);
+                    p.teleportTo(bw, at.getX() + 0.5, at.getY(), at.getZ() + 0.5, java.util.Set.of(), p.getYRot(), p.getXRot(), false);
                     return "к вашей кровати (точке возрождения)";
                 }
             }
@@ -749,14 +749,14 @@ public class DebtManager {
             BlockPos c = new BlockPos((a.houseMin.getX() + a.houseMax.getX()) / 2, a.houseMin.getY() + 1, (a.houseMin.getZ() + a.houseMax.getZ()) / 2);
             BlockPos at = standNear(ow, c, 4);
             if (at != null) {
-                p.teleport(ow, at.getX() + 0.5, at.getY(), at.getZ() + 0.5, p.rotationYaw, p.rotationPitch);
+                p.teleportTo(ow, at.getX() + 0.5, at.getY(), at.getZ() + 0.5, java.util.Set.of(), p.getYRot(), p.getXRot(), false);
                 return "к вашему дому";
             }
         }
         LevelData info = ow.getLevelData();
-        int x = info.getSpawnX(), z = info.getSpawnZ();
+        int x = info.getRespawnData().pos().getX(), z = info.getRespawnData().pos().getZ();
         int y = ow.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
-        p.teleport(ow, x + 0.5, y, z + 0.5, p.rotationYaw, p.rotationPitch);
+        p.teleportTo(ow, x + 0.5, y, z + 0.5, java.util.Set.of(), p.getYRot(), p.getXRot(), false);
         return "на точку спавна мира (кровати и дома нет — поставьте кровать и поспите в ней)";
     }
 
@@ -923,12 +923,12 @@ public class DebtManager {
             int rx = mp.getX() - st.min.getX(), rz = mp.getZ() - st.min.getZ();
             if (rx % 3 != 1 || rz % 3 != 1) continue;
             BlockState bs = w.getBlockState(mp);
-            if (bs.getBlock() != Blocks.BLACK_CONCRETE && bs.getBlock() != Blocks.RED_CONCRETE) continue;
+            if (bs.getBlock() != Blocks.CONCRETE.black() && bs.getBlock() != Blocks.CONCRETE.red()) continue;
             BlockPos up = mp.above();
             BlockState us = w.getBlockState(up);
-            if (us.isSolidRender(w, up) || w.canSeeSky(up)) continue;
+            if (us.isSolidRender() || w.canSeeSky(up)) continue;
             if (!w.getBlockState(mp.below()).isSolid()) continue;
-            w.setBlockState(mp.immutable(), Blocks.SEA_LANTERN.defaultBlockState(), 2 | 16);
+            w.setBlock(mp.immutable(), Blocks.SEA_LANTERN.defaultBlockState(), 2 | 16);
             n++;
         }
         return n;
@@ -1030,7 +1030,7 @@ public class DebtManager {
         if (owner != null && !owner.equals(Buildings.CITY)) {
             BankService.msg(p, "§3[Администрация] §7Участок принадлежит другому игроку — при сносе уберут только ваши блоки.");
         }
-        if (p.getServerWorld().dimension() == Level.OVERWORLD) spawn(ModEntities.INSPECTOR.get(), p.getServerWorld(), p, 5, 9);
+        if (p.level().dimension() == Level.OVERWORLD) spawn(ModEntities.INSPECTOR.get(), p.level(), p, 5, 9);
     }
 
     /** Свободные чанки участка 3×3 вокруг chunk, которые игрок может купить. */
@@ -1123,8 +1123,8 @@ public class DebtManager {
                 for (long l : m.get(a.id)) {
                     BlockPos pos = BlockPos.of(l);
                     net.minecraft.world.level.block.entity.BlockEntity te = ow.getBlockEntity(pos);
-                    if (te instanceof net.minecraft.world.Container) ((net.minecraft.world.Container) te).clear();
-                    ow.setBlockState(pos, Blocks.AIR.defaultBlockState(), 3);
+                    if (te instanceof net.minecraft.world.Container) ((net.minecraft.world.Container) te).clearContent();
+                    ow.setBlock(pos, Blocks.AIR.defaultBlockState(), 3);
                 }
                 m.remove(a.id);
             }
@@ -1156,7 +1156,7 @@ public class DebtManager {
             data.pitBuilt = false;
         }
         LevelData info = ow.getLevelData();
-        int sx = info.getSpawnX(), sz = info.getSpawnZ();
+        int sx = info.getRespawnData().pos().getX(), sz = info.getRespawnData().pos().getZ();
         net.minecraft.core.Direction south = net.minecraft.core.Direction.SOUTH;
         if (Config.SPAWN_BUILDINGS.get() && !data.spawnBuilt) {
             int by = ow.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, sx, sz + 6);
@@ -1254,8 +1254,8 @@ public class DebtManager {
     private static void fillBox(ServerLevel w, BlockPos c) {
         for (BlockPos p : BlockPos.betweenClosed(c.offset(-4, 0, -4), c.offset(4, 5, 4))) {
             net.minecraft.world.level.block.entity.BlockEntity te = w.getBlockEntity(p);
-            if (te instanceof net.minecraft.world.Container) ((net.minecraft.world.Container) te).clear();
-            w.setBlockState(p.immutable(), Blocks.STONE.defaultBlockState(), 2 | 16);
+            if (te instanceof net.minecraft.world.Container) ((net.minecraft.world.Container) te).clearContent();
+            w.setBlock(p.immutable(), Blocks.STONE.defaultBlockState(), 2 | 16);
         }
     }
 }

@@ -87,15 +87,15 @@ public class VisitorEntity extends PathfinderMob {
             if (dx * dx + dz * dz < 0.01) dx = 1;
             float yaw = (float) (Mth.atan2(dz, dx) * (180D / Math.PI)) - 90.0F;
             yaw += (float) Math.sin(this.tickCount * 0.05) * 25.0F; // петляет
-            this.rotationYaw = yaw;
-            this.prevRotationYaw = yaw;
-            this.rotationYawHead = yaw;
-            this.renderYawOffset = yaw;
-            this.moveForward = 1.0F;
-            this.moveStrafing = 0.0F;
+            this.setYRot(yaw);
+            this.yRotO = yaw;
+            this.yHeadRot = yaw;
+            this.yBodyRot = yaw;
+            this.zza = 1.0F;
+            this.xxa = 0.0F;
             AbstractHorse horse = (AbstractHorse) this.getVehicle();
-            if (horse.collidedHorizontally && horse.onGround()) {
-                horse.setDeltaMovement(horse.getDeltaMovement().offset(0, 0.45D, 0)); // перепрыгнуть препятствие
+            if (horse.horizontalCollision && horse.onGround()) {
+                horse.setDeltaMovement(horse.getDeltaMovement().add(0, 0.45D, 0)); // перепрыгнуть препятствие
             }
             return;
         }

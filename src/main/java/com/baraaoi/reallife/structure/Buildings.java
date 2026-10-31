@@ -78,7 +78,7 @@ public class Buildings {
     }
 
     static BlockState counter(Block b, Direction d) {
-        return b.defaultBlockState().setValue(FinanceBlock.HORIZONTAL_FACING, d);
+        return b.defaultBlockState().setValue(FinanceBlock.FACING, d);
     }
 
     // =====================================================================================
@@ -132,10 +132,10 @@ public class Buildings {
         b.fill(-9, 7, 0, 9, 7, 11, s(Blocks.STONE_BRICKS));
         b.walls(-9, 8, 0, 9, 8, 11, s(Blocks.STONE_BRICK_SLAB));
         for (int x = -6; x <= 6; x += 3) for (int z : new int[]{2, 5, 8}) b.set(x, 7, z, s(Blocks.SEA_LANTERN));
-        b.set(-2, 8, 0, s(Blocks.YELLOW_GLAZED_TERRACOTTA));
-        b.set(2, 8, 0, s(Blocks.YELLOW_GLAZED_TERRACOTTA));
+        b.set(-2, 8, 0, s(Blocks.GLAZED_TERRACOTTA.yellow()));
+        b.set(2, 8, 0, s(Blocks.GLAZED_TERRACOTTA.yellow()));
         // ковровая дорожка к кассам
-        for (int z = 1; z <= 5; z++) b.set(0, 1, z, s(Blocks.RED_CARPET));
+        for (int z = 1; z <= 5; z++) b.set(0, 1, z, s(Blocks.CARPET.red()));
         // стойка кассиров со стеклом (ряд z=6)
         for (int x = -8; x <= 8; x++) {
             b.set(x, 1, 6, s(Blocks.POLISHED_ANDESITE));
@@ -198,8 +198,8 @@ public class Buildings {
         if (e == null) return;
         float yaw = face.toYRot();
         e.snapTo(pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5, yaw, 0F);
-        e.rotationYawHead = yaw;
-        e.renderYawOffset = yaw;
+        e.yHeadRot = yaw;
+        e.yBodyRot = yaw;
         w.addFreshEntity(e);
     }
 
@@ -277,7 +277,7 @@ public class Buildings {
             EconomyData data = EconomyData.get(w.getServer());
             BlockPos c = b.pos(0, 0, 3);
             boolean known = false;
-            for (BlockPos m : data.mfoCenters) if (m.distanceSq(c) < 9) known = true;
+            for (BlockPos m : data.mfoCenters) if (m.distSqr(c) < 9) known = true;
             if (!known) {
                 data.mfoCenters.add(c);
                 data.setDirty();
@@ -312,7 +312,7 @@ public class Buildings {
         b.set(-2, 1, 2, s(Blocks.COARSE_DIRT));
         b.set(2, 1, 2, s(Blocks.COARSE_DIRT));
         b.fill(-2, 3, 0, 2, 3, 4, s(Blocks.GRASS_BLOCK));
-        b.set(0, 4, 2, s(Blocks.GRASS));
+        b.set(0, 4, 2, s(Blocks.SHORT_GRASS));
         b.door(0, 0, 0, s(Blocks.OAK_DOOR), Direction.NORTH);
         b.set(-1, 0, 3, s(Blocks.CRAFTING_TABLE));
         b.set(1, 0, 3, s(Blocks.HAY_BLOCK));
@@ -337,13 +337,13 @@ public class Buildings {
         }
         b.door(0, 0, 0, s(Blocks.OAK_DOOR), Direction.NORTH);
         b.gableRoof(-4, 4, -1, 7, 4, s(Blocks.SPRUCE_STAIRS), s(Blocks.OAK_PLANKS), s(Blocks.SPRUCE_PLANKS));
-        b.bed(-2, 0, 4, s(Blocks.RED_BED), Direction.SOUTH);
+        b.bed(-2, 0, 4, s(Blocks.BED.red()), Direction.SOUTH);
         b.set(2, 0, 5, chest(Direction.WEST));
         b.set(2, 0, 4, s(Blocks.CRAFTING_TABLE));
         b.set(2, 0, 3, furnace(Blocks.FURNACE, Direction.WEST));
         b.set(-2, 0, 1, s(Blocks.TORCH));
         b.set(2, 0, 1, s(Blocks.TORCH));
-        b.set(0, 0, 3, s(Blocks.BROWN_CARPET));
+        b.set(0, 0, 3, s(Blocks.CARPET.brown()));
         b.set(-2, 0, 2, counter(ModBlocks.FRIDGE.get(), Direction.EAST));
         b.set(-2, 0, 3, chest(Direction.EAST));
         return b;
@@ -365,7 +365,7 @@ public class Buildings {
         for (int x = -1; x <= 1; x++) b.set(x, 2, 7, s(Blocks.GLASS));
         b.door(0, 0, 0, s(Blocks.SPRUCE_DOOR), Direction.NORTH);
         b.gableRoof(-5, 5, -1, 8, 4, s(Blocks.SPRUCE_STAIRS), s(Blocks.STONE_BRICKS), s(Blocks.SPRUCE_PLANKS));
-        b.bed(-3, 0, 5, s(Blocks.BLUE_BED), Direction.SOUTH);
+        b.bed(-3, 0, 5, s(Blocks.BED.blue()), Direction.SOUTH);
         b.set(-3, 0, 1, s(Blocks.BOOKSHELF));
         b.set(-3, 1, 1, s(Blocks.BOOKSHELF));
         b.set(-3, 0, 3, s(Blocks.POTTED_POPPY));
@@ -377,7 +377,7 @@ public class Buildings {
         b.set(0, 1, 4, s(Blocks.OAK_PRESSURE_PLATE));
         b.set(-1, 0, 4, b.stairs(s(Blocks.OAK_STAIRS), Direction.WEST));
         b.set(1, 0, 4, b.stairs(s(Blocks.OAK_STAIRS), Direction.EAST));
-        for (int x = -1; x <= 1; x++) b.set(x, 0, 2, s(Blocks.RED_CARPET));
+        for (int x = -1; x <= 1; x++) b.set(x, 0, 2, s(Blocks.CARPET.red()));
         // тумбочка с лампой у изголовья (раньше лампа стояла прямо в кровати)
         b.set(-2, 0, 6, s(Blocks.SPRUCE_PLANKS));
         b.set(-2, 1, 6, s(Blocks.LANTERN));
@@ -429,16 +429,16 @@ public class Buildings {
         b.set(0, 1, 5, s(Blocks.DARK_OAK_PRESSURE_PLATE));
         b.set(-1, 0, 5, b.stairs(s(Blocks.SPRUCE_STAIRS), Direction.WEST));
         b.set(1, 0, 5, b.stairs(s(Blocks.SPRUCE_STAIRS), Direction.EAST));
-        for (int x = -2; x <= 2; x++) for (int z = 2; z <= 3; z++) b.set(x, 0, z, s(Blocks.GREEN_CARPET));
+        for (int x = -2; x <= 2; x++) for (int z = 2; z <= 3; z++) b.set(x, 0, z, s(Blocks.CARPET.green()));
         b.set(-4, 0, 1, s(Blocks.LANTERN));
         b.set(2, 0, 8, s(Blocks.LANTERN));
         // 2 этаж: спальни
-        b.bed(-3, 5, 6, s(Blocks.WHITE_BED), Direction.SOUTH);
-        b.bed(-1, 5, 6, s(Blocks.WHITE_BED), Direction.SOUTH);
+        b.bed(-3, 5, 6, s(Blocks.BED.white()), Direction.SOUTH);
+        b.bed(-1, 5, 6, s(Blocks.BED.white()), Direction.SOUTH);
         b.set(-4, 5, 8, chest(Direction.EAST));
         b.set(2, 5, 8, s(Blocks.BOOKSHELF));
         b.set(1, 5, 8, s(Blocks.POTTED_BLUE_ORCHID));
-        for (int x = -2; x <= 2; x++) for (int z = 2; z <= 4; z++) b.set(x, 5, z, s(Blocks.LIGHT_GRAY_CARPET));
+        for (int x = -2; x <= 2; x++) for (int z = 2; z <= 4; z++) b.set(x, 5, z, s(Blocks.CARPET.lightGray()));
         b.set(-4, 5, 1, s(Blocks.LANTERN));
         b.set(4, 5, 1, s(Blocks.LANTERN));
         // кухня: холодильник и ещё сундук
@@ -450,7 +450,7 @@ public class Buildings {
         b.set(-4, 5, 4, s(Blocks.BARREL)); b.set(-4, 6, 4, s(Blocks.BARREL));
         b.set(3, 5, 6, s(Blocks.CAULDRON).setValue(LayeredCauldronBlock.LEVEL, 3));
         b.set(3, 5, 5, s(Blocks.QUARTZ_SLAB));
-        b.set(2, 5, 6, s(Blocks.WHITE_CARPET));
+        b.set(2, 5, 6, s(Blocks.CARPET.white()));
         b.set(4, 5, 2, s(Blocks.LECTERN));
         b.set(3, 5, 2, b.stairs(s(Blocks.SPRUCE_STAIRS), Direction.WEST));
         b.set(4, 5, 3, s(Blocks.BOOKSHELF));
@@ -507,12 +507,12 @@ public class Buildings {
         for (int z = 8; z <= 10; z++) { b.set(6, 5, z, s(Blocks.AIR)); b.set(5, 6, z, s(Blocks.DARK_OAK_FENCE)); }
         b.gableRoof(-8, 8, -1, 13, 10, s(Blocks.DARK_OAK_STAIRS), s(Blocks.QUARTZ_BLOCK), s(Blocks.DARK_OAK_PLANKS));
         // 1 этаж: гостиная, камин, столовая, кухня, библиотека
-        for (int x = -5; x <= -1; x++) for (int z = 2; z <= 6; z++) b.set(x, 0, z, s(Blocks.RED_CARPET));
+        for (int x = -5; x <= -1; x++) for (int z = 2; z <= 6; z++) b.set(x, 0, z, s(Blocks.CARPET.red()));
         for (int x = -5; x <= -3; x++) b.set(x, 0, 7, b.stairs(s(Blocks.DARK_OAK_STAIRS), Direction.SOUTH));
         b.fill(-5, 0, 11, -3, 2, 11, s(Blocks.BRICKS));
         b.set(-4, 0, 11, s(Blocks.CAMPFIRE));
         b.set(-4, 1, 11, s(Blocks.AIR));
-        for (int x = 2; x <= 4; x++) for (int z = 3; z <= 4; z++) { b.set(x, 0, z, s(Blocks.DARK_OAK_FENCE)); b.set(x, 1, z, s(Blocks.WHITE_CARPET)); }
+        for (int x = 2; x <= 4; x++) for (int z = 3; z <= 4; z++) { b.set(x, 0, z, s(Blocks.DARK_OAK_FENCE)); b.set(x, 1, z, s(Blocks.CARPET.white())); }
         for (int x = 2; x <= 4; x++) { b.set(x, 0, 2, b.stairs(s(Blocks.SPRUCE_STAIRS), Direction.SOUTH)); b.set(x, 0, 5, b.stairs(s(Blocks.SPRUCE_STAIRS), Direction.NORTH)); }
         b.set(6, 0, 1, furnace(Blocks.SMOKER, Direction.WEST));
         b.set(6, 0, 2, furnace(Blocks.FURNACE, Direction.WEST));
@@ -523,11 +523,11 @@ public class Buildings {
         b.set(1, 0, 11, chest(Direction.NORTH));
         b.set(2, 0, 11, chest(Direction.NORTH));
         // 2 этаж: спальни
-        b.bed(-5, 6, 9, s(Blocks.LIGHT_BLUE_BED), Direction.SOUTH);
-        b.bed(-3, 6, 9, s(Blocks.PINK_BED), Direction.SOUTH);
-        b.bed(1, 6, 9, s(Blocks.RED_BED), Direction.SOUTH);
-        b.bed(2, 6, 9, s(Blocks.RED_BED), Direction.SOUTH);
-        for (int x = 0; x <= 3; x++) for (int z = 6; z <= 8; z++) b.set(x, 6, z, s(Blocks.WHITE_CARPET));
+        b.bed(-5, 6, 9, s(Blocks.BED.lightBlue()), Direction.SOUTH);
+        b.bed(-3, 6, 9, s(Blocks.BED.pink()), Direction.SOUTH);
+        b.bed(1, 6, 9, s(Blocks.BED.red()), Direction.SOUTH);
+        b.bed(2, 6, 9, s(Blocks.BED.red()), Direction.SOUTH);
+        for (int x = 0; x <= 3; x++) for (int z = 6; z <= 8; z++) b.set(x, 6, z, s(Blocks.CARPET.white()));
         b.set(-6, 6, 11, chest(Direction.EAST));
         b.set(-6, 6, 10, chest(Direction.EAST));
         b.set(4, 6, 11, s(Blocks.BOOKSHELF));
@@ -542,7 +542,7 @@ public class Buildings {
         // 2 этаж (передняя часть): бильярдная, гардероб, ванная, зимний сад
         for (int x = -1; x <= 1; x++) for (int z = 2; z <= 3; z++) {
             b.set(x, 6, z, s(Blocks.DARK_OAK_FENCE));
-            b.set(x, 7, z, s(Blocks.GREEN_CARPET));
+            b.set(x, 7, z, s(Blocks.CARPET.green()));
         }
         b.set(-3, 6, 2, s(Blocks.DARK_OAK_FENCE));
         b.set(-6, 6, 3, s(Blocks.BARREL)); b.set(-6, 7, 3, s(Blocks.BARREL));
@@ -550,7 +550,7 @@ public class Buildings {
         b.set(-6, 6, 5, chest(Direction.EAST));
         b.set(4, 6, 1, s(Blocks.CAULDRON).setValue(LayeredCauldronBlock.LEVEL, 3));
         b.set(5, 6, 1, s(Blocks.CAULDRON).setValue(LayeredCauldronBlock.LEVEL, 3));
-        for (int x = 3; x <= 5; x++) b.set(x, 6, 2, s(Blocks.WHITE_CARPET));
+        for (int x = 3; x <= 5; x++) b.set(x, 6, 2, s(Blocks.CARPET.white()));
         b.set(5, 6, 3, s(Blocks.POTTED_BAMBOO));
         b.set(3, 6, 4, s(Blocks.POTTED_ORANGE_TULIP));
         b.set(-5, 6, 1, s(Blocks.POTTED_FERN));
@@ -565,8 +565,8 @@ public class Buildings {
     /** Башня 13×13 на 4 уровня, пентхаус наверху с террасой и бассейном. */
     static Blueprint penthouse(Level w, BlockPos o, Direction f) {
         Blueprint b = new Blueprint(w, o, f);
-        BlockState frame = s(Blocks.BLACK_CONCRETE);
-        BlockState glass = s(Blocks.LIGHT_BLUE_STAINED_GLASS);
+        BlockState frame = s(Blocks.CONCRETE.black());
+        BlockState glass = s(Blocks.STAINED_GLASS.lightBlue());
         BlockState floor = s(Blocks.QUARTZ_BLOCK);
         b.clear(-7, 0, -2, 7, 21, 13);
         b.foundation(-7, -2, 7, 13, s(Blocks.SMOOTH_STONE));
@@ -608,9 +608,9 @@ public class Buildings {
         b.set(-5, 0, 11, s(Blocks.POTTED_FERN));
         for (int x = -4; x <= -2; x++) b.set(x, 0, 3, b.stairs(s(Blocks.BLACKSTONE_STAIRS), Direction.NORTH));
         // 2 этаж — апартаменты
-        b.bed(-5, 5, 9, s(Blocks.GRAY_BED), Direction.SOUTH);
-        b.bed(-4, 5, 9, s(Blocks.GRAY_BED), Direction.SOUTH);
-        for (int x = -5; x <= -1; x++) for (int z = 5; z <= 8; z++) b.set(x, 5, z, s(Blocks.GRAY_CARPET));
+        b.bed(-5, 5, 9, s(Blocks.BED.gray()), Direction.SOUTH);
+        b.bed(-4, 5, 9, s(Blocks.BED.gray()), Direction.SOUTH);
+        for (int x = -5; x <= -1; x++) for (int z = 5; z <= 8; z++) b.set(x, 5, z, s(Blocks.CARPET.gray()));
         b.set(5, 5, 1, furnace(Blocks.SMOKER, Direction.WEST));
         b.set(5, 5, 2, s(Blocks.CRAFTING_TABLE));
         b.set(5, 5, 3, s(Blocks.BARREL));
@@ -634,11 +634,11 @@ public class Buildings {
         for (int x : new int[]{-3, 0, 3}) b.set(x, 19, 9, s(Blocks.SEA_LANTERN));
         b.fill(-1, 15, 6, 1, 16, 6, s(Blocks.AIR));
         // интерьер пентхауса
-        b.bed(-4, 15, 10, s(Blocks.WHITE_BED), Direction.SOUTH);
-        b.bed(-3, 15, 10, s(Blocks.WHITE_BED), Direction.SOUTH);
-        for (int x = -5; x <= -2; x++) for (int z = 7; z <= 9; z++) b.set(x, 15, z, s(Blocks.BLACK_CARPET));
+        b.bed(-4, 15, 10, s(Blocks.BED.white()), Direction.SOUTH);
+        b.bed(-3, 15, 10, s(Blocks.BED.white()), Direction.SOUTH);
+        for (int x = -5; x <= -2; x++) for (int z = 7; z <= 9; z++) b.set(x, 15, z, s(Blocks.CARPET.black()));
         for (int x = 1; x <= 3; x++) b.set(x, 15, 9, b.stairs(s(Blocks.QUARTZ_STAIRS), Direction.SOUTH));
-        b.set(1, 15, 8, s(Blocks.WHITE_CARPET));
+        b.set(1, 15, 8, s(Blocks.CARPET.white()));
         b.set(3, 15, 11, s(Blocks.JUKEBOX));
         b.set(2, 15, 11, s(Blocks.BARREL));
         b.set(1, 15, 11, s(Blocks.BARREL));
@@ -670,7 +670,7 @@ public class Buildings {
         b.set(3, 16, 4, s(Blocks.LANTERN));
         for (int z = 1; z <= 4; z += 3) {
             b.set(2, 15, z, s(Blocks.DARK_OAK_FENCE));
-            b.set(2, 16, z, s(Blocks.RED_CARPET));
+            b.set(2, 16, z, s(Blocks.CARPET.red()));
         }
         b.set(5, 15, 1, s(Blocks.BARREL));
         b.set(5, 15, 2, s(Blocks.BARREL));
@@ -683,8 +683,8 @@ public class Buildings {
         // шезлонги с зонтиком (левая сторона)
         for (int z = 1; z <= 3; z += 2) b.set(-5, 15, z, b.stairs(s(Blocks.QUARTZ_STAIRS), Direction.SOUTH));
         b.fill(-4, 15, 2, -4, 16, 2, s(Blocks.DARK_OAK_FENCE));
-        b.fill(-5, 17, 1, -3, 17, 3, s(Blocks.WHITE_WOOL));
-        b.set(-4, 17, 2, s(Blocks.RED_WOOL));
+        b.fill(-5, 17, 1, -3, 17, 3, s(Blocks.WOOL.white()));
+        b.set(-4, 17, 2, s(Blocks.WOOL.red()));
         b.set(-5, 15, 5, s(Blocks.POTTED_OAK_SAPLING));
         b.set(5, 15, 5, s(Blocks.POTTED_OAK_SAPLING));
         // лобби: банкомат и автомат
@@ -693,14 +693,14 @@ public class Buildings {
         // 2 этаж: холодильник, домашний кинотеатр
         b.set(5, 5, 4, counter(ModBlocks.FRIDGE.get(), Direction.WEST));
         b.set(5, 6, 4, counter(ModBlocks.FRIDGE.get(), Direction.WEST));
-        for (int x = 0; x <= 3; x++) for (int y = 6; y <= 7; y++) b.set(x, y, 11, s(Blocks.BLACK_CONCRETE));
+        for (int x = 0; x <= 3; x++) for (int y = 6; y <= 7; y++) b.set(x, y, 11, s(Blocks.CONCRETE.black()));
         for (int x = 0; x <= 3; x++) b.set(x, 5, 8, b.stairs(s(Blocks.DARK_OAK_STAIRS), Direction.NORTH));
         b.set(-5, 5, 3, chest(Direction.EAST));
         b.set(-1, 5, 11, s(Blocks.POTTED_BAMBOO));
         // 3 этаж: бильярд, гардероб, растения
         for (int x = -1; x <= 1; x++) for (int z = 2; z <= 3; z++) {
             b.set(x, 10, z, s(Blocks.DARK_OAK_FENCE));
-            b.set(x, 11, z, s(Blocks.GREEN_CARPET));
+            b.set(x, 11, z, s(Blocks.CARPET.green()));
         }
         b.set(-5, 10, 1, s(Blocks.BARREL)); b.set(-5, 11, 1, s(Blocks.BARREL));
         b.set(-5, 10, 2, s(Blocks.BARREL)); b.set(-5, 11, 2, s(Blocks.BARREL));
@@ -758,7 +758,7 @@ public class Buildings {
     private static final Item[] FOOD = {Items.BREAD, Items.APPLE, Items.COOKED_BEEF, Items.CARROT, Items.BAKED_POTATO,
             Items.COOKIE, Items.MELON_SLICE, Items.PUMPKIN_PIE, Items.COOKED_CHICKEN, Items.COOKED_COD, Items.SWEET_BERRIES};
     private static final Item[] HOUSEHOLD = {Items.TORCH, Items.OAK_PLANKS, Items.STRING, Items.PAPER, Items.BOOK,
-            Items.WHEAT_SEEDS, Items.BONE_MEAL, Items.STICK, Items.COBBLESTONE, Items.GLASS_PANE, Items.WHITE_WOOL, Items.LADDER};
+            Items.WHEAT_SEEDS, Items.BONE_MEAL, Items.STICK, Items.COBBLESTONE, Items.GLASS_PANE, Items.WOOL.white(), Items.LADDER};
     private static final Item[] RICH = {Items.IRON_INGOT, Items.GOLD_NUGGET, Items.COAL, Items.REDSTONE, Items.LAPIS_LAZULI,
             Items.LEATHER, Items.FEATHER, Items.EXPERIENCE_BOTTLE, Items.NAME_TAG, Items.EMERALD};
 
@@ -875,8 +875,8 @@ public class Buildings {
         b.sign(-3, 2, 3, s(Blocks.OAK_WALL_SIGN), Direction.EAST, "§4ПОДВАЛ", "Шайкина", "Копай и сдавай", "в приёмник");
         b.set(0, 1, 3, counter(ModBlocks.PIT_RECEIVER.get(), Direction.NORTH));
         b.set(3, 1, 3, s(Blocks.CAULDRON));
-        b.set(2, 1, 3, s(Blocks.CHAIN));
-        b.set(-2, 1, 3, s(Blocks.CHAIN));
+        b.set(2, 1, 3, s(Blocks.IRON_CHAIN));
+        b.set(-2, 1, 3, s(Blocks.IRON_CHAIN));
         return b;
     }
 
@@ -890,8 +890,8 @@ public class Buildings {
         if (volume <= 0 || volume > 4000) return;
         for (BlockPos p : BlockPos.betweenClosed(min, max)) {
             BlockEntity te = w.getBlockEntity(p);
-            if (te instanceof Container) ((Container) te).clear();
-            w.setBlockState(p.immutable(), s(Blocks.STONE), Blueprint.FLAGS);
+            if (te instanceof Container) ((Container) te).clearContent();
+            w.setBlock(p.immutable(), s(Blocks.STONE), Blueprint.FLAGS);
         }
     }
 
@@ -946,9 +946,9 @@ public class Buildings {
 
     /** Верхний «грунтовый» блок столбца в окне ±16 от y0 (деревья, трава, вода — не грунт). */
     static int groundY(Level w, int x, int z, int y0) {
-        BlockPos.Mutable m = new BlockPos.Mutable();
+        BlockPos.MutableBlockPos m = new BlockPos.MutableBlockPos();
         for (int y = y0 + 16; y >= y0 - 16; y--) {
-            m.setPos(x, y, z);
+            m.set(x, y, z);
             if (isGround(w.getBlockState(m))) return y;
         }
         return y0 - 17;
@@ -1035,14 +1035,14 @@ public class Buildings {
     public static Blueprint buildCasino(Level w, BlockPos origin, Direction facing, boolean protect) {
         Blueprint b = new Blueprint(w, origin, facing);
         removeStaff(w, b.pos(-16, 0, -5), b.pos(16, 14, 31));
-        BlockState black = s(Blocks.BLACK_CONCRETE);
-        BlockState red = s(Blocks.RED_CONCRETE);
-        BlockState gold = s(Blocks.YELLOW_CONCRETE);
+        BlockState black = s(Blocks.CONCRETE.black());
+        BlockState red = s(Blocks.CONCRETE.red());
+        BlockState gold = s(Blocks.CONCRETE.yellow());
         b.clear(-16, 0, -5, 16, 14, 31);
         b.foundation(-16, -5, 16, 31, s(Blocks.POLISHED_BLACKSTONE));
         // площадка перед входом
         b.fill(-9, 0, -5, 9, 0, -1, s(Blocks.POLISHED_BLACKSTONE_BRICKS));
-        for (int z = -5; z <= -1; z++) b.set(0, 1, z, s(Blocks.RED_CARPET));
+        for (int z = -5; z <= -1; z++) b.set(0, 1, z, s(Blocks.CARPET.red()));
         for (int x : new int[]{-8, 8}) {
             b.fill(x, 1, -4, x, 3, -4, s(Blocks.QUARTZ_PILLAR));
             b.set(x, 4, -4, s(Blocks.SEA_LANTERN));
@@ -1068,7 +1068,7 @@ public class Buildings {
             b.set(x, 7, 0, ((x & 1) == 0) ? s(Blocks.GLOWSTONE) : red);
             b.set(x, 9, 0, ((x & 1) == 0) ? red : s(Blocks.SHROOMLIGHT));
         }
-        for (int x = -6; x <= 6; x++) b.set(x, 8, -1, s(Blocks.RED_STAINED_GLASS));
+        for (int x = -6; x <= 6; x++) b.set(x, 8, -1, s(Blocks.STAINED_GLASS.red()));
         // вход 5×4 без дверей — заходи, кто хочет
         b.fill(-2, 1, 0, 2, 4, 0, s(Blocks.AIR));
         b.fill(-3, 5, -3, 3, 5, -1, red);
@@ -1078,10 +1078,10 @@ public class Buildings {
         b.sign(4, 2, -1, s(Blocks.DARK_OAK_WALL_SIGN), Direction.NORTH, "§4Правила:", "Слишком везёт —", "выведут под руки", "на сутки");
         // интерьер
         for (int x = -12; x <= 12; x += 4) for (int z = 3; z <= 27; z += 4) b.set(x, 12, z, s(Blocks.SEA_LANTERN));
-        for (int z = 1; z <= 20; z++) b.set(0, 1, z, s(Blocks.RED_CARPET));
+        for (int z = 1; z <= 20; z++) b.set(0, 1, z, s(Blocks.CARPET.red()));
         for (int x : new int[]{-4, 4}) for (int z : new int[]{8, 16}) {
             b.fill(x, 1, z, x, 10, z, s(Blocks.QUARTZ_PILLAR));
-            b.set(x, 6, z, s(Blocks.YELLOW_GLAZED_TERRACOTTA));
+            b.set(x, 6, z, s(Blocks.GLAZED_TERRACOTTA.yellow()));
         }
         // однорукие бандиты вдоль стен
         for (int z = 4; z <= 26; z += 2) {
@@ -1096,9 +1096,9 @@ public class Buildings {
             for (int x : new int[]{7, 9}) b.set(x, 1, z, counter(ModBlocks.ROULETTE_TABLE.get(), Direction.NORTH));
             for (int x : new int[]{-10, -8, -6, 6, 8, 10}) {
                 b.set(x, 1, z - 1, s(Blocks.DARK_OAK_FENCE));
-                b.set(x, 2, z - 1, s(Blocks.RED_CARPET));
+                b.set(x, 2, z - 1, s(Blocks.CARPET.red()));
             }
-            for (int x : new int[]{-10, -6, 6, 10}) b.set(x, 1, z, s(Blocks.GREEN_CARPET));
+            for (int x : new int[]{-10, -6, 6, 10}) b.set(x, 1, z, s(Blocks.CARPET.green()));
         }
         // бар
         for (int x = -4; x <= 4; x++) b.set(x, 1, 22, s(Blocks.POLISHED_BLACKSTONE_BRICKS));
@@ -1106,7 +1106,7 @@ public class Buildings {
         b.set(4, 2, 22, s(Blocks.LANTERN));
         for (int x = -4; x <= 4; x += 2) {
             b.set(x, 1, 21, s(Blocks.DARK_OAK_FENCE));
-            b.set(x, 2, 21, s(Blocks.RED_CARPET));
+            b.set(x, 2, 21, s(Blocks.CARPET.red()));
         }
         b.set(-3, 1, 25, s(Blocks.BARREL));
         b.set(-2, 1, 25, s(Blocks.BARREL));
@@ -1117,7 +1117,7 @@ public class Buildings {
         // «Мама Анархия» у дальней стены
         for (int x = -10; x <= 10; x += 4) {
             b.set(x, 1, 29, counter(ModBlocks.ANARCHY_MACHINE.get(), Direction.NORTH));
-            b.set(x, 2, 29, s(Blocks.RED_STAINED_GLASS));
+            b.set(x, 2, 29, s(Blocks.STAINED_GLASS.red()));
             b.set(x, 3, 29, s(Blocks.SHROOMLIGHT));
         }
         b.sign(0, 3, 29, s(Blocks.DARK_OAK_WALL_SIGN), Direction.NORTH, "§4§lМАМА", "§4§lАНАРХИЯ", "§0x0 ... x8", "§0хаос решает");

@@ -114,7 +114,7 @@ public class CasinoScreen extends AbstractContainerScreen<CasinoContainer> {
     }
 
     private void center(GuiGraphicsExtractor ms, String s, int cx, int y, int color) {
-        GuiUtil.text(ms, this.font, s, cx - this.font.width(s) / 2f, y, color);
+        GuiUtil.text(ms, this.font, s, cx - this.font.width(s) / 2, y, color);
     }
 
     private void small(GuiGraphicsExtractor ms, String s, int x, int y, int color) {

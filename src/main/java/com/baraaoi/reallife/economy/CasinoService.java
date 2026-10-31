@@ -139,8 +139,8 @@ public class CasinoService {
         for (int i = 0; i < p.getInventory().getContainerSize(); i++) {
             ItemStack st = p.getInventory().getItem(i);
             if (st.getItem() instanceof CloverItem) {
-                st.setDamage(st.getDamage() + 1);
-                if (st.getDamage() >= st.getMaxDamage()) {
+                st.setDamageValue(st.getDamageValue() + 1);
+                if (st.getDamageValue() >= st.getMaxDamage()) {
                     p.getInventory().setItem(i, ItemStack.EMPTY);
                     BankService.msg(p, CASINO + "§7Клевер завял. Удача кончилась.");
                 }

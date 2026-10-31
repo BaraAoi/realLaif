@@ -73,4 +73,15 @@ public final class Nbt {
     public static void setItemTag(net.minecraft.world.item.ItemStack st, CompoundTag t) {
         st.set(net.minecraft.core.component.DataComponents.CUSTOM_DATA, net.minecraft.world.item.component.CustomData.of(t));
     }
+
+    // ------------------------------------------------------------------ блочные сущности
+
+    public static CompoundTag saveBE(net.minecraft.world.level.block.entity.BlockEntity te) {
+        return te.saveWithoutMetadata(te.getLevel().registryAccess());
+    }
+
+    public static void loadBE(net.minecraft.world.level.block.entity.BlockEntity te, CompoundTag t) {
+        te.loadWithComponents(net.minecraft.world.level.storage.TagValueInput.create(
+                net.minecraft.util.ProblemReporter.DISCARDING, te.getLevel().registryAccess(), t));
+    }
 }

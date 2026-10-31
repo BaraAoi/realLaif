@@ -113,12 +113,12 @@ public final class Malls {
             if (owner) {
                 BankService.msg(p, TC + "Оно ваше и свободно. Займите сами (бесплатно, без аренды) или ждите покупателя: другой игрок заплатит §a"
                         + Finance.money(u.price) + "§f и будет платить вам §a" + Finance.money(u.rent) + "/день§f.");
-                p.sendMessage(Component.literal("§d  ").append(button("§a§l[Занять себе]", "/reallife mall take" + cmd)), p.getUUID());
+                p.sendSystemMessage(Component.literal("§d  ").append(button("§a§l[Занять себе]", "/reallife mall take" + cmd)));
             } else {
                 BankService.msg(p, TC + "Цена §e" + Finance.money(u.price) + "§f (владельцу ТЦ) + аренда §e" + Finance.money(u.rent)
                         + "/день§f. Внутри — что угодно: жильё, склад, любое заведение (прибыль +50%). Не платите аренду "
                         + Mall.EVICT_DAYS + " дня подряд — выселят.");
-                p.sendMessage(Component.literal("§d  ").append(button("§a§l[Купить за " + Finance.money(u.price) + "]", "/reallife mall buy" + cmd)), p.getUUID());
+                p.sendSystemMessage(Component.literal("§d  ").append(button("§a§l[Купить за " + Finance.money(u.price) + "]", "/reallife mall buy" + cmd)));
             }
             return;
         }
@@ -126,7 +126,7 @@ public final class Malls {
         if (id.equals(u.tenant)) {
             BankService.msg(p, TC + "Это ваше помещение" + (owner ? " (без аренды — ТЦ ваш)" : ", аренда §e" + Finance.money(u.rent) + "/день"
                     + (u.unpaid > 0 ? " §cдолг " + u.unpaid + " дн." : "")) + "§f. " + (b == null ? "Заведения нет — можно открыть любое лицензией." : "Здесь «" + b.type.title + "»."));
-            if (b == null) p.sendMessage(Component.literal("§d  ").append(button("§c[Освободить помещение]", "/reallife mall leave" + cmd)), p.getUUID());
+            if (b == null) p.sendSystemMessage(Component.literal("§d  ").append(button("§c[Освободить помещение]", "/reallife mall leave" + cmd)));
         } else {
             BankService.msg(p, TC + "Занято: §e" + u.tenantName + "§f" + (b == null ? "" : " — «" + b.type.title + "»") + ".");
         }

@@ -41,7 +41,7 @@ public final class BizBuildings {
 
     /** Повернуть блок лицом в нужную (локальную) сторону. */
     static BlockState facing(BlockState st, Direction d) {
-        return st.hasProperty(HorizontalDirectionalBlock.HORIZONTAL_FACING) ? st.setValue(HorizontalDirectionalBlock.HORIZONTAL_FACING, d) : st;
+        return st.hasProperty(HorizontalDirectionalBlock.FACING) ? st.setValue(HorizontalDirectionalBlock.FACING, d) : st;
     }
 
     static BlockState water() {
@@ -147,15 +147,15 @@ public final class BizBuildings {
 
     /** Шаурмичная: зал со столиками, стойка отделяет кухню, за кухней — склад. */
     static Blueprint shawarma(Level w, BlockPos o, Direction f, String owner) {
-        Style st = new Style(Blocks.ORANGE_TERRACOTTA, Blocks.BROWN_TERRACOTTA, Blocks.SPRUCE_PLANKS, Blocks.SMOOTH_STONE,
-                Blocks.GLASS, Blocks.RED_WOOL);
+        Style st = new Style(Blocks.DYED_TERRACOTTA.orange(), Blocks.DYED_TERRACOTTA.brown(), Blocks.SPRUCE_PLANKS, Blocks.SMOOTH_STONE,
+                Blocks.GLASS, Blocks.WOOL.red());
         Blueprint b = shell(w, o, f, st, 0, BizType.SHAWARMA, owner);
         // кухня (плитка) и склад
-        b.fill(-6, 0, 8, 6, 0, 10, s(Blocks.WHITE_TERRACOTTA));
+        b.fill(-6, 0, 8, 6, 0, 10, s(Blocks.DYED_TERRACOTTA.white()));
         b.fill(-6, 0, 12, 6, 0, 13, s(Blocks.POLISHED_ANDESITE));
         // стойка-раздача по линии z=7, калитка на кухню справа
         for (int x = -6; x <= 6; x++) b.set(x, 1, 7, s(Blocks.STRIPPED_SPRUCE_LOG));
-        b.set(6, 1, 7, s(Blocks.SPRUCE_FENCE_GATE).setValue(FenceGateBlock.HORIZONTAL_FACING, N));
+        b.set(6, 1, 7, s(Blocks.SPRUCE_FENCE_GATE).setValue(FenceGateBlock.FACING, N));
         counter(b, 0, 7, N);
         counter(b, -3, 7, N);
         // кухня: грили, холодильники, раковина, коптильня
@@ -175,7 +175,7 @@ public final class BizBuildings {
         // зал: 4 столика со стульями
         for (int tx : new int[]{-4, 4})
             for (int tz : new int[]{2, 5}) {
-                table(b, tx, tz, Blocks.WHITE_CARPET);
+                table(b, tx, tz, Blocks.CARPET.white());
                 chair(b, tx - 1, tz, W);
                 chair(b, tx + 1, tz, E);
             }
@@ -186,8 +186,8 @@ public final class BizBuildings {
 
     /** Мини-маркет: полки вдоль стен, холодильники-острова, кассы, служебный проход и склад за стеной. */
     static Blueprint minimarket(Level w, BlockPos o, Direction f, String owner) {
-        Style st = new Style(Blocks.WHITE_CONCRETE, Blocks.LIME_CONCRETE, Blocks.SMOOTH_QUARTZ, Blocks.SMOOTH_STONE,
-                Blocks.GLASS, Blocks.LIME_WOOL);
+        Style st = new Style(Blocks.CONCRETE.white(), Blocks.CONCRETE.lime(), Blocks.SMOOTH_QUARTZ, Blocks.SMOOTH_STONE,
+                Blocks.GLASS, Blocks.WOOL.lime());
         Blueprint b = shell(w, o, f, st, 0, BizType.MINIMARKET, owner);
         b.fill(-6, 0, 8, 6, 0, 13, s(Blocks.POLISHED_ANDESITE));
         for (int z = 1; z <= 6; z++) {
@@ -218,8 +218,8 @@ public final class BizBuildings {
 
     /** Автомойка: два бокса с воротами, между ними офис с кассами, склад автохимии в конце офиса. */
     static Blueprint carWash(Level w, BlockPos o, Direction f, String owner) {
-        Style st = new Style(Blocks.LIGHT_GRAY_CONCRETE, Blocks.BLUE_CONCRETE, Blocks.SMOOTH_STONE, Blocks.SMOOTH_STONE,
-                Blocks.LIGHT_BLUE_STAINED_GLASS, Blocks.BLUE_WOOL);
+        Style st = new Style(Blocks.CONCRETE.lightGray(), Blocks.CONCRETE.blue(), Blocks.SMOOTH_STONE, Blocks.SMOOTH_STONE,
+                Blocks.STAINED_GLASS.lightBlue(), Blocks.WOOL.blue());
         Blueprint b = shell(w, o, f, st, 0, BizType.CAR_WASH, owner);
         // стены офиса со стеклом в боксы
         wallAlongZ(b, -2, 1, 13, st.wall);
@@ -237,8 +237,8 @@ public final class BizBuildings {
         for (int z : new int[]{3, 7, 11}) {
             eq(b, 6, z, BizEquip.WASHER, W);
             eq(b, -6, z, BizEquip.WASHER, E);
-            b.set(5, 5, z, s(Blocks.CHAIN));
-            b.set(-5, 5, z, s(Blocks.CHAIN));
+            b.set(5, 5, z, s(Blocks.IRON_CHAIN));
+            b.set(-5, 5, z, s(Blocks.IRON_CHAIN));
         }
         b.set(3, 1, 13, water());
         b.set(-3, 1, 13, water());
@@ -254,8 +254,8 @@ public final class BizBuildings {
 
     /** Карьер: ангар с воротами, дробилки у дальней стены, стеклянная будка диспетчера, сарай-склад, рельсы. */
     static Blueprint quarry(Level w, BlockPos o, Direction f, String owner) {
-        Style st = new Style(Blocks.GRAY_CONCRETE, Blocks.YELLOW_CONCRETE, Blocks.POLISHED_ANDESITE, Blocks.SMOOTH_STONE,
-                Blocks.GLASS, Blocks.YELLOW_WOOL);
+        Style st = new Style(Blocks.CONCRETE.gray(), Blocks.CONCRETE.yellow(), Blocks.POLISHED_ANDESITE, Blocks.SMOOTH_STONE,
+                Blocks.GLASS, Blocks.WOOL.yellow());
         Blueprint b = shell(w, o, f, st, 0, BizType.QUARRY, owner);
         b.clear(-3, 1, 0, 3, 4, 0); // ворота
         // будка диспетчера
@@ -268,7 +268,7 @@ public final class BizBuildings {
         counter(b, 2, 6, N);
         counter(b, -2, 8, E);
         // дробилки, предупредительная разметка, рельсы
-        for (int x = -6; x <= 6; x++) b.set(x, 0, 11, s((x & 1) == 0 ? Blocks.YELLOW_CONCRETE : Blocks.BLACK_CONCRETE));
+        for (int x = -6; x <= 6; x++) b.set(x, 0, 11, s((x & 1) == 0 ? Blocks.CONCRETE.yellow() : Blocks.CONCRETE.black()));
         for (int x : new int[]{-5, -2, 2, 5}) eq(b, x, 12, BizEquip.CRUSHER, N);
         for (int z = 1; z <= 10; z++) b.set(-5, 1, z, s(Blocks.RAIL));
         b.set(-6, 1, 13, s(Blocks.STONE));
@@ -289,7 +289,7 @@ public final class BizBuildings {
     /** Ломбард: зал с витринами и скамьями, окно оценщика за решёткой, кабинет, хранилище с сейфами и склад. */
     static Blueprint pawnshop(Level w, BlockPos o, Direction f, String owner) {
         Style st = new Style(Blocks.POLISHED_BLACKSTONE_BRICKS, Blocks.GILDED_BLACKSTONE, Blocks.DARK_OAK_PLANKS, Blocks.SMOOTH_STONE,
-                Blocks.GLASS, Blocks.YELLOW_WOOL);
+                Blocks.GLASS, Blocks.WOOL.yellow());
         Blueprint b = shell(w, o, f, st, 0, BizType.PAWNSHOP, owner);
         b.fill(-6, 0, 1, 6, 0, 6, s(Blocks.POLISHED_GRANITE));
         for (int z : new int[]{2, 4}) {
@@ -331,13 +331,13 @@ public final class BizBuildings {
 
     /** Заправка: площадка с колонками под навесом, магазин с кассами и полками, склад за стеной. */
     static Blueprint gasStation(Level w, BlockPos o, Direction f, String owner) {
-        Style st = new Style(Blocks.WHITE_CONCRETE, Blocks.RED_CONCRETE, Blocks.SMOOTH_QUARTZ, Blocks.SMOOTH_STONE,
+        Style st = new Style(Blocks.CONCRETE.white(), Blocks.CONCRETE.red(), Blocks.SMOOTH_QUARTZ, Blocks.SMOOTH_STONE,
                 Blocks.GLASS, null);
         int fz = 4;
         Blueprint b = shell(w, o, f, st, fz, BizType.GAS_STATION, owner);
         // асфальт, разметка, островки
-        b.fill(-SHOP_X, 0, SHOP_FRONT_MIN, SHOP_X, 0, fz - 1, s(Blocks.BLACK_CONCRETE));
-        for (int z = SHOP_FRONT_MIN; z < fz; z++) { b.set(-6, 0, z, s(Blocks.WHITE_CONCRETE)); b.set(6, 0, z, s(Blocks.WHITE_CONCRETE)); }
+        b.fill(-SHOP_X, 0, SHOP_FRONT_MIN, SHOP_X, 0, fz - 1, s(Blocks.CONCRETE.black()));
+        for (int z = SHOP_FRONT_MIN; z < fz; z++) { b.set(-6, 0, z, s(Blocks.CONCRETE.white())); b.set(6, 0, z, s(Blocks.CONCRETE.white())); }
         for (int z = 0; z <= 2; z++) {
             b.set(-4, 0, z, s(Blocks.SMOOTH_STONE));
             b.set(4, 0, z, s(Blocks.SMOOTH_STONE));
@@ -345,9 +345,9 @@ public final class BizBuildings {
             eq(b, 4, z, BizEquip.PUMP, W);
         }
         // навес
-        for (int[] p : new int[][]{{-6, -2}, {6, -2}, {-6, 2}, {6, 2}}) b.fill(p[0], 1, p[1], p[0], 4, p[1], s(Blocks.WHITE_CONCRETE));
-        b.fill(-SHOP_X, 5, SHOP_FRONT_MIN, SHOP_X, 5, fz - 1, s(Blocks.WHITE_CONCRETE));
-        for (int x = -SHOP_X; x <= SHOP_X; x++) b.set(x, 5, SHOP_FRONT_MIN, s(Blocks.RED_CONCRETE));
+        for (int[] p : new int[][]{{-6, -2}, {6, -2}, {-6, 2}, {6, 2}}) b.fill(p[0], 1, p[1], p[0], 4, p[1], s(Blocks.CONCRETE.white()));
+        b.fill(-SHOP_X, 5, SHOP_FRONT_MIN, SHOP_X, 5, fz - 1, s(Blocks.CONCRETE.white()));
+        for (int x = -SHOP_X; x <= SHOP_X; x++) b.set(x, 5, SHOP_FRONT_MIN, s(Blocks.CONCRETE.red()));
         for (int x = -4; x <= 4; x += 4) b.set(x, 5, 0, s(Blocks.SEA_LANTERN));
         b.set(-4, 5, 2, s(Blocks.SEA_LANTERN));
         b.set(4, 5, 2, s(Blocks.SEA_LANTERN));
@@ -372,8 +372,8 @@ public final class BizBuildings {
 
     /** Магазин техники: витрины-острова, полки вдоль стен, кассы и сервис, мастерская и склад. */
     static Blueprint electronics(Level w, BlockPos o, Direction f, String owner) {
-        Style st = new Style(Blocks.GRAY_CONCRETE, Blocks.LIGHT_BLUE_CONCRETE, Blocks.SMOOTH_QUARTZ, Blocks.SMOOTH_STONE,
-                Blocks.LIGHT_BLUE_STAINED_GLASS, Blocks.LIGHT_BLUE_WOOL);
+        Style st = new Style(Blocks.CONCRETE.gray(), Blocks.CONCRETE.lightBlue(), Blocks.SMOOTH_QUARTZ, Blocks.SMOOTH_STONE,
+                Blocks.STAINED_GLASS.lightBlue(), Blocks.WOOL.lightBlue());
         Blueprint b = shell(w, o, f, st, 0, BizType.ELECTRONICS, owner);
         for (int x : new int[]{-4, -3, -2, 2, 3, 4}) {
             eq(b, x, 3, BizEquip.DISPLAY, N);
@@ -384,7 +384,7 @@ public final class BizBuildings {
             eq(b, 6, z, BizEquip.SHELF, W);
         }
         // «телевизоры» на стенах
-        for (int z = 1; z <= 2; z++) { b.set(-SHOP_X, 3, z, s(Blocks.BLACK_CONCRETE)); b.set(SHOP_X, 3, z, s(Blocks.BLACK_CONCRETE)); }
+        for (int z = 1; z <= 2; z++) { b.set(-SHOP_X, 3, z, s(Blocks.CONCRETE.black())); b.set(SHOP_X, 3, z, s(Blocks.CONCRETE.black())); }
         counter(b, 0, 7, N);
         counter(b, -3, 7, N);
         counter(b, 3, 7, N);
@@ -412,7 +412,7 @@ public final class BizBuildings {
     // =====================================================================================
 
     static Block bandColor(int area) {
-        return area < 50 ? Blocks.PINK_CONCRETE : area < 100 ? Blocks.LIME_CONCRETE : area < 170 ? Blocks.LIGHT_BLUE_CONCRETE : Blocks.ORANGE_CONCRETE;
+        return area < 50 ? Blocks.CONCRETE.pink() : area < 100 ? Blocks.CONCRETE.lime() : area < 170 ? Blocks.CONCRETE.lightBlue() : Blocks.CONCRETE.orange();
     }
 
     /** Стоячая табличка (rotation 0 — лицом на локальный юг, 8 — на север). */
@@ -427,7 +427,7 @@ public final class BizBuildings {
         BlockEntity te = w.getBlockEntity(p);
         if (!(te instanceof SignBlockEntity)) return;
         SignBlockEntity sign = (SignBlockEntity) te;
-        for (int i = 0; i < 4; i++) sign.setText(i, Component.literal(i < lines.length && lines[i] != null ? lines[i] : ""));
+        for (int i = 0; i < 4; i++) sign.updateText(_t -> _t.setMessage(i, Component.literal(i < lines.length && lines[i] != null ? lines[i] : "")), true);
         sign.setChanged();
         BlockState st = w.getBlockState(p);
         w.sendBlockUpdated(p, st, st, 3);
@@ -471,7 +471,7 @@ public final class BizBuildings {
     public static Blueprint buildMall(Level w, BlockPos origin, Direction forward, String ownerName) {
         Blueprint b = new Blueprint(w, origin, forward);
         int X1 = Mall.X1, X2 = Mall.X2, Z1 = Mall.Z1, Z2 = Mall.Z2, H = Mall.H;
-        BlockState wall = s(Blocks.WHITE_CONCRETE), glass = s(Blocks.LIGHT_BLUE_STAINED_GLASS), lamp = s(Blocks.SEA_LANTERN);
+        BlockState wall = s(Blocks.CONCRETE.white()), glass = s(Blocks.STAINED_GLASS.lightBlue()), lamp = s(Blocks.SEA_LANTERN);
         BlockState pillar = s(Blocks.QUARTZ_PILLAR);
         b.clear(X1, 0, Z1 - 5, X2, H + 2, Z2);
         b.foundation(X1, Z1 - 5, X2, Z2, s(Blocks.STONE_BRICKS));
@@ -504,7 +504,7 @@ public final class BizBuildings {
         for (int x = X1 + 2; x <= X2 - 2; x += 4)
             for (int z = Z1 + 2; z <= Z2 - 2; z += 4)
                 if (!(x >= -12 && x <= 14 && z >= 6 && z <= 38)) b.set(x, H, z, lamp);
-        b.walls(X1, H + 1, Z1, X2, H + 1, Z2, s(Blocks.LIGHT_GRAY_CONCRETE));
+        b.walls(X1, H + 1, Z1, X2, H + 1, Z2, s(Blocks.CONCRETE.lightGray()));
         // вход: проём 7×4, козырёк, вывеска
         b.clear(-3, 1, Z1, 3, 4, Z1);
         b.fill(-5, 5, Z1 - 2, 5, 5, Z1 - 1, s(Blocks.SMOOTH_QUARTZ_SLAB));
@@ -577,13 +577,13 @@ public final class BizBuildings {
 
     static Block kioskColor(BizType t) {
         switch (t) {
-            case SHAWARMA: return Blocks.ORANGE_CONCRETE;
-            case MINIMARKET: return Blocks.GREEN_CONCRETE;
-            case CAR_WASH: return Blocks.CYAN_CONCRETE;
-            case QUARRY: return Blocks.GRAY_CONCRETE;
-            case PAWNSHOP: return Blocks.YELLOW_CONCRETE;
-            case GAS_STATION: return Blocks.RED_CONCRETE;
-            default: return Blocks.BLACK_CONCRETE;
+            case SHAWARMA: return Blocks.CONCRETE.orange();
+            case MINIMARKET: return Blocks.CONCRETE.green();
+            case CAR_WASH: return Blocks.CONCRETE.cyan();
+            case QUARRY: return Blocks.CONCRETE.gray();
+            case PAWNSHOP: return Blocks.CONCRETE.yellow();
+            case GAS_STATION: return Blocks.CONCRETE.red();
+            default: return Blocks.CONCRETE.black();
         }
     }
 
@@ -618,7 +618,7 @@ public final class BizBuildings {
         b.fill(-3, 4, -1, 3, 4, 6, wall);
         for (int x = -2; x <= 2; x++) b.set(x, 2, 0, s(Blocks.GLASS));
         b.clear(0, 1, 0, 0, 2, 0);
-        for (int x = -3; x <= 3; x++) b.set(x, 4, -1, s(Blocks.WHITE_WOOL));
+        for (int x = -3; x <= 3; x++) b.set(x, 4, -1, s(Blocks.WOOL.white()));
         b.set(0, 4, 3, s(Blocks.SEA_LANTERN));
         for (int x = -1; x <= 1; x++) b.set(x, 1, 3, s(Blocks.SPRUCE_PLANKS));
         Block[] d = kioskDecor(type);
@@ -650,10 +650,10 @@ public final class BizBuildings {
 
     static Block kioskColorCarpet(BizType t) {
         switch (t) {
-            case SHAWARMA: return Blocks.ORANGE_CARPET;
-            case MINIMARKET: return Blocks.GREEN_CARPET;
-            case PAWNSHOP: return Blocks.YELLOW_CARPET;
-            default: return Blocks.GRAY_CARPET;
+            case SHAWARMA: return Blocks.CARPET.orange();
+            case MINIMARKET: return Blocks.CARPET.green();
+            case PAWNSHOP: return Blocks.CARPET.yellow();
+            default: return Blocks.CARPET.gray();
         }
     }
 }
